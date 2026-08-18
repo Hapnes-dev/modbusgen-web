@@ -1,0 +1,69 @@
+{
+  "table": "kjol",
+  "plant": "12345",
+  "groups": {
+    "zone1": "Zone 1",
+    "alm": "Alarmer"
+  },
+  "statetexts": {
+    "1": {
+      "1": "Kjøling",
+      "2": "Oppvarming",
+      "3": "Avriming",
+      "4": "Stopp"
+    }
+  },
+  "points": [
+    {
+      "group": "zone1",
+      "datatype": "A_Hold_I16_N",
+      "addr": 3001,
+      "system_no": "360.001",
+      "tag": "RT401",
+      "text": "Romtemperatur",
+      "unit": "°C/°F",
+      "scale": "x0.1",
+      "online": true,
+      "decimals": 1
+    },
+    {
+      "group": "zone1",
+      "datatype": "A_Hold_I16_N",
+      "addr": 3002,
+      "system_no": "360.001",
+      "tag": "RT401",
+      "text": "Settpunkt romtemperatur",
+      "unit": "°C/°F",
+      "scale": "x0.1",
+      "rw": "rw",
+      "decimals": 1
+    },
+    {
+      "group": "zone1",
+      "datatype": "I_Hold_U16_N",
+      "addr": 3010,
+      "system_no": "360.001",
+      "tag": "OS401",
+      "text": "Driftsstatus",
+      "statetext": 1
+    },
+    {
+      "group": "alm",
+      "datatype": "Bit_Hold",
+      "addr": 3020,
+      "bit": 0,
+      "system_no": "360.001",
+      "text": "Høytrykk alarm",
+      "alarm": "B"
+    },
+    {
+      "group": "alm",
+      "datatype": "Bit_Hold",
+      "addr": 3020,
+      "bit": 1,
+      "system_no": "360.001",
+      "text": "Lavtrykk alarm",
+      "alarm": "B"
+    }
+  ]
+}

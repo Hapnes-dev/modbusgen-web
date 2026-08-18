@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>modbusgen</title>
+<style>
+  :root{
+    --bg:#14161a; --panel:#1c1f26; --panel2:#22262f; --line:#2e3340;
+    --text:#d7dae0; --dim:#8b93a3; --accent:#4da3ff; --green:#3fbf7f;
+    --red:#ff6b6b; --yellow:#e8c15a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font:14px/1.45 "Segoe UI",system-ui,sans-serif}
+  header{display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+         padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line);
+         position:sticky;top:0;z-index:5}
+  header .title{font-weight:600;font-size:15px;margin-right:12px}
+  header .title span{color:var(--accent)}
+  main{padding:16px;max-width:1500px;margin:0 auto}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+        padding:12px 14px;margin-bottom:14px}
+  .card h2{margin:0 0 10px;font-size:13px;text-transform:uppercase;
+           letter-spacing:.06em;color:var(--dim)}
+  .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--dim)}
+  input,select,textarea,button{
+    background:var(--panel2);color:var(--text);border:1px solid var(--line);
+    border-radius:5px;padding:5px 8px;font:inherit}
+  input:focus,select:focus,textarea:focus{outline:1px solid var(--accent)}
+  input[type=checkbox]{width:15px;height:15px;accent-color:var(--accent)}
+  button{cursor:pointer}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#0b1220;
+                 font-weight:600}
+  button.ghost{background:transparent}
+  .chk{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--text)}
+  table{border-collapse:collapse;width:100%}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--dim);
+     text-align:left;padding:4px 6px;border-bottom:1px solid var(--line);
+     position:sticky;top:0;background:var(--panel)}
+  td{padding:3px 4px;border-bottom:1px solid #262b35}
+  td input,td select{width:100%;min-width:0;padding:4px 6px}
+  td.num{color:var(--dim);font-size:11px;text-align:right;padding-right:6px}
+  .tblwrap{overflow-x:auto;max-height:52vh;overflow-y:auto}
+  .points td:nth-child(2) input{min-width:70px}
+  .points td:nth-child(3) select{min-width:130px}
+  .points td:nth-child(8) input{min-width:170px}
+  .msg{white-space:pre-wrap;font-family:Consolas,monospace;font-size:12.5px;
+       border-radius:6px;padding:8px 10px;margin-top:8px}
+  .msg.err{background:#3a2126;color:var(--red);border:1px solid #5b2b33}
+  .msg.ok{background:#1e3328;color:var(--green);border:1px solid #2b5b3f}
+  .msg.note{background:#262b35;color:var(--dim);border:1px solid var(--line)}
+  pre.sql{background:#12141a;border:1px solid var(--line);border-radius:6px;
+          padding:10px;max-height:45vh;overflow:auto;font-size:12px;color:#b9e0a5}
+  details summary{cursor:pointer;color:var(--dim);font-size:12.5px;margin:6px 0}
+  .pill{font-size:11px;background:var(--panel2);border:1px solid var(--line);
+        border-radius:10px;padding:2px 8px;color:var(--yellow)}
+  .grp-grid,.st-grid{display:flex;flex-direction:column;gap:6px}
+  .grp-row{display:flex;gap:6px;align-items:center}
+  .st-row{display:flex;gap:8px;align-items:flex-start}
+  .st-row textarea{width:340px;height:74px;font-family:Consolas,monospace;font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <div class="title">modbus<span>gen</span></div>
+  <select id="fileSelect" title="Project file"></select>
+  <button id="btnLoad">Load</button>
+  <button id="btnNew" class="ghost">New</button>
+  <button id="btnImportJson" class="ghost" title="Load a Copilot-generated project JSON from disk">Import JSON</button>
+  <input id="jsonFile" type="file" accept=".json,application/json" hidden>
+  <input id="fileName" size="24" placeholder="project-name.yaml" title="File name for Save">
+  <button id="btnSave">Save YAML</button>
+  <span style="flex:1"></span>
+  <button id="btnValidate">Validate</button>
+  <button id="btnGenerate" class="primary">Generate SQL</button>
+  <button id="btnSaveSql">Generate + save file</button>
+</header>
+<main>
+  <div class="card">
+    <h2>Project</h2>
+    <div class="row">
+      <label class="f">table name<input id="pTable" size="14" placeholder="kjol"></label>
+      <label class="f">plant number<input id="pPlant" size="10" placeholder="12345"></label>
+      <span id="sysBadge" class="pill" hidden>system block present - edit in YAML</span>
+    </div>
+    <div class="row" style="margin-top:10px" id="optCore"></div>
+    <details><summary>more options</summary>
+      <div class="row" id="optMore"></div>
+    </details>
+  </div>
+
+  <div class="card">
+    <h2>Groups</h2>
+    <div class="grp-grid" id="groups"></div>
+    <button id="btnAddGroup" style="margin-top:8px">+ group</button>
+  </div>
+
+  <div class="card">
+    <h2>State texts</h2>
+    <div class="st-grid" id="statetexts"></div>
+    <button id="btnAddState" style="margin-top:8px">+ state list</button>
+    <div class="msg note" style="margin-top:8px">One state per line, e.g. <b>1=Kjøling</b>.
+      Reference the list id from a point's <b>state</b> column.</div>
+  </div>
+
+  <div class="card">
+    <h2>Points</h2>
+    <div class="tblwrap">
+      <table class="points">
+        <thead><tr>
+          <th></th><th>group</th><th>datatype</th><th>addr</th><th>bit</th>
+          <th>system no</th><th>tag</th><th>text</th><th>extra</th><th>alarm</th>
+          <th>unit</th><th>scale</th><th>rw</th><th>onl</th><th>dec</th>
+          <th>state</th><th>no grp</th><th></th>
+        </tr></thead>
+        <tbody id="points"></tbody>
+      </table>
+    </div>
+    <button id="btnAddPoint" style="margin-top:8px">+ point</button>
+  </div>
+
+  <div class="card">
+    <h2>Result</h2>
+    <div id="out"><div class="msg note">Validate or generate to see results.</div></div>
+  </div>
+</main>
+<datalist id="dlUnits"></datalist>
+<datalist id="dlGroups"></datalist>
+
+<script>
+"use strict";
+let BOOT = null;          // bootstrap payload
+let SYSTEM = null;        // preserved system: block from loaded YAML
+const OPT_CORE = ["subtract_one","truncate","create_tables","force_active","auto_motherwords"];
+const OPT_HELP = {
+  subtract_one:"subtract 1 from every Modbus address (1-based device docs)",
+  truncate:"emit TRUNCATE TABLE statements",
+  create_tables:"emit CREATE TABLE statements",
+  force_active:"set every point active=1",
+  auto_motherwords:"synthesize motherword rows for bit points",
+};
+
+const $ = id => document.getElementById(id);
+const el = (tag, attrs={}, ...kids) => {
+  const n = document.createElement(tag);
+  for (const [k,v] of Object.entries(attrs)) {
+    if (k === "class") n.className = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+    else if (v !== undefined && v !== null) n.setAttribute(k, v);
+  }
+  n.append(...kids);
+  return n;
+};
+
+async function api(path, body) {
+  if (window.PYODIDE_API) return window.PYODIDE_API(path, body);   // static web build
+  const opts = body ? {method:"POST", body: JSON.stringify(body),
+                       headers:{"Content-Type":"application/json"}} : {};
+  const r = await fetch(path, opts);
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || r.statusText);
+  return data;
+}
+
+/* ---------- options ---------- */
+function renderOptions(values) {
+  const make = (target, names) => {
+    target.replaceChildren();
+    for (const name of names) {
+      const def = BOOT.defaults[name];
+      if (typeof def !== "boolean") continue;
+      const cb = el("input", {type:"checkbox", id:"opt_"+name});
+      cb.checked = values[name] !== undefined ? values[name] : def;
+      target.append(el("label",{class:"chk", title:OPT_HELP[name]||name}, cb, name));
+    }
+  };
+  make($("optCore"), OPT_CORE);
+  make($("optMore"), Object.keys(BOOT.defaults).filter(n =>
+      !OPT_CORE.includes(n) && typeof BOOT.defaults[n] === "boolean"));
+}
+function collectOptions() {
+  const out = {};
+  for (const name of Object.keys(BOOT.defaults)) {
+    const cb = $("opt_"+name);
+    if (cb) out[name] = cb.checked;
+  }
+  return out;
+}
+
+/* ---------- groups ---------- */
+function addGroupRow(name="", alias="") {
+  $("groups").append(el("div",{class:"grp-row"},
+    el("input",{class:"g-name", placeholder:"name (e.g. zone1)", value:name,
+                oninput:refreshGroupList}),
+    el("input",{class:"g-alias", placeholder:"display alias (e.g. Zone 1)", value:alias,
+                style:"width:260px"}),
+    el("button",{class:"ghost", onclick:e=>{e.target.parentNode.remove();refreshGroupList();}},"✕")));
+}
+function collectGroups() {
+  const out = {};
+  for (const row of $("groups").children) {
+    const name = row.querySelector(".g-name").value.trim();
+    if (name) out[name] = row.querySelector(".g-alias").value.trim();
+  }
+  return out;
+}
+function refreshGroupList() {
+  $("dlGroups").replaceChildren(
+    ...Object.keys(collectGroups()).map(g => el("option",{value:g})));
+}
+
+/* ---------- state texts ---------- */
+function addStateRow(id="", states=null) {
+  const text = states ? Object.entries(states).map(([n,w]) => `${n}=${w}`).join("\n") : "";
+  $("statetexts").append(el("div",{class:"st-row"},
+    el("label",{class:"f"},"id",
+      el("input",{class:"st-id", type:"number", value:id, style:"width:70px"})),
+    el("textarea",{class:"st-states", placeholder:"1=Kjøling\n2=Oppvarming"}, text),
+    el("button",{class:"ghost", onclick:e=>e.target.parentNode.remove()},"✕")));
+}
+function collectStates() {
+  const out = {};
+  for (const row of $("statetexts").children) {
+    const id = row.querySelector(".st-id").value.trim();
+    if (!id) continue;
+    const states = {};
+    for (const line of row.querySelector(".st-states").value.split("\n")) {
+      const m = line.match(/^\s*(\d+)\s*=\s*(.+?)\s*$/);
+      if (m) states[m[1]] = m[2];
+    }
+    out[id] = states;
+  }
+  return out;
+}
+
+/* ---------- points ---------- */
+function dtSelect(value) {
+  const s = el("select",{class:"p-datatype"}, el("option",{value:""},""));
+  for (const d of BOOT.datatypes)
+    s.append(el("option",{value:d.name, selected:d.name===value?"":undefined}, d.name));
+  s.value = value || "";
+  return s;
+}
+function pick(cls, value, items) {
+  const s = el("select",{class:cls});
+  for (const it of items) s.append(el("option",{value:it}, it===""?"":String(it)));
+  s.value = value ?? "";
+  return s;
+}
+function addPointRow(p={}) {
+  const tb = $("points");
+  const tr = el("tr",{});
+  tr._orig = p;   // fields the GUI does not edit (element_id, menu, active, ranges) survive
+  tr.append(
+    el("td",{class:"num"}, String(tb.children.length+1)),
+    el("td",{}, el("input",{class:"p-group", list:"dlGroups", value:p.group||""})),
+    el("td",{}, dtSelect(p.datatype)),
+    el("td",{}, el("input",{class:"p-addr", type:"number", value:p.addr ?? "", style:"width:78px"})),
+    el("td",{}, el("input",{class:"p-bit", type:"number", min:0, max:15, value:p.bit ?? "", style:"width:52px"})),
+    el("td",{}, el("input",{class:"p-system_no", value:p.system_no||"", style:"width:80px"})),
+    el("td",{}, el("input",{class:"p-tag", value:p.tag||"", style:"width:76px"})),
+    el("td",{}, el("input",{class:"p-text", value:p.text||""})),
+    el("td",{}, el("input",{class:"p-extra", value:p.extra||"", style:"width:110px"})),
+    el("td",{}, pick("p-alarm", p.alarm, ["","A","B","C","N"])),
+    el("td",{}, el("input",{class:"p-unit", list:"dlUnits", value:p.unit||"", style:"width:78px"})),
+    el("td",{}, pick("p-scale", p.scale, [""].concat(BOOT.scaling))),
+    el("td",{}, pick("p-rw", p.rw||"r", ["r","rw","vr","vrw"])),
+    el("td",{}, el("input",{class:"p-online", type:"checkbox", checked:p.online?"":undefined})),
+    el("td",{}, pick("p-decimals", p.decimals ?? "", ["",0,1,2,3])),
+    el("td",{}, el("input",{class:"p-statetext", type:"number", value:p.statetext ?? "", style:"width:52px"})),
+    el("td",{}, el("input",{class:"p-no_group", type:"checkbox", checked:p.no_group?"":undefined})),
+    el("td",{},
+      el("button",{class:"ghost", title:"duplicate",
+                   onclick:()=>{ addPointRow(rowData(tr)); renumber(); }},"⧉"),
+      el("button",{class:"ghost", title:"delete",
+                   onclick:()=>{ tr.remove(); renumber(); }},"✕")));
+  tb.append(tr);
+}
+function renumber() {
+  [...$("points").children].forEach((tr,i)=>tr.firstChild.textContent=String(i+1));
+}
+function rowData(tr) {
+  const v = cls => tr.querySelector("."+cls)?.value?.trim() ?? "";
+  const num = cls => { const x = v(cls); return x === "" ? null : Number(x); };
+  const chk = cls => !!tr.querySelector("."+cls)?.checked;
+  return Object.assign({}, tr._orig || {}, {
+    group:v("p-group"), datatype:v("p-datatype"), addr:num("p-addr"), bit:num("p-bit"),
+    system_no:v("p-system_no")||null, tag:v("p-tag")||null, text:v("p-text"),
+    extra:v("p-extra")||null, alarm:v("p-alarm")||null, unit:v("p-unit")||null,
+    scale:v("p-scale")||null, rw:v("p-rw")||"r", online:chk("p-online"),
+    decimals:num("p-decimals"), statetext:num("p-statetext"), no_group:chk("p-no_group"),
+  });
+}
+
+/* ---------- project assemble / load ---------- */
+function collectProject() {
+  return {
+    table: $("pTable").value.trim(),
+    plant: $("pPlant").value.trim(),
+    options: collectOptions(),
+    system: SYSTEM,
+    groups: collectGroups(),
+    statetexts: collectStates(),
+    points: [...$("points").children].map(rowData),
+  };
+}
+function showProject(data) {
+  $("pTable").value = data.table || "";
+  $("pPlant").value = data.plant != null ? String(data.plant) : "";
+  SYSTEM = data.system || null;
+  $("sysBadge").hidden = !SYSTEM;
+  renderOptions(data.options || {});
+  $("groups").replaceChildren();
+  for (const [name, val] of Object.entries(data.groups || {}))
+    addGroupRow(name, typeof val === "string" ? val : (val.alias || ""));
+  refreshGroupList();
+  $("statetexts").replaceChildren();
+  for (const [id, states] of Object.entries(data.statetexts || {}))
+    addStateRow(id, states);
+  $("points").replaceChildren();
+  for (const p of data.points || []) addPointRow(p);
+  if (!(data.points || []).length) addPointRow();
+}
+
+/* ---------- output ---------- */
+function showResult(res, sqlWanted) {
+  const out = $("out");
+  out.replaceChildren();
+  if (res.notes && res.notes.length)
+    out.append(el("div",{class:"msg note"}, res.notes.join("\n")));
+  if (res.errors && res.errors.length) {
+    out.append(el("div",{class:"msg err"}, res.errors.join("\n")));
+    return;
+  }
+  if (!sqlWanted) {
+    out.append(el("div",{class:"msg ok"},
+      `Valid: ${res.points} point(s), ${res.groups} group(s).`));
+    return;
+  }
+  if (res.written)
+    out.append(el("div",{class:"msg ok"}, "Wrote " + res.written));
+  const pre = el("pre",{class:"sql"}, res.sql || "");
+  out.append(pre);
+}
+function showError(e) {
+  $("out").replaceChildren(el("div",{class:"msg err"}, String(e.message || e)));
+}
+
+/* ---------- wiring ---------- */
+$("btnAddGroup").onclick = () => addGroupRow();
+$("btnAddState").onclick = () => addStateRow();
+$("btnAddPoint").onclick = () => { addPointRow(); renumber(); };
+$("btnNew").onclick = () => {
+  $("fileName").value = "new-project.yaml";
+  showProject({points:[]});
+};
+$("btnImportJson").onclick = () => $("jsonFile").click();
+$("jsonFile").onchange = async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    showProject(JSON.parse(await file.text()));
+    $("fileName").value = file.name;
+    $("out").replaceChildren(el("div",{class:"msg note"},
+      `Imported ${file.name} - review, then Validate and Save.`));
+  } catch (err) { showError(new Error(`invalid JSON in ${file.name}: ${err.message}`)); }
+  e.target.value = "";
+};
+$("btnLoad").onclick = async () => {
+  const file = $("fileSelect").value;
+  if (!file) return;
+  try {
+    showProject(await api("/api/project?file=" + encodeURIComponent(file)));
+    $("fileName").value = file;
+    $("out").replaceChildren(el("div",{class:"msg note"}, "Loaded " + file));
+  } catch (e) { showError(e); }
+};
+$("btnSave").onclick = async () => {
+  const file = $("fileName").value.trim();
+  if (!file) { showError(new Error("enter a file name first")); return; }
+  try {
+    await api("/api/save", {file, project: collectProject()});
+    $("out").replaceChildren(el("div",{class:"msg ok"}, "Saved " + file));
+    if (![...$("fileSelect").options].some(o => o.value === file))
+      $("fileSelect").append(el("option",{value:file}, file));
+    $("fileSelect").value = file;
+  } catch (e) { showError(e); }
+};
+$("btnValidate").onclick = async () => {
+  try { showResult(await api("/api/validate", {project: collectProject()}), false); }
+  catch (e) { showError(e); }
+};
+$("btnGenerate").onclick = async () => {
+  try { showResult(await api("/api/generate", {project: collectProject()}), true); }
+  catch (e) { showError(e); }
+};
+$("btnSaveSql").onclick = async () => {
+  try { showResult(await api("/api/generate", {project: collectProject(), save:true}), true); }
+  catch (e) { showError(e); }
+};
+
+async function init() {
+  BOOT = await api("/api/bootstrap");
+  $("dlUnits").replaceChildren(...BOOT.units.map(u => el("option",{value:u})));
+  $("fileSelect").replaceChildren(
+    el("option",{value:""},"- project file -"),
+    ...BOOT.projects.map(p => el("option",{value:p}, p)));
+  showProject({points:[]});
+}
+// wait for the load event so an injected backend adapter (Pyodide build) is in place
+window.addEventListener("load", () => init().catch(
+  e => showError(new Error("startup failed: " + (e.message || e)))));
+</script>
+<script src="pyodide-adapter.js"></script>
+</body>
+</html>
