@@ -403,6 +403,7 @@
       <span class="chip tool" id="ptFilterInfo" hidden></span>
       <button id="btnPtOrder" class="ghost tool" hidden
               title="Write the order you are looking at into the project. Until you press this, sorting only changes the view - the saved order, and the group view_order derived from it, are untouched">keep this order</button>
+      <button id="btnPtUndo" class="ghost tool" disabled>↶ undo</button>
       <button id="btnPtFull" class="ghost tool" title="Maximise this card (Esc to close)">⛶</button>
     </h2>
     <details class="help"><summary title="All seventeen columns explained in table order">help</summary>
@@ -553,6 +554,19 @@
             step the address for you.</li>
           <li>Selection follows what is on screen: rows hidden by search or a filter drop
             out of it, so a bulk edit can never change a row you cannot see.</li>
+        </ul>
+
+        <h4>Undo</h4>
+        <ul>
+          <li><b>↶ undo</b>, or <code>Ctrl+Z</code>, steps back through the last
+            <b>10</b> changes to this table - cell edits, adding and deleting rows,
+            duplicating, the bulk edits and <i>keep this order</i>. The button's tooltip
+            names the change it will reverse.</li>
+          <li>Typing counts as <b>one step per field</b>, not per keystroke: the state is
+            taken when you enter a cell and kept only if you actually changed something.</li>
+          <li>Undo restores rows whole, including the fields this table does not show
+            (<code>element_id</code>, <code>menu</code>, <code>active</code>, the ranges).
+            Loading or starting a project clears the history.</li>
         </ul>
 
         <h4>Working with rows</h4>
@@ -1064,12 +1078,13 @@ function addPointRow(p={}) {
     el("td",{}, el("input",{class:"p-no_group", type:"checkbox", checked:p.no_group?"":undefined, title:h("no_group")})),
     el("td",{class:"acts"},
       el("button",{class:"ghost rowbtn", title:"duplicate (addr + 1)",
-                   onclick:()=>{ const d = rowData(tr);
+                   onclick:()=>{ ptPushState(null,"duplicate row");
+                                 const d = rowData(tr);
                                  if (typeof d.addr === "number") d.addr += 1;
                                  delete d.element_id;
                                  addPointRow(d); renumber(); }},"⧉"),
       el("button",{class:"ghost rowbtn", title:"delete",
-                   onclick:()=>{ tr.remove(); renumber(); }},"✕")));
+                   onclick:()=>{ ptPushState(null,"delete row"); tr.remove(); renumber(); }},"✕")));
   tb.append(tr);
 }
 /* ---------- points: view state (sort / search / filters) ----------
@@ -1168,12 +1183,62 @@ function ptToggleSort(col) {
   applyPointView();
 }
 function ptCommitOrder() {
+  ptPushState(null, "keep this order");
   ptRows().forEach((tr,i) => tr._seq = i);               // visual order becomes the real one
   ptSort = {col:null, dir:null};
   PT_SEQ = ptRows().length;
   applyPointView();
   renumber();
 }
+/* ---------- points: undo ----------
+   Snapshots of the whole point list rather than per-action inverse operations:
+   one mechanism then covers typing, add, delete, duplicate, the bulk edits and
+   a committed reorder, and cannot drift out of step with any of them. rowData
+   carries the fields the table does not show (element_id, menu, active, ranges)
+   through tr._orig, so those survive an undo too. */
+const PT_UNDO_MAX = 10;
+const ptUndo = [];
+let ptPreEdit = null;          // state captured when a cell took focus
+
+function ptCapture() { return ptDataOrder().map(rowData); }
+function ptPushState(state, label) {
+  ptUndo.push({points: state || ptCapture(), label});
+  while (ptUndo.length > PT_UNDO_MAX) ptUndo.shift();
+  ptUpdateUndoButton();
+}
+function ptUpdateUndoButton() {
+  const b = $("btnPtUndo");
+  if (!b) return;
+  const n = ptUndo.length;
+  b.disabled = n === 0;
+  b.title = n
+    ? `Undo: ${n === 1 ? "1 step" : n + " steps"} available, most recent "${ptUndo[n-1].label}" (Ctrl+Z). Keeps the last ${PT_UNDO_MAX}`
+    : `Nothing to undo yet. Point edits, adds, deletes and bulk changes are kept, the last ${PT_UNDO_MAX} of them (Ctrl+Z)`;
+}
+function ptRestore(points) {
+  $("points").replaceChildren();
+  PT_SEQ = 0;
+  ptSel.clear(); ptSelAnchor = null;
+  for (const p of points) addPointRow(p);
+  renumber();
+  ptPaintSelection();
+}
+function ptDoUndo() {
+  // an edit still in progress has not been pushed yet - fold it in first, so
+  // Ctrl+Z undoes what is being typed rather than the action before it
+  ptCommitPendingEdit();
+  const step = ptUndo.pop();
+  if (!step) return;
+  ptRestore(step.points);
+  ptUpdateUndoButton();
+}
+function ptCommitPendingEdit() {
+  if (!ptPreEdit) return;
+  const now = ptCapture();
+  if (JSON.stringify(now) !== JSON.stringify(ptPreEdit)) ptPushState(ptPreEdit, "edit");
+  ptPreEdit = null;
+}
+
 /* ---------- points: multi-row selection and bulk edit ----------
    The drag handle is the row-number cell only. Starting a drag anywhere else
    would fight with selecting text inside a cell, and every other cell in this
@@ -1244,12 +1309,14 @@ function bulkTargets() {                       // visible order, so "topmost" me
 function bulkApply() {
   const col = $("bulkCol").value, ctrl = document.querySelector(".bulk-val");
   if (!ctrl) return;
+  ptPushState(null, "apply " + col);
   for (const tr of bulkTargets()) bulkWrite(tr, col, ctrl.value);
   updateStats(); applyPointView(); ptPaintSelection();
 }
 function bulkFillDown() {
   const col = $("bulkCol").value, rows = bulkTargets();
   if (rows.length < 2) return;
+  ptPushState(null, "fill down " + col);
   const source = bulkRead(rows[0], col);
   for (const tr of rows.slice(1)) bulkWrite(tr, col, source);
   updateStats(); applyPointView(); ptPaintSelection();
@@ -1344,6 +1411,7 @@ function showProject(data) {
   ptSort = {col:null, dir:null};
   ptFilters.clear();
   ptSel.clear(); ptSelAnchor = null;
+  ptUndo.length = 0; ptPreEdit = null; ptUpdateUndoButton();
   if ($("ptSearch")) $("ptSearch").value = "";
   for (const p of data.points || []) addPointRow(p);
   if (!(data.points || []).length) addPointRow();
@@ -1413,7 +1481,7 @@ $("btnDefaultGroups").onclick = () => {
   refreshGroupList();
 };
 $("btnAddState").onclick = () => addStateRow();
-$("btnAddPoint").onclick = () => { addPointRow(); renumber(); };
+$("btnAddPoint").onclick = () => { ptPushState(null,"add point"); addPointRow(); renumber(); };
 
 /* points multi-select: press anywhere on a row and drag across rows.
    Deliberately no preventDefault - the cell under the cursor must still take
@@ -1457,6 +1525,7 @@ $("bulkApply").onclick = bulkApply;
 $("bulkFill").onclick = bulkFillDown;
 $("bulkClear").onclick = ptClearSelection;
 $("bulkDup").onclick = () => {
+  ptPushState(null, "duplicate rows");
   for (const tr of bulkTargets()) {
     const d = rowData(tr);
     if (typeof d.addr === "number") d.addr += 1;
@@ -1468,9 +1537,20 @@ $("bulkDup").onclick = () => {
 $("bulkDel").onclick = () => {
   const rows = bulkTargets();
   if (!rows.length) return;
+  ptPushState(null, "delete rows");
   for (const tr of rows) tr.remove();
   ptClearSelection(); renumber();
 };
+
+/* points undo: one step per field visited, not per keystroke - the state is
+   captured when a cell takes focus and pushed only if it actually changed */
+$("points").addEventListener("focusin", () => { if (!ptPreEdit) ptPreEdit = ptCapture(); });
+$("points").addEventListener("change", ptCommitPendingEdit);
+$("points").addEventListener("focusout", e => {
+  if (!e.relatedTarget || !$("points").contains(e.relatedTarget)) ptCommitPendingEdit();
+});
+$("btnPtUndo").onclick = ptDoUndo;
+ptUpdateUndoButton();
 
 /* points view controls */
 $("ptSearch").addEventListener("input", applyPointView);
@@ -1482,6 +1562,12 @@ document.querySelector("table.points thead").addEventListener("click", e => {
 });
 document.addEventListener("keydown", e => {
   const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName);
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
+    // only claim Ctrl+Z when this card has something to undo; otherwise leave it
+    // to the browser so the other cards' fields keep their native undo
+    if (ptUndo.length || ptPreEdit) { e.preventDefault(); ptDoUndo(); }
+    return;
+  }
   if (e.key === "/" && !typing) { e.preventDefault(); $("ptSearch").focus(); $("ptSearch").select(); }
   else if (e.key === "Escape") {
     if (document.activeElement === $("ptSearch") && $("ptSearch").value) {
