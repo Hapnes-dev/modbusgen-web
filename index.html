@@ -132,7 +132,6 @@
     <div class="row">
       <label class="f">table name<input id="pTable" size="14" placeholder="kjol"></label>
       <label class="f">plant number<input id="pPlant" size="10" placeholder="12345"></label>
-      <span id="sysBadge" class="pill" hidden>system block present - edit in YAML</span>
     </div>
     <div class="row" style="margin-top:10px" id="optCore"></div>
     <details><summary>more options</summary>
@@ -169,6 +168,60 @@
         </ul>
       </div>
     </details>
+  </div>
+
+  <div class="card">
+    <h2>Units &amp; driver (iw_sys)</h2>
+    <details class="help"><summary>help</summary>
+      <div class="helpbody">
+        Registers the physical <b>devices</b> and the <b>driver</b> in IWMAC — the
+        <code>iw_sys_*</code> blocks at the end of the SQL. Skip this card entirely when
+        the plant already has the driver and units configured (both checkboxes off =
+        nothing emitted).
+        <ul>
+          <li><b>units block</b> — one <code>iw_sys_plant_units</code> row per device
+            below, plus the order-number link. <b>settings block</b> — the
+            <code>iw_mb.exe</code> process registration and all driver communication
+            settings.</li>
+          <li><b>owner/driver name</b> ties everything together (e.g.
+            <span class="ex">EM270</span>, <span class="ex">GRUNDFOS</span>) — it is the
+            settings owner, the driver_type and the process name.</li>
+          <li><b>Devices:</b> one row per physical unit on the bus —
+            <span class="ex">ID01 / Carel EVD 01 / addr 1</span>,
+            <span class="ex">ID02 / Carel EVD 02 / addr 2</span> … The address prefix
+            (<code>0_</code>/<code>1_</code>) is added automatically; ⧉ duplicates a
+            device with the next number and address.</li>
+          <li><b>comm</b> — TCP: fill IP (port 502 default). RTU: COM port, baud,
+            parity, stop bits. Values land in <code>iw_sys_plant_settings</code>;
+            everything else uses the standard driver defaults.</li>
+        </ul>
+      </div>
+    </details>
+    <div class="row">
+      <label class="chk"><input type="checkbox" id="sysUnits"> units block</label>
+      <label class="chk"><input type="checkbox" id="sysSettings"> settings block</label>
+      <label class="f">owner / driver name<input id="sysOwner" size="10" placeholder="EM270"></label>
+      <label class="f">reg.type<input id="sysRegType" size="8"></label>
+      <label class="f">order no<input id="sysOrderNo" size="8"></label>
+      <label class="f">addr prefix<select id="sysPrefix"><option>0_</option><option>1_</option></select></label>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label class="f">mode<select id="commMode"><option>tcp</option><option>rtu</option></select></label>
+      <label class="f">IP<input id="commIp" size="12" placeholder="192.168.1.10"></label>
+      <label class="f">port<input id="commPort" type="number" value="502" style="width:70px"></label>
+      <label class="f">COM port<input id="commCom" size="4"></label>
+      <label class="f">baud<select id="commBaud"><option>19200</option><option>9600</option></select></label>
+      <label class="f">parity<select id="commParity"><option>even</option><option>odd</option><option>none</option></select></label>
+      <label class="f">stop bits<select id="commStop"><option>1</option><option>2</option></select></label>
+    </div>
+    <div style="margin-top:10px">
+      <table style="max-width:760px">
+        <thead><tr><th></th><th>unit id</th><th>unit name</th><th>addr</th>
+          <th>view order</th><th></th></tr></thead>
+        <tbody id="unitRows"></tbody>
+      </table>
+      <button id="btnAddUnit" style="margin-top:6px">+ device</button>
+    </div>
   </div>
 
   <div class="card">
@@ -359,7 +412,6 @@
 <script>
 "use strict";
 let BOOT = null;          // bootstrap payload
-let SYSTEM = null;        // preserved system: block from loaded YAML
 const OPT_CORE = ["subtract_one","truncate","create_tables","force_active","auto_motherwords"];
 const OPT_HELP = {
   subtract_one:"subtract 1 from every Modbus address (1-based device docs)",
@@ -461,6 +513,83 @@ function collectStates() {
   }
   return out;
 }
+
+/* ---------- units & driver (iw_sys) ---------- */
+function bumpTail(s) {
+  const m = String(s).match(/^(.*?)(\d+)$/);
+  if (!m) return s;
+  return m[1] + String(Number(m[2]) + 1).padStart(m[2].length, "0");
+}
+function addUnitRow(u = {}) {
+  const tb = $("unitRows");
+  const tr = el("tr",{},
+    el("td",{class:"num"}, String(tb.children.length + 1)),
+    el("td",{}, el("input",{class:"u-id", value:u.unit_id||"", placeholder:"ID01", style:"width:80px"})),
+    el("td",{}, el("input",{class:"u-name", value:u.unit_name||"", placeholder:"Carel EVD 01", style:"width:220px"})),
+    el("td",{}, el("input",{class:"u-addr", value:u.driver_addr??"", placeholder:"1", style:"width:64px"})),
+    el("td",{}, el("input",{class:"u-vo", type:"number", value:u.view_order??0, style:"width:70px"})),
+    el("td",{},
+      el("button",{class:"ghost", title:"duplicate with next id/address",
+        onclick:()=>{ const d = unitData(tr);
+                      addUnitRow({unit_id:bumpTail(d.unit_id), unit_name:bumpTail(d.unit_name),
+                                  driver_addr:bumpTail(d.driver_addr), view_order:d.view_order});
+                      renumberUnits(); }},"⧉"),
+      el("button",{class:"ghost", onclick:()=>{ tr.remove(); renumberUnits(); }},"✕")));
+  tb.append(tr);
+}
+function renumberUnits() {
+  [...$("unitRows").children].forEach((tr,i)=>tr.firstChild.textContent=String(i+1));
+}
+function unitData(tr) {
+  const v = c => tr.querySelector("."+c)?.value?.trim() ?? "";
+  return {unit_id:v("u-id"), unit_name:v("u-name"), driver_addr:v("u-addr"),
+          view_order:Number(v("u-vo")||0)};
+}
+function collectSystem() {
+  const units = $("sysUnits").checked, settings = $("sysSettings").checked;
+  const rows = [...$("unitRows").children].map(unitData)
+    .filter(u => u.unit_id || u.unit_name || u.driver_addr);
+  const owner = $("sysOwner").value.trim();
+  if (!units && !settings && !rows.length && !owner) return null;
+  return {
+    units, settings, owner,
+    reg_type: $("sysRegType").value.trim(),
+    order_no: $("sysOrderNo").value.trim(),
+    driver_addr_prefix: $("sysPrefix").value,
+    unit_list: rows,
+    comm: {
+      mode: $("commMode").value, ip: $("commIp").value.trim(),
+      port: Number($("commPort").value || 502),
+      com_port: $("commCom").value.trim(),
+      baudrate: Number($("commBaud").value),
+      parity: $("commParity").value, stop_bits: Number($("commStop").value),
+    },
+  };
+}
+function showSystem(s) {
+  s = s || {};
+  $("sysUnits").checked = !!s.units;
+  $("sysSettings").checked = !!s.settings;
+  $("sysOwner").value = s.owner || "";
+  $("sysRegType").value = s.reg_type || "";
+  $("sysOrderNo").value = s.order_no || "";
+  $("sysPrefix").value = s.driver_addr_prefix || "0_";
+  const c = s.comm || {};
+  $("commMode").value = c.mode || "tcp";
+  $("commIp").value = c.ip || "";
+  $("commPort").value = c.port ?? 502;
+  $("commCom").value = c.com_port || "";
+  $("commBaud").value = String(c.baudrate || 19200);
+  $("commParity").value = c.parity || "even";
+  $("commStop").value = String(c.stop_bits || 1);
+  $("unitRows").replaceChildren();
+  const rows = (s.unit_list && s.unit_list.length) ? s.unit_list
+    : (s.unit_id ? [{unit_id:s.unit_id, unit_name:s.unit_name,
+                     driver_addr:s.driver_addr, view_order:s.view_order||0}] : []);
+  for (const u of rows) addUnitRow(u);
+  renumberUnits();
+}
+$("btnAddUnit").onclick = () => { addUnitRow(); renumberUnits(); };
 
 /* ---------- points ---------- */
 // most-used datatypes across the real workbook fleet (docs/12), most frequent first
@@ -573,7 +702,7 @@ function collectProject() {
     table: $("pTable").value.trim(),
     plant: $("pPlant").value.trim(),
     options: collectOptions(),
-    system: SYSTEM,
+    system: collectSystem(),
     groups: collectGroups(),
     statetexts: collectStates(),
     points: [...$("points").children].map(rowData),
@@ -582,8 +711,7 @@ function collectProject() {
 function showProject(data) {
   $("pTable").value = data.table || "";
   $("pPlant").value = data.plant != null ? String(data.plant) : "";
-  SYSTEM = data.system || null;
-  $("sysBadge").hidden = !SYSTEM;
+  showSystem(data.system);
   renderOptions(data.options || {});
   $("groups").replaceChildren();
   for (const [name, val] of Object.entries(data.groups || {}))
