@@ -52,21 +52,26 @@
   button.ghost{background:transparent}
   .chk{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--text)}
   .chk:hover{color:#fff}
-  /* units & driver card: grouped sub-sections, uniform field widths */
-  #cardSys .sub{margin-top:14px}
-  #cardSys .subhead{display:flex;align-items:center;gap:8px;margin:0 0 8px;
-                    font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;
-                    color:var(--dim)}
-  #cardSys .subhead::after{content:"";flex:1;height:1px;background:var(--line)}
-  #cardSys .subhead .n{text-transform:none;letter-spacing:0;color:var(--line2)}
-  #cardSys .gated{transition:opacity .12s}
-  #cardSys .gated.off{opacity:.55}
-  #cardSys .empty{font-size:12px;color:var(--dim);padding:7px 2px 1px}
-  #cardSys label.f>input,#cardSys label.f>select{width:100%;box-sizing:border-box}
-  #cardSys .f-xs{width:78px}
-  #cardSys .f-sm{width:104px}
-  #cardSys .f-md{width:136px}
-  #cardSys .f-lg{width:190px}
+  /* banded sub-sections, shared by the project and units & driver cards */
+  .sub{margin-top:14px}
+  .subhead{display:flex;align-items:center;gap:8px;margin:0 0 8px;
+           font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;
+           color:var(--dim)}
+  .subhead::after{content:"";flex:1;height:1px;background:var(--line)}
+  .subhead .n{text-transform:none;letter-spacing:0;color:var(--line2)}
+  .gated{transition:opacity .12s}
+  .gated.off{opacity:.55}
+  .empty{font-size:12px;color:var(--dim);padding:7px 2px 1px}
+  /* opt-in uniform field widths - only labels carrying one of these classes,
+     so cards still sizing their inputs with size= are untouched */
+  .f-xs{width:78px}.f-sm{width:104px}.f-md{width:136px}.f-lg{width:190px}
+  label.f.f-xs>input,label.f.f-xs>select,label.f.f-sm>input,label.f.f-sm>select,
+  label.f.f-md>input,label.f.f-md>select,label.f.f-lg>input,label.f.f-lg>select{
+    width:100%;box-sizing:border-box}
+  /* option checkbox clusters inside "more options" */
+  .optgrp{margin-top:9px}
+  .optlbl{font-size:10px;text-transform:uppercase;letter-spacing:.08em;
+          color:var(--line2);margin-bottom:4px}
   table{border-collapse:collapse;width:100%}
   th{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--dim);
      text-align:left;padding:5px 6px;border-bottom:1px solid var(--line2);
@@ -151,14 +156,21 @@
 <main>
   <div class="card">
     <h2>Project</h2>
-    <div class="row">
-      <label class="f">table name<input id="pTable" size="14" placeholder="kjol"></label>
-      <label class="f">plant number<input id="pPlant" size="10" placeholder="12345"></label>
+    <div class="sub" style="margin-top:4px">
+      <div class="subhead">destination</div>
+      <div class="row">
+        <label class="f f-lg">table name<input id="pTable" placeholder="kjol"></label>
+        <label class="f f-sm">plant number<input id="pPlant" placeholder="12345"></label>
+      </div>
     </div>
-    <div class="row" style="margin-top:10px" id="optCore"></div>
-    <details><summary>more options</summary>
-      <div class="row" id="optMore"></div>
-    </details>
+
+    <div class="sub">
+      <div class="subhead">output</div>
+      <div class="row" id="optCore"></div>
+      <details style="margin-top:2px"><summary>more options</summary>
+        <div id="optMore"></div>
+      </details>
+    </div>
     <details class="help"><summary>help</summary>
       <div class="helpbody">
         <b>table name</b> names the three database tables the SQL script fills:
@@ -520,6 +532,13 @@
 "use strict";
 let BOOT = null;          // bootstrap payload
 const OPT_CORE = ["subtract_one","truncate","create_tables","force_active","auto_motherwords"];
+// clusters under "more options" - same grouping as the Project card help
+const OPT_MORE = [
+  {title:"alias text",      names:["use_system_no","use_tag","use_extra","proper_case_states"]},
+  {title:"state texts",     names:["statetext_only_rw","statetext_in_alias"]},
+  {title:"points & groups", names:["include_minmax","auto_groups","alarms_to_alm"]},
+  {title:"motherwords",     names:["require_motherwords","exclude_motherwords_from_groups"]},
+];
 // hover text for every boolean option - keep in step with the Project card help
 const OPT_HELP = {
   subtract_one:"subtract 1 from every Modbus address (1-based device docs)",
@@ -564,19 +583,29 @@ async function api(path, body) {
 
 /* ---------- options ---------- */
 function renderOptions(values) {
-  const make = (target, names) => {
-    target.replaceChildren();
-    for (const name of names) {
-      const def = BOOT.defaults[name];
-      if (typeof def !== "boolean") continue;
-      const cb = el("input", {type:"checkbox", id:"opt_"+name});
-      cb.checked = values[name] !== undefined ? values[name] : def;
-      target.append(el("label",{class:"chk", title:OPT_HELP[name]||name}, cb, name));
-    }
+  const box = (name) => {
+    const cb = el("input", {type:"checkbox", id:"opt_"+name});
+    cb.checked = values[name] !== undefined ? values[name] : BOOT.defaults[name];
+    return el("label",{class:"chk", title:OPT_HELP[name]||name}, cb, name);
   };
-  make($("optCore"), OPT_CORE);
-  make($("optMore"), Object.keys(BOOT.defaults).filter(n =>
-      !OPT_CORE.includes(n) && typeof BOOT.defaults[n] === "boolean"));
+  const bools = Object.keys(BOOT.defaults).filter(n => typeof BOOT.defaults[n] === "boolean");
+
+  $("optCore").replaceChildren(...OPT_CORE.filter(n => bools.includes(n)).map(box));
+
+  // clusters mirror the headings in this card's help; anything not listed still
+  // renders under "other", so a newly added option can never go missing here
+  const placed = new Set(OPT_CORE);
+  const more = $("optMore");
+  more.replaceChildren();
+  const groups = OPT_MORE.map(g => [g.title, g.names.filter(n => bools.includes(n))]);
+  for (const [, names] of groups) names.forEach(n => placed.add(n));
+  groups.push(["other", bools.filter(n => !placed.has(n))]);
+  for (const [title, names] of groups) {
+    if (!names.length) continue;
+    more.append(el("div",{class:"optgrp"},
+      el("div",{class:"optlbl"}, title),
+      el("div",{class:"row"}, ...names.map(box))));
+  }
 }
 function collectOptions() {
   const out = {};
