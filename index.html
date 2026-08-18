@@ -32,6 +32,13 @@
                   letter-spacing:0}
   .chip{font-size:11px;background:var(--panel2);border:1px solid var(--line);
         border-radius:20px;padding:1px 9px;color:var(--text)}
+  /* last-validate verdict, beside the Validate button */
+  #valStatus{font-size:11.5px;border-radius:20px;padding:2px 10px;cursor:pointer;
+             border:1px solid var(--line);white-space:nowrap}
+  #valStatus.ok{color:var(--green);border-color:#2b5b3f;background:#1e332833}
+  #valStatus.err{color:var(--red);border-color:#5b2b33;background:#3a212633}
+  #valStatus.stale{opacity:.5}
+  #valStatus:hover{filter:brightness(1.2)}
   .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
   label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--dim)}
   input,select,textarea,button{
@@ -220,6 +227,7 @@
   <button id="btnDelete" class="ghost" disabled
           title="Select a project saved in this browser to delete it">Delete</button>
   <span style="flex:1"></span>
+  <span id="valStatus" hidden></span>
   <button id="btnValidate"
           title="Check the project without producing SQL: unknown table keys, duplicate ids, undefined groups, unresolved state refs, no online point. Warnings do not block">Validate</button>
   <button id="btnGenerate" class="primary"
@@ -1342,6 +1350,7 @@ function bulkApply() {
   const col = $("bulkCol").value, ctrl = document.querySelector(".bulk-val");
   if (!ctrl) return;
   ptPushState(null, "apply " + col);
+  markValStale();
   for (const tr of bulkTargets()) bulkWrite(tr, col, ctrl.value);
   updateStats(); applyPointView(); ptPaintSelection();
 }
@@ -1349,6 +1358,7 @@ function bulkFillDown() {
   const col = $("bulkCol").value, rows = bulkTargets();
   if (rows.length < 2) return;
   ptPushState(null, "fill down " + col);
+  markValStale();
   const source = bulkRead(rows[0], col);
   for (const tr of rows.slice(1)) bulkWrite(tr, col, source);
   updateStats(); applyPointView(); ptPaintSelection();
@@ -1366,6 +1376,7 @@ function renumber() {
   ptDataOrder().forEach((tr,i)=>tr.firstChild.textContent=String(i+1));
   updateStats();
   applyPointView();
+  markValStale();
 }
 function updateStats() {
   const rows = ptDataOrder().map(rowData);
@@ -1453,6 +1464,7 @@ function showProject(data) {
   ptFilters.clear();
   ptSel.clear(); ptSelAnchor = null;
   ptBad.clear();
+  $("valStatus").hidden = true;
   ptUndo.length = 0; ptPreEdit = null; ptUpdateUndoButton();
   if ($("ptSearch")) $("ptSearch").value = "";
   for (const p of data.points || []) addPointRow(p);
@@ -1573,7 +1585,31 @@ function markBadRows(errors, pointRows) {
   return {marked: ptBad.size, unmappable};
 }
 
+/* ---------- verdict chip beside the Validate button ----------
+   States what the LAST run said; any edit that could change validity dims it
+   rather than clearing it, so it never claims more than it knows. */
+function setValStatus(res) {
+  const s = $("valStatus");
+  const errs = (res.errors || []).length;
+  const warns = (res.notes || []).filter(n => n.startsWith("warning:")).length;
+  s.hidden = false;
+  s.classList.remove("stale");
+  s.classList.toggle("err", errs > 0);
+  s.classList.toggle("ok", errs === 0);
+  s.textContent = errs ? `✕ ${errs} error${errs === 1 ? "" : "s"}`
+                       : `✓ valid${warns ? ` · ${warns}⚠` : ""}`;
+  s.title = (errs ? `The last check found ${errs} error(s) - the failing rows are marked red. `
+                  : `The last check passed${warns ? ` with ${warns} warning(s)` : ""}. `)
+          + "Click to jump to the details. Dimmed means the project was edited afterwards";
+}
+function markValStale() {
+  const s = $("valStatus");
+  if (!s.hidden) s.classList.add("stale");
+}
+$("valStatus").onclick = () => $("out").scrollIntoView({block:"start", behavior:"smooth"});
+
 function showResult(res, sqlWanted) {
+  setValStatus(res);
   const out = $("out");
   out.replaceChildren();
   const warns = (res.notes || []).filter(n => n.startsWith("warning:"));
@@ -1753,6 +1789,9 @@ function queueAutosave() {
 }
 document.addEventListener("input", queueAutosave);
 document.addEventListener("change", queueAutosave);
+for (const id of ["pTable","pPlant","optCore","optMore","groups","statetexts","points","cardSys"])
+  for (const ev of ["input","change"])
+    $(id).addEventListener(ev, markValStale);
 
 $("btnNew").onclick = () => {
   localStorage.removeItem(AUTOSAVE_KEY);
