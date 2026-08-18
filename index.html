@@ -87,6 +87,25 @@
   td.num{color:var(--dim);font-size:11px;text-align:right;padding-right:6px}
   .tblwrap{overflow-x:auto;max-height:56vh;overflow-y:auto;
            border:1px solid var(--line);border-radius:6px}
+  /* points card: search, sort, filter chips, maximise */
+  .h2fill{flex:1}
+  .card h2 .tool{font-weight:400;text-transform:none;letter-spacing:0}
+  input.search{font-size:12px;padding:3px 8px;width:200px}
+  .chip.toggle{cursor:pointer;user-select:none}
+  .chip.toggle:hover{border-color:var(--line2);color:#fff}
+  .chip.toggle.on{border-color:var(--accent);color:var(--accent);
+                  background:rgba(77,163,255,.12)}
+  .chip.warnfilter{color:var(--amber)}
+  th[data-col]{cursor:pointer}
+  th[data-col]:hover{color:var(--text)}
+  th[data-sort]::after{content:" ▲";color:var(--accent);font-size:9px}
+  th[data-sort="desc"]::after{content:" ▼"}
+  tr.hidden{display:none}
+  .card.maximized{position:fixed;inset:8px;z-index:60;margin:0;
+                  display:flex;flex-direction:column;overflow:hidden}
+  .card.maximized .tblwrap{max-height:none;flex:1;min-height:0}
+  .card.maximized > details.help{flex:none}
+  body.hasmax{overflow:hidden}
   .points td:nth-child(2) input{min-width:72px}
   .points td:nth-child(3) select{min-width:135px}
   .points td:nth-child(8) input{min-width:180px}
@@ -347,7 +366,15 @@
   </div>
 
   <div class="card">
-    <h2>Points <span class="chips" id="pointStats"></span></h2>
+    <h2>Points <span class="chips" id="pointStats"></span>
+      <span class="h2fill"></span>
+      <input id="ptSearch" class="search tool" placeholder="search rows   /"
+             title="Filter rows on any column - group, text, datatype, address, unit. Press / anywhere to jump here, Esc to clear">
+      <span class="chip tool" id="ptFilterInfo" hidden></span>
+      <button id="btnPtOrder" class="ghost tool" hidden
+              title="Write the order you are looking at into the project. Until you press this, sorting only changes the view - the saved order, and the group view_order derived from it, are untouched">keep this order</button>
+      <button id="btnPtFull" class="ghost tool" title="Maximise this card (Esc to close)">⛶</button>
+    </h2>
     <details class="help"><summary title="All seventeen columns explained in table order">help</summary>
       <div class="helpbody">
         One row per Modbus point. Minimum per row: <b>group</b>, <b>datatype</b>,
@@ -449,6 +476,30 @@
             parameter but does not appear in the operator's menu. Synthesized motherwords
             are excluded on their own while
             <i>exclude_motherwords_from_groups</i> is on.</li>
+        </ul>
+
+        <h4>Finding your way around a long list</h4>
+        <ul>
+          <li><b>Search</b> filters on every column at once - group, text, datatype,
+            address, unit. Press <code>/</code> anywhere on the page to jump into it and
+            <code>Esc</code> to clear. The chip beside it reads
+            <span class="ex">12 of 200 shown</span> whenever anything is hidden.</li>
+          <li><b>The counting chips filter.</b> Click <i>bits</i>, <i>writable</i>,
+            <i>alarms</i> or <i>online</i> to show only those rows; click again to
+            release. They combine, so <i>writable</i> + <i>alarms</i> is both.</li>
+          <li><b>⛶ maximises the card</b> to the whole window for editing a long list,
+            with the header row still pinned. <code>Esc</code> closes it.</li>
+          <li><b>Click a column header to sort</b> - ascending, descending, then back to
+            project order. <span class="note">Sorting only changes what you are looking
+            at.</span> The project keeps its own order, because the sequence the points
+            are written in decides each group's <code>view_order</code>, and that is the
+            order the operator's menu appears in. The row numbers stay with their rows,
+            so out-of-sequence numbers are the sign that you are in a sorted view.</li>
+          <li>To make a sort real, press <b>keep this order</b>, which appears while a
+            sort is active. That rewrites the project order and therefore the generated
+            <code>view_order</code> values.</li>
+          <li>Hiding a row does not exclude it: <b>filters and search are display only</b>.
+            Everything still validates and generates.</li>
         </ul>
 
         <h4>Working with rows</h4>
@@ -919,6 +970,7 @@ function scaleItems() {
 function addPointRow(p={}) {
   const tb = $("points");
   const tr = el("tr",{});
+  tr._seq = PT_SEQ++;   // position in the project, independent of the sorted view
   tr._orig = p;   // fields the GUI does not edit (element_id, menu, active, ranges) survive
   const h = k => COL_HELP[k];   // same string the column header shows
   tr.append(
@@ -952,29 +1004,142 @@ function addPointRow(p={}) {
                    onclick:()=>{ tr.remove(); renumber(); }},"✕")));
   tb.append(tr);
 }
+/* ---------- points: view state (sort / search / filters) ----------
+   Sorting is a VIEW operation. rules.generate derives each group's view_order
+   from the order it walks the points, so reordering rows silently reorders the
+   operator's menu. Every row therefore carries _seq - its position in the
+   project - and collection reads _seq order, not DOM order. "keep this order"
+   is the one place a sort becomes real. */
+let PT_SEQ = 0;                       // next sequence number to hand out
+let ptSort = {col:null, dir:null};    // dir: "asc" | "desc" | null
+const ptFilters = new Set();          // bits | writable | alarms | online
+
+function ptRows() { return [...$("points").children]; }
+function ptDataOrder() { return ptRows().sort((a,b) => a._seq - b._seq); }
+
+const PT_NUMERIC = new Set(["addr","bit","statetext","decimals"]);
+function ptSortKey(d, col) {
+  const v = d[col === "online" ? "online" : col === "no_group" ? "no_group" : col];
+  if (typeof v === "boolean") return v ? 0 : 1;         // ticked rows first
+  if (PT_NUMERIC.has(col)) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : Infinity;           // blanks last
+  }
+  return String(v ?? "").toLowerCase();
+}
+function ptMatches(d, needle) {
+  if (!needle) return true;
+  return Object.values(d).some(v => v != null && v !== false &&
+    String(v).toLowerCase().includes(needle));
+}
+function ptPassesFilters(d) {
+  for (const f of ptFilters) {
+    if (f === "bits"     && !(d.bit != null && d.bit !== "")) return false;
+    if (f === "writable" && !(d.rw || "").includes("w"))      return false;
+    if (f === "alarms"   && !d.alarm)                          return false;
+    if (f === "online"   && !d.online)                         return false;
+  }
+  return true;
+}
+function applyPointView() {
+  const needle = ($("ptSearch").value || "").trim().toLowerCase();
+  const rows = ptDataOrder();
+  const data = new Map(rows.map(tr => [tr, rowData(tr)]));
+
+  let shown = 0;
+  for (const tr of rows) {
+    const d = data.get(tr);
+    const ok = ptMatches(d, needle) && ptPassesFilters(d);
+    tr.classList.toggle("hidden", !ok);
+    if (ok) shown++;
+  }
+
+  let view = rows;
+  if (ptSort.col && ptSort.dir) {
+    const sign = ptSort.dir === "asc" ? 1 : -1;
+    view = rows.slice().sort((a,b) => {
+      const ka = ptSortKey(data.get(a), ptSort.col), kb = ptSortKey(data.get(b), ptSort.col);
+      if (ka < kb) return -sign;
+      if (ka > kb) return sign;
+      return a._seq - b._seq;                            // stable within ties
+    });
+  }
+  // Re-appending moves nodes, which blurs whatever the user is typing in, and this
+  // runs on every keystroke. Only touch the DOM when the order actually differs.
+  const cur = $("points").children;
+  let same = view.length === cur.length;
+  for (let i = 0; same && i < view.length; i++) if (view[i] !== cur[i]) same = false;
+  if (!same) $("points").append(...view);
+
+  for (const th of document.querySelectorAll('.points th[data-col]')) {
+    if (th.dataset.col === ptSort.col && ptSort.dir) th.dataset.sort = ptSort.dir;
+    else th.removeAttribute("data-sort");
+  }
+  $("btnPtOrder").hidden = !(ptSort.col && ptSort.dir);
+
+  const info = $("ptFilterInfo");
+  const filtered = needle || ptFilters.size;
+  info.hidden = !filtered;
+  if (filtered) {
+    info.textContent = `${shown} of ${rows.length} shown`;
+    info.title = "Filters and search only hide rows. Hidden rows are still part of the "
+               + "project and are still validated and generated";
+  }
+}
+function ptToggleSort(col) {
+  if (ptSort.col !== col) ptSort = {col, dir:"asc"};
+  else if (ptSort.dir === "asc") ptSort.dir = "desc";
+  else ptSort = {col:null, dir:null};                    // third click: back to project order
+  applyPointView();
+}
+function ptCommitOrder() {
+  ptRows().forEach((tr,i) => tr._seq = i);               // visual order becomes the real one
+  ptSort = {col:null, dir:null};
+  PT_SEQ = ptRows().length;
+  applyPointView();
+  renumber();
+}
+function ptSetMaximized(on) {
+  const card = $("points").closest(".card");
+  card.classList.toggle("maximized", on);
+  document.body.classList.toggle("hasmax", on);
+  $("btnPtFull").textContent = on ? "✕" : "⛶";
+  $("btnPtFull").title = on ? "Close fullscreen (Esc)" : "Maximise this card (Esc to close)";
+}
+
 function renumber() {
-  [...$("points").children].forEach((tr,i)=>tr.firstChild.textContent=String(i+1));
+  ptDataOrder().forEach((tr,i)=>tr.firstChild.textContent=String(i+1));
   updateStats();
+  applyPointView();
 }
 function updateStats() {
-  const rows = [...$("points").children].map(rowData);
+  const rows = ptDataOrder().map(rowData);
   const real = rows.filter(r => r.datatype || r.addr != null || r.text);
   const bits = real.filter(r => r.bit != null && r.bit !== "").length;
   const rw = real.filter(r => (r.rw||"").includes("w")).length;
   const onl = real.filter(r => r.online).length;
   const alarms = real.filter(r => r.alarm).length;
+  // the four counting chips double as filters - click to show only those rows
+  const filterChip = (key, label, tip) =>
+    el("span",{class:"chip toggle" + (ptFilters.has(key) ? " on" : ""),
+               title: tip + ". Click to show only these rows",
+               onclick:()=>{ ptFilters.has(key) ? ptFilters.delete(key) : ptFilters.add(key);
+                             updateStats(); applyPointView(); }}, label);
   $("pointStats").replaceChildren(
     el("span",{class:"chip", title:"Rows with a datatype, address or text - blank rows are not counted"},
        `${real.length} points`),
-    el("span",{class:"chip", title:"Rows addressing a single bit inside a word. Their motherword rows are added at generate time, so this is not the final row count"},
-       `${bits} bits`),
-    el("span",{class:"chip", title:"Rows the operator can write to (rw or vrw) - setpoints and commands"},
-       `${rw} writable`),
-    el("span",{class:"chip", title:"Rows carrying an alarm priority letter (A, B, C or N)"},
-       `${alarms} alarms`),
-    el("span",{class:"chip", style: onl ? "" : "color:var(--amber)",
-               title: onl ? "Points marked as online indication - IWMAC uses them to see the unit is alive"
-                          : "No point is marked online - validation will fail until at least one is"},
+    filterChip("bits", `${bits} bits`,
+      "Rows addressing a single bit inside a word. Their motherword rows are added at generate time, so this is not the final row count"),
+    filterChip("writable", `${rw} writable`,
+      "Rows the operator can write to (rw or vrw) - setpoints and commands"),
+    filterChip("alarms", `${alarms} alarms`,
+      "Rows carrying an alarm priority letter (A, B, C or N)"),
+    el("span",{class:"chip toggle" + (ptFilters.has("online") ? " on" : "") + (onl ? "" : " warnfilter"),
+               title: (onl ? "Points marked as online indication - IWMAC uses them to see the unit is alive"
+                           : "No point is marked online - validation will fail until at least one is")
+                      + ". Click to show only these rows",
+               onclick:()=>{ ptFilters.has("online") ? ptFilters.delete("online") : ptFilters.add("online");
+                             updateStats(); applyPointView(); }},
        `${onl} online${onl ? "" : " ⚠"}`));
 }
 function rowData(tr) {
@@ -1003,7 +1168,7 @@ function collectProject() {
     system: collectSystem(),
     groups: collectGroups(),
     statetexts: collectStates(),
-    points: [...$("points").children].map(rowData),
+    points: ptDataOrder().map(rowData),   // project order, never the sorted view
   };
 }
 function showProject(data) {
@@ -1019,6 +1184,10 @@ function showProject(data) {
   for (const [id, states] of Object.entries(data.statetexts || {}))
     addStateRow(id, states);
   $("points").replaceChildren();
+  PT_SEQ = 0;
+  ptSort = {col:null, dir:null};
+  ptFilters.clear();
+  if ($("ptSearch")) $("ptSearch").value = "";
   for (const p of data.points || []) addPointRow(p);
   if (!(data.points || []).length) addPointRow();
   renumber();
@@ -1088,6 +1257,26 @@ $("btnDefaultGroups").onclick = () => {
 };
 $("btnAddState").onclick = () => addStateRow();
 $("btnAddPoint").onclick = () => { addPointRow(); renumber(); };
+
+/* points view controls */
+$("ptSearch").addEventListener("input", applyPointView);
+$("btnPtOrder").onclick = ptCommitOrder;
+$("btnPtFull").onclick = () => ptSetMaximized(!$("points").closest(".card").classList.contains("maximized"));
+document.querySelector("table.points thead").addEventListener("click", e => {
+  const th = e.target.closest("th[data-col]");
+  if (th) ptToggleSort(th.dataset.col);
+});
+document.addEventListener("keydown", e => {
+  const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName);
+  if (e.key === "/" && !typing) { e.preventDefault(); $("ptSearch").focus(); $("ptSearch").select(); }
+  else if (e.key === "Escape") {
+    if (document.activeElement === $("ptSearch") && $("ptSearch").value) {
+      $("ptSearch").value = ""; applyPointView();
+    } else if ($("points").closest(".card").classList.contains("maximized")) {
+      ptSetMaximized(false);
+    }
+  }
+});
 /* ---------- autosave: unsaved work survives closing the page ---------- */
 const AUTOSAVE_KEY = "modbusgen_autosave";
 let autosaveTimer = null;
@@ -1225,7 +1414,7 @@ let statsQueued = false;
 $("points").addEventListener("input", () => {
   if (statsQueued) return;
   statsQueued = true;
-  requestAnimationFrame(() => { statsQueued = false; updateStats(); });
+  requestAnimationFrame(() => { statsQueued = false; updateStats(); applyPointView(); });
 });
 
 // wait for the load event so an injected backend adapter (Pyodide build) is in place
