@@ -1684,10 +1684,14 @@ function setValStatus(res) {
   s.classList.remove("stale");
   s.classList.toggle("err", errs > 0);
   s.classList.toggle("ok", errs === 0);
+  const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+  const detail = [];
+  if (!errs && res.points != null) detail.push(plural(res.points, "point"));
+  if (!errs && res.groups != null) detail.push(plural(res.groups, "group"));
+  if (warns) detail.push(plural(warns, "warning"));
   s.replaceChildren(
-    errs ? `${errs} error${errs === 1 ? "" : "s"}` : "Valid",
-    ...(!errs && warns
-        ? [el("span",{class:"n"}, `· ${warns} warning${warns === 1 ? "" : "s"}`)] : []));
+    errs ? plural(errs, "error") : "Valid",
+    ...(detail.length ? [el("span",{class:"n"}, detail.join(" · "))] : []));
   s.title = (errs ? `The last check found ${errs} error(s) - the failing rows are marked red. `
                   : `The last check passed${warns ? ` with ${warns} warning(s)` : ""}. `)
           + "Click to jump to the details. Dimmed means the project was edited afterwards";
