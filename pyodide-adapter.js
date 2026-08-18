@@ -6,7 +6,8 @@
 
 const PYODIDE_VERSION = "0.26.4";
 const PYODIDE_URL = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
-const STATIC_PROJECTS = ["example-kjol.json", "example-em24-gavazzi.json"];
+const STATIC_PROJECTS = ["example-kjol.json", "example-em24-gavazzi.json",
+                         "example-belimo-ev.json"];
 
 function _overlay(text, error) {
   let div = document.getElementById("pyodideOverlay");
