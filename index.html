@@ -295,6 +295,7 @@
           <th title="Engineering unit key, e.g. C, %, Pa - must exist in the unit table">unit</th>
           <th title="Display scaling: x0.1 = register / 10 (most common)">scale</th>
           <th title="r=read only, rw=writable. Bits become vr/vrw automatically">rw</th>
+          <th title="Polling override - blank = automatic (r=norm, rw=slow, digital=slow). Measured read-only values log min/1 even on slow">freq</th>
           <th title="Online indication - mark 1-3 reliable read points">onl</th>
           <th title="Display decimals 0-3 -> format %.Nf">dec</th>
           <th title="State-text list id from the section above">state</th>
@@ -515,6 +516,7 @@ function addPointRow(p={}) {
     el("td",{}, el("input",{class:"p-unit", list:"dlUnits", value:p.unit||"", style:"width:78px"})),
     el("td",{}, pick("p-scale", p.scale, scaleItems())),
     el("td",{}, pick("p-rw", p.rw||"r", ["r","rw","vr","vrw"])),
+    el("td",{}, pick("p-update_freq", p.update_freq, ["","fast","norm","slow","once","never"])),
     el("td",{}, el("input",{class:"p-online", type:"checkbox", checked:p.online?"":undefined})),
     el("td",{}, pick("p-decimals", p.decimals ?? "", ["",0,1,2,3])),
     el("td",{}, el("input",{class:"p-statetext", type:"number", value:p.statetext ?? "", style:"width:52px"})),
@@ -559,7 +561,8 @@ function rowData(tr) {
     group:v("p-group"), datatype:v("p-datatype"), addr:num("p-addr"), bit,
     system_no:v("p-system_no")||null, tag:v("p-tag")||null, text:v("p-text"),
     extra:v("p-extra")||null, alarm:v("p-alarm")||null, unit:v("p-unit")||null,
-    scale:v("p-scale")||null, rw:v("p-rw")||"r", online:chk("p-online"),
+    scale:v("p-scale")||null, rw:v("p-rw")||"r",
+    update_freq:v("p-update_freq")||null, online:chk("p-online"),
     decimals:num("p-decimals"), statetext:num("p-statetext"), no_group:chk("p-no_group"),
   });
 }
