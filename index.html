@@ -101,6 +101,8 @@
   .msg.warn{background:#33290f;color:var(--amber);border:1px solid #57430f}
   .msg.note{background:#262b35;color:var(--dim);border:1px solid var(--line)}
   .sqlbar{display:flex;gap:8px;align-items:center;margin-top:10px}
+  /* match the row-count chip rather than the page's full-size buttons */
+  .sqlbar button{font-size:12px;padding:3px 10px;line-height:1.5}
   pre.sql{background:#0d0f14;border:1px solid var(--line);border-radius:6px;
           padding:10px;max-height:45vh;overflow:auto;font-size:12px;color:#b9e0a5;
           margin:6px 0 0}
@@ -1060,7 +1062,16 @@ function showResult(res, sqlWanted) {
       await navigator.clipboard.writeText(res.sql || "");
       e.target.textContent = "copied ✓";
       setTimeout(()=>e.target.textContent = "copy SQL", 1500);
-    }},"copy SQL")), pre);
+    }},"copy SQL"),
+    el("button",{class:"ghost",
+                 title:"Download exactly this script as a file, encoded cp1252 the way the IWMAC tables expect. Does not regenerate - use Generate + save file for that",
+                 onclick:e=>{
+      const name = res.filename || "modbusgen-SQL File.txt";
+      if (res.b64) downloadBytes(name, res.b64);
+      else downloadTextFile(name, res.sql || "");     // no b64 from this build
+      e.target.textContent = "exported ✓";
+      setTimeout(()=>e.target.textContent = "export SQL", 1500);
+    }},"export SQL")), pre);
 }
 function showError(e) {
   $("out").replaceChildren(el("div",{class:"msg err"}, String(e.message || e)));
@@ -1116,6 +1127,18 @@ $("jsonFile").onchange = async e => {
   e.target.value = "";
 };
 
+/* The SQL is encoded cp1252 server-side because the IWMAC tables are latin1;
+   downloading res.sql as a UTF-8 string would mangle æøå. Ship the bytes. */
+function downloadBytes(name, b64) {
+  const bin = atob(b64);
+  const buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([buf], {type:"text/plain"}));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
 function downloadTextFile(name, text) {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([text], {type:"text/plain;charset=utf-8"}));
