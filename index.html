@@ -1956,7 +1956,7 @@ for (const id of ["pTable","pPlant","optCore","optMore","groups","statetexts","p
 
 $("btnNew").onclick = () => {
   localStorage.removeItem(AUTOSAVE_KEY);
-  $("fileName").value = "new-project.yaml";
+  $("fileName").value = "new-project.json";
   showProject({points:[]});
   $("out").replaceChildren(el("div",{class:"msg note"}, "New empty project."));
 };
