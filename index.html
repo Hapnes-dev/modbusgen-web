@@ -176,6 +176,13 @@
   .msg.ok{background:#1e3328;color:var(--green);border:1px solid #2b5b3f}
   .msg.warn{background:#33290f;color:var(--amber);border:1px solid #57430f}
   .msg.note{background:#262b35;color:var(--dim);border:1px solid var(--line)}
+  /* verdict lines share the toolbar status idiom: dot + weighted text */
+  .msg.verdict{font-family:inherit;font-size:13px;font-weight:600;
+               display:flex;align-items:center;gap:8px}
+  .msg.verdict::before{content:"";width:7px;height:7px;border-radius:50%;flex:none}
+  .msg.ok.verdict::before{background:var(--green);box-shadow:0 0 5px #3fbf7f66}
+  .msg.err.verdict::before{background:var(--red);box-shadow:0 0 5px #ff6b6b66}
+  .msg.verdict .n{font-weight:400;color:var(--dim)}
   .msg.fix{background:#1d2a38;color:#a9cbef;border:1px solid #2f4d70;
            font-family:inherit;font-size:13px}
   .msg.fix b{color:#dbe9f8}
@@ -1712,13 +1719,15 @@ function showResult(res, sqlWanted) {
   }
   clearBadRows();
   updateStats();
+  const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
   if (!sqlWanted) {
-    out.append(el("div",{class:"msg ok"},
-      `✓ Valid: ${res.points} point(s), ${res.groups} group(s).`));
+    out.append(el("div",{class:"msg ok verdict"}, "Valid",
+      el("span",{class:"n"}, `${plural(res.points, "point")} · ${plural(res.groups, "group")}`)));
     return;
   }
   if (res.written)
-    out.append(el("div",{class:"msg ok"}, "✓ Wrote " + res.written));
+    out.append(el("div",{class:"msg ok verdict"}, "Written",
+      el("span",{class:"n"}, res.written)));
   const pre = el("pre",{class:"sql"}, res.sql || "");
   // Count records, not one format's keyword: legacy writes one INSERT per record,
   // modern writes multi-row REPLACE INTO blocks, so counting "INSERT" reported 0 for
