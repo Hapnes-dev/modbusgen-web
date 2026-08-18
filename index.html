@@ -443,27 +443,38 @@
         <span class="ex">Avriming</span>. Typical use: operating-mode and status
         registers whose documentation says something like
         <i>"0 = Off, 1 = Run, 2 = Defrost"</i>.
+
+        <h4>Building a list</h4>
         <ul>
           <li>Make <b>one list per distinct enumeration</b> in the device documentation,
-            and give it a free-choice <b>id</b> number (1, 2, 3 …).</li>
-          <li>One state per line — the number box carries the register value, the text
-            box the word: <span class="ex">0</span> = <span class="ex">Av</span>,
-            <span class="ex">1</span> = <span class="ex">Drift</span>. <b>Enter</b> in a
-            word box (or <b>+ state</b>) adds the next line with the value counted on;
-            <b>pasting a whole vendor list</b> like <code>0=Av&#10;1=Drift</code> into a
-            word box fills all the lines at once.</li>
+            with a free-choice <b>id</b> (1, 2, 3 …). Several points share one list —
+            define the enumeration once.</li>
+          <li>One state per line: value box, word box —
+            <span class="ex">0</span> = <span class="ex">Av</span>,
+            <span class="ex">1</span> = <span class="ex">Drift</span>.
+            <b>Enter</b> in a word box (or <b>+ state</b>) adds the next line with the
+            value counted on. <b>Pasting a whole vendor list</b> like
+            <code>0=Av&#10;1=Drift</code> into any word box fills all the lines at
+            once.</li>
           <li><b>Keep the vendor's numbers exactly</b>; translate only the words
-            (Norwegian). Numbers must be 0 or higher — an enum with negative values
-            cannot be a state list; leave that point without one.</li>
-          <li>Attach a list to a point by typing its id in the point's
-            <b>state</b> column. Several points can share one list — define the
-            enumeration once.</li>
-          <li>On generate, the list becomes the IWMAC state JSON in the point's
-            <code>format_extra</code> field. The options <i>statetext_only_rw</i>
-            (JSON only on writable points) and <i>statetext_in_alias</i> (plain text
-            appended to the alias) fine-tune the behaviour.</li>
-          <li>A point with a state list usually needs no unit, scale or decimals.</li>
+            (Norwegian). Values must be 0 or higher — an enum with negative values
+            cannot be a state list; leave that point without one and say so.</li>
         </ul>
+
+        <h4>Using it on points</h4>
+        <ul>
+          <li>Type the list's id in a point's <b>state</b> column. A point with a state
+            list usually needs no unit, scale or decimals.</li>
+          <li>On generate it becomes the IWMAC state JSON in the point's
+            <code>format_extra</code>; the words are Proper-cased unless
+            <i>proper_case_states</i> is off.</li>
+        </ul>
+
+        <h4>The switches that affect state texts</h4>
+        <p>All in the Project card: <i>use_json</i> is the master gate — off means no
+        state texts at all, whatever the rows say; <i>statetext_only_rw</i> limits the
+        JSON to writable points; <i>statetext_in_alias</i> also writes the flattened
+        list into the point's <i>extra</i>, overwriting what is typed there.</p>
       </div>
     </details>
     <div class="st-grid" id="statetexts"></div>
