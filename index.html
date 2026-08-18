@@ -790,35 +790,52 @@
   <div class="card">
     <h2>Workflow &amp; tips</h2>
     <div class="helpbody" style="max-width:none">
-      <b>Typical workflow:</b> ① fill table name + plant and check <i>subtract_one</i>
-      against the device docs → ② add groups (start with the defaults) → ③ define state
-      lists for enumerated registers → ④ enter points, or <b>Import project</b> a
-      Copilot-generated JSON → ⑤ register the devices and driver under
-      <b>Units &amp; driver</b>, or leave both blocks off when the plant already has them
-      → ⑥ <b>Validate</b>, fix what it lists → ⑦ <b>Generate</b>. The cards are in that
-      order down the page.
-      <ul>
-        <li><b>Let Copilot do the typing:</b> give it the device's register PDF together
-          with the authoring guide (<code>docs/11-ai-json-authoring.md</code> in the
-          repository); it returns a JSON file that Import project loads directly.</li>
-        <li><b>Continue later:</b> the editor autosaves in this browser — reopening the
-          page restores unsaved work. <b>Save</b> keeps a named copy in this browser, and
-          those appear in the picker under <i>saved in this browser</i>; <b>Delete</b>
-          removes the selected one, after asking once. Nothing there leaves this machine
-          or survives clearing site data.</li>
-        <li><b>For a real file:</b> <b>Export</b> downloads the project
-          (<code>.yaml</code> or <code>.json</code> by the name you type) for keeping,
-          mailing or another machine; <b>Import project</b> brings it back.</li>
-        <li><b>Old Excel workbooks:</b> convert with
-          <code>modbusgen import-xlsm old.xlsm</code> (CLI), then open the result here.</li>
-        <li><b>Direct link to a project:</b> add <code>#file-name</code> to the page URL,
-          e.g. <code>…/#example-em24-gavazzi.json</code>.</li>
-        <li><b>copy SQL</b> under the preview copies the whole script to the clipboard;
-          the chip counts the rows it writes, the same figure in either SQL format.</li>
-        <li>Missing datatype, unit or scale key? Do not improvise — extend
-          <code>data/tables/*.csv</code> in the repository so every future list can use
-          it too.</li>
-      </ul>
+      <div class="sub" style="margin-top:2px">
+        <div class="subhead">the workflow — the cards in page order</div>
+        <ol style="margin:4px 0;padding-left:22px;line-height:1.7">
+          <li><b>Project</b> — table name + plant; check <i>subtract_one</i> against the
+            device docs. Amber options differ from the recommended defaults.</li>
+          <li><b>Groups</b> — start with the defaults, rename to the plant's zones.</li>
+          <li><b>State texts</b> — one list per enumeration; paste a vendor list straight in.</li>
+          <li><b>Points</b> — type them, or <b>Import project</b> a Copilot-authored JSON.</li>
+          <li><b>Units &amp; driver</b> — only for a new/complete plant; both blocks off
+            when the plant already has its driver.</li>
+          <li><b>Validate</b> — fix what the advice panel lists; failing rows are marked red.</li>
+          <li><b>Generate</b> — review, then <b>copy SQL</b> or <b>export SQL</b>.</li>
+        </ol>
+      </div>
+
+      <div class="sub">
+        <div class="subhead">keyboard</div>
+        <ul>
+          <li><code>/</code> search the points · <code>Ctrl+Z</code> undo (10 steps) ·
+            <code>Esc</code> clears search, then selection, then fullscreen</li>
+          <li><b>Click a row and drag</b> to select many; <code>Shift</code>-click extends,
+            <code>Ctrl</code>-click toggles one</li>
+          <li><code>Enter</code> in a state-text word box adds the next state</li>
+        </ul>
+      </div>
+
+      <div class="sub">
+        <div class="subhead">tips</div>
+        <ul>
+          <li><b>Let Copilot do the typing:</b> give it the register PDF together with
+            <code>docs/11-ai-json-authoring.md</code>; the returned JSON loads via
+            <b>Import project</b>.</li>
+          <li><b>Your work stays here:</b> the editor autosaves in this browser, and
+            <b>Save</b> keeps named copies (picker: <i>saved in this browser</i>;
+            <b>Delete</b> asks once). <b>Export</b> is the real file
+            (<code>.json</code>/<code>.yaml</code> by the name you type) — use it for
+            keeping, mailing, another machine.</li>
+          <li><b>Old Excel workbooks:</b> <code>modbusgen import-xlsm old.xlsm</code>
+            (CLI), then open the result here.</li>
+          <li><b>Direct link:</b> add <code>#file-name</code> to the URL, e.g.
+            <code>…/#example-em24-gavazzi.json</code>.</li>
+          <li><b>Missing datatype, unit or scale key?</b> Do not improvise — extend
+            <code>data/tables/*.csv</code> in the repository so every future list can
+            use it too.</li>
+        </ul>
+      </div>
     </div>
   </div>
 </main>
