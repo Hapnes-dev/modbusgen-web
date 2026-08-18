@@ -681,7 +681,7 @@
     </div>
     <div class="row" style="margin-top:8px">
       <button id="btnAddPoint" title="Append an empty point row at the bottom of the table">+ point</button>
-      <span style="font-size:11.5px;color:var(--dim)">tip: ⧉ duplicates a row with addr + 1</span>
+      <span id="ptTip" style="font-size:11.5px;color:var(--dim)">tip: ⧉ duplicates a row with addr + 1</span>
     </div>
   </div>
 
@@ -1277,6 +1277,7 @@ function applyPointView() {
     else th.removeAttribute("data-sort");
   }
   $("btnPtOrder").hidden = !(ptSort.col && ptSort.dir);
+  updatePointTip();
 
   // A hidden row must not stay selected: a bulk edit would then change rows the
   // user cannot see. Selection follows what is on screen.
@@ -1376,6 +1377,7 @@ function ptSelectRange(a, b) {
 }
 function ptPaintSelection() {
   for (const tr of $("points").children) tr.classList.toggle("sel", ptSel.has(tr));
+  updatePointTip();
   const n = ptSel.size;
   // A single click selects the row under the cursor, so the bar would otherwise
   // be on screen permanently while editing. It is for editing rows together.
@@ -1828,6 +1830,42 @@ $("points").addEventListener("focusout", e => {
 });
 $("btnPtUndo").onclick = ptDoUndo;
 ptUpdateUndoButton();
+
+/* ---------- contextual tip line under the points table ----------
+   Follows what is being edited. Column text is the first sentence of COL_HELP,
+   so the tip and the tooltips share one source and cannot disagree. */
+const PT_TIP_DEFAULT = "tip: ⧉ duplicates a row with addr + 1";
+function updatePointTip() {
+  const tip = $("ptTip");
+  if (!tip) return;
+  const active = document.activeElement;
+  const cell = active && $("points").contains(active) ? active : null;
+  if (cell) {
+    const cls = [...cell.classList].find(c => c.startsWith("p-"));
+    if (cls) {
+      const col = cls.slice(2);
+      const label = {system_no:"system no", update_freq:"freq", no_group:"no grp",
+                     statetext:"state", decimals:"dec", online:"onl"}[col] || col;
+      const help = (COL_HELP[col] || "").split(/(?<=[a-z0-9)])\. /)[0];
+      if (help) { tip.textContent = `${label}: ${help}`; return; }
+    }
+    if (cell.classList.contains("rowbtn")) {
+      tip.textContent = "row actions: ⧉ duplicates with addr + 1, ✕ deletes";
+      return;
+    }
+  }
+  if (ptSel.size > 1) {
+    tip.textContent = `${ptSel.size} rows selected - pick a column in the bar below to set them together; addr and bit stay per-row`;
+    return;
+  }
+  if (ptSort.col && ptSort.dir) {
+    tip.textContent = "sorted view - the saved order is unchanged; “keep this order” makes it real";
+    return;
+  }
+  tip.textContent = PT_TIP_DEFAULT;
+}
+$("points").addEventListener("focusin", updatePointTip);
+$("points").addEventListener("focusout", () => setTimeout(updatePointTip, 0));
 
 /* points view controls */
 $("ptSearch").addEventListener("input", applyPointView);
