@@ -21,7 +21,7 @@
       "system_no": "360.001",
       "tag": "RT401",
       "text": "Romtemperatur",
-      "unit": "°C/°F",
+      "unit": "C",
       "scale": "x0.1",
       "online": true,
       "decimals": 1
@@ -33,7 +33,7 @@
       "system_no": "360.001",
       "tag": "RT401",
       "text": "Settpunkt romtemperatur",
-      "unit": "°C/°F",
+      "unit": "C",
       "scale": "x0.1",
       "rw": "rw",
       "decimals": 1
