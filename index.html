@@ -708,26 +708,44 @@
     <details class="help"><summary title="When to fill this card in at all, and what each block emits">help</summary>
       <div class="helpbody">
         Registers the physical <b>devices</b> and the <b>driver</b> in IWMAC — the
-        <code>iw_sys_*</code> blocks at the end of the SQL. Skip this card entirely when
-        the plant already has the driver and units configured (both checkboxes off =
-        nothing emitted).
+        <code>iw_sys_*</code> blocks at the end of the SQL. An existing plant already
+        has these: leave both checkboxes off and the card emits nothing. Fill it only
+        for a new or complete-plant script.
+
+        <h4>The two blocks</h4>
         <ul>
-          <li><b>units block</b> — one <code>iw_sys_plant_units</code> row per device
-            below, plus the order-number link. <b>settings block</b> — the
-            <code>iw_mb.exe</code> process registration and all driver communication
-            settings.</li>
-          <li><b>owner/driver name</b> ties everything together (e.g.
-            <span class="ex">EM270</span>, <span class="ex">GRUNDFOS</span>) — it is the
-            settings owner, the driver_type and the process name.</li>
-          <li><b>Devices:</b> one row per physical unit on the bus —
-            <span class="ex">ID01 / Carel EVD 01 / addr 1</span>,
-            <span class="ex">ID02 / Carel EVD 02 / addr 2</span> … The address prefix
-            (<code>0_</code>/<code>1_</code>) is added automatically; ⧉ duplicates a
-            device with the next number and address.</li>
-          <li><b>comm</b> — TCP: fill IP (port 502 default). RTU: COM port, baud,
-            parity, stop bits. Values land in <code>iw_sys_plant_settings</code>;
-            everything else uses the standard driver defaults.</li>
+          <li><b>units block</b> — one <code>iw_sys_plant_units</code> row per device in
+            the list below, plus the order-number link.</li>
+          <li><b>settings block</b> — the <code>iw_mb.exe</code> process registration and
+            every driver communication setting.</li>
         </ul>
+        <p>A band whose checkbox is off dims but <b>stays editable</b>, so a device list
+        can be prepared before the block is switched on.</p>
+
+        <h4>Driver identity</h4>
+        <p><b>owner / driver name</b> ties the whole card together — it is the settings
+        owner, the driver_type and the process name in one
+        (<span class="ex">EM270</span>, <span class="ex">GRUNDFOS</span>), and both
+        blocks use it. <b>reg.type</b> and <b>order no</b> stay blank unless the
+        delivery specifies them. <b>addr prefix</b>: <code>0_</code> for the first
+        driver on the plant, <code>1_</code> for the second — it is put in front of
+        every device address for you.</p>
+
+        <h4>Devices</h4>
+        <p>One row per physical unit on the bus —
+        <span class="ex">ID01 / Carel EVD 01 / addr 1</span>,
+        <span class="ex">ID02 / Carel EVD 02 / addr 2</span> … The band label counts
+        them, and ⧉ duplicates a device with the id and address stepped, so a string of
+        identical controllers is one row and a run of clicks. <b>view order</b> sorts
+        the device list in IWMAC.</p>
+
+        <h4>Communication</h4>
+        <p>The <b>mode</b> select shows only the fields it uses: <b>tcp</b> — IP of the
+        device or gateway, port <span class="ex">502</span> unless documented otherwise;
+        <b>rtu</b> — COM port on the IWMAC machine, baud, parity and stop bits, which
+        must match every device on the bus. Values land in
+        <code>iw_sys_plant_settings</code>; everything not shown here uses the standard
+        driver defaults.</p>
       </div>
     </details>
     <div class="row">
