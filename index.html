@@ -413,12 +413,16 @@
       <div class="helpbody">
         One row per Modbus point. Minimum per row: <b>group</b>, <b>datatype</b>,
         <b>addr</b>, <b>text</b>. Hover any column header for its meaning.
+        Columns are described below in the order they appear.
+
+        <h4>Identity — group, datatype, addr, bit</h4>
         <ul>
-          <li><b>addr</b> — the register number exactly as the device documentation
-            prints it (strip a <code>4xxxx</code>/<code>3xxxxx</code> prefix:
-            <span class="ex">40101 → 101</span>). The <i>subtract_one</i> option handles
-            the 1-based offset globally — never subtract yourself.</li>
-          <li><b>datatype</b> — the "common" group covers nearly everything:
+          <li><b>group</b> — must exist in the Groups card, or validation stops. It also
+            builds the point's key: <code>element_id = &lt;group&gt;_&lt;driver_id&gt;</code>
+            (<span class="ex">aio_0_3_100</span>) unless the project file overrides it.</li>
+          <li><b>datatype</b> — the single most consequential column: it supplies the read
+            and write function codes, raw type, byte/word swap, application class and
+            parameter type. The "common" group covers nearly everything:
             <code>A_Hold_I16_N</code> analog holding register ·
             <code>A_Input_I16_N</code> analog input register ·
             <code>I_Hold_U16_N</code> plain integer/counter ·
@@ -427,27 +431,96 @@
             <code>…_I32/U32/F</code> for 32-bit values. If the doc says the word order is
             reversed (LSW first — energy meters often do), use the <code>_W</code>
             variants.</li>
-          <li><b>bit rows</b> — set <i>bit</i> 0–31 and use a <code>Bit_*</code>
-            datatype. The required motherword row is created automatically on generate.
-            Alarm bits: alarm letter <span class="ex">A</span> + group
-            <span class="ex">alm</span>.</li>
-          <li><b>rw</b> — <code>rw</code> only when the documentation says the register
-            is writable (setpoints, commands); everything else <code>r</code>.</li>
-          <li><b>onl</b> — tick on 1–3 reliable, always-readable points (a temperature
-            or status register). IWMAC uses them to detect that the unit is online;
-            at least one is required.</li>
-          <li><b>scale + dec</b> — doc says <i>"value × 0.1"</i> → scale
-            <span class="ex">x0.1</span>, dec <span class="ex">1</span>. dec sets the
-            display format <code>%.1f</code>.</li>
-          <li><b>unit</b> — pick from the list (autocomplete). Temperature =
-            <span class="ex">C</span>. Missing unit? Leave empty and add it to the unit
-            table instead of inventing a spelling.</li>
-          <li><b>text</b> — short Norwegian description; it is what the operator reads.
-            <span class="ex">Reserve.</span> marks a spare row (kept in the list,
-            set inactive).</li>
-          <li>⧉ duplicates a row with <b>addr + 1</b> — fastest way through a
-            sequential register block. Every <code>driver_id</code>/<code>element_id</code>
-            must be unique; duplicates are caught by Validate.</li>
+          <li><b>addr</b> — the register number exactly as the device documentation
+            prints it (strip a <code>4xxxx</code>/<code>3xxxxx</code> prefix:
+            <span class="ex">40101 → 101</span>). The <i>subtract_one</i> option handles
+            the 1-based offset globally — never subtract yourself. Address and datatype
+            together give <code>driver_id = 0_&lt;readfunc&gt;_&lt;addr&gt;</code>.</li>
+          <li><b>bit</b> — 0–31 for one bit inside the word, or nibble syntax
+            <span class="ex">5#4</span>; the bit is appended to the driver id
+            (<span class="ex">0_3_100.4</span>). Use a <code>Bit_*</code> datatype, and
+            the motherword row is created for you on generate. Alarm bits: alarm letter
+            <span class="ex">A</span> + group <span class="ex">alm</span>.</li>
+        </ul>
+
+        <h4>Alias — system no, tag, text, extra</h4>
+        <p>These four join in a fixed order to make the text the operator reads:
+        <code>system_no-tag-text-(extra)</code> →
+        <span class="ex">360.001-RT401-Romtemperatur-(1=Drift)</span>. An empty field
+        contributes nothing, and <i>use_system_no</i>/<i>use_tag</i>/<i>use_extra</i>
+        in the Project card switch the parts off wholesale.</p>
+        <ul>
+          <li><b>system no</b> — the plant's system number for this point,
+            <span class="ex">360.001</span>. Usually the same for a whole block of rows.</li>
+          <li><b>tag</b> — the short component tag, <span class="ex">RT401</span>.</li>
+          <li><b>text</b> — short Norwegian description; the only alias part that is
+            always included. <span class="ex">Reserve.</span> marks a spare row: it stays
+            in the list but is written inactive even with <i>force_active</i> on.</li>
+          <li><b>extra</b> — the parenthesised suffix. <span class="note">Overwritten</span>
+            on generate when <i>statetext_in_alias</i> is on and the row has a state list.</li>
+        </ul>
+
+        <h4>Presentation — unit, scale, dec</h4>
+        <ul>
+          <li><b>unit</b> — a key in the unit table (autocomplete); it becomes
+            <code>eng_unit</code>. Temperature = <span class="ex">C</span>. Missing unit?
+            Leave empty and add it to the table rather than inventing a spelling.</li>
+          <li><b>scale</b> — a key in the scaling table. Doc says <i>"value × 0.1"</i> →
+            <span class="ex">x0.1</span>. The table supplies the whole block at once:
+            scale factor plus raw and engineering min/max.</li>
+          <li><b>dec</b> — 0–3 display decimals, written as
+            <code>format = %.Nf</code>. Blank leaves the format empty. Pair it with the
+            scale: <span class="ex">x0.1</span> → dec <span class="ex">1</span>.</li>
+        </ul>
+
+        <h4>Behaviour — alarm, rw, freq, onl</h4>
+        <ul>
+          <li><b>alarm</b> — priority letter written to <code>plant_pri</code>:
+            <span class="ex">A</span> alarm (the fleet default),
+            <span class="ex">B</span>/<span class="ex">C</span> lower priorities,
+            <span class="ex">N</span> note. With <i>auto_groups</i> and
+            <i>alarms_to_alm</i> both on, a lettered row is moved into the
+            <code>alm</code> group.</li>
+          <li><b>rw</b> — <code>rw</code> only when the documentation says the register is
+            writable (setpoints, commands); everything else <code>r</code>. Bit rows are
+            promoted to <code>vr</code>/<code>vrw</code> automatically. Writable rows also
+            get the write half of the driver id.</li>
+          <li><b>freq</b> — polling override; blank means derived, which is almost always
+            right: analog and integral values poll <code>norm</code> read-only /
+            <code>slow</code> writable, digital IO polls <code>slow</code>. Override with
+            <code>fast</code>, <code>norm</code>, <code>slow</code>, <code>once</code> or
+            <code>never</code> — use <code>slow</code> for rarely-changing measured values
+            such as energy totals. Logging follows from it: <code>norm</code>/<code>fast</code>
+            log <code>min</code>/<code>1</code>; on <code>slow</code>, read-only analog and
+            integral values still log <code>min</code>/<code>1</code> (house rule
+            2026-08-18) while setpoints and digitals log on change;
+            <code>once</code>/<code>never</code> log on change.</li>
+          <li><b>onl</b> — tick on 1–3 reliable, always-readable points (a temperature or
+            status register). IWMAC uses them to detect that the unit is online, and
+            validation fails when no point is marked.</li>
+        </ul>
+
+        <h4>Display extras — state, no grp</h4>
+        <ul>
+          <li><b>state</b> — id of a list from the State texts card; it is serialized to
+            IWMAC JSON in <code>format_extra</code>, so the operator sees
+            <span class="ex">Drift</span> rather than <span class="ex">1</span>. Suppressed
+            for read-only rows when <i>statetext_only_rw</i> is on.</li>
+          <li><b>no grp</b> — keep this row out of the groups block, so it exists as a
+            parameter but does not appear in the operator's menu. Synthesized motherwords
+            are excluded on their own while
+            <i>exclude_motherwords_from_groups</i> is on.</li>
+        </ul>
+
+        <h4>Working with rows</h4>
+        <ul>
+          <li>⧉ duplicates a row with <b>addr + 1</b> — the fastest way through a
+            sequential register block. Every <code>driver_id</code> and
+            <code>element_id</code> must be unique; duplicates are caught by Validate.</li>
+          <li>A project file can carry fields this table does not show —
+            <code>element_id</code>, <code>menu</code>, <code>active</code>,
+            <code>range_min</code>/<code>range_max</code>. They are preserved on load and
+            written back out untouched; editing a row here does not drop them.</li>
         </ul>
       </div>
     </details>
