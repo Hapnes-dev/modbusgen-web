@@ -138,9 +138,10 @@
 <body>
 <header>
   <div class="title">modbus<span>gen</span><small>IWMAC Modbus lists</small></div>
-  <select id="fileSelect" title="Project file"></select>
-  <button id="btnLoad">Load</button>
-  <button id="btnNew" class="ghost">New</button>
+  <select id="fileSelect" title="Project files already in the projects folder"></select>
+  <button id="btnLoad" title="Open the selected project - replaces everything on this page">Load</button>
+  <button id="btnNew" class="ghost"
+          title="Start an empty project - clears the page, so export first if the current work matters">New</button>
   <button id="btnImportJson" class="ghost"
           title="Load a project file from disk - Copilot-generated JSON or an exported YAML">Import project</button>
   <input id="jsonFile" type="file" accept=".json,.yaml,.yml,application/json" hidden>
@@ -149,9 +150,12 @@
   <button id="btnExport" class="ghost"
           title="Download the project as a file to continue later - .yaml or .json by extension">Export</button>
   <span style="flex:1"></span>
-  <button id="btnValidate">Validate</button>
-  <button id="btnGenerate" class="primary">Generate SQL</button>
-  <button id="btnSaveSql">Generate + save file</button>
+  <button id="btnValidate"
+          title="Check the project without producing SQL: unknown table keys, duplicate ids, undefined groups, unresolved state refs, no online point. Warnings do not block">Validate</button>
+  <button id="btnGenerate" class="primary"
+          title="Validate, then render the SQL import script into the Result card below. Nothing is written to disk">Generate SQL</button>
+  <button id="btnSaveSql"
+          title="Generate and write the .sql file (browser build: downloads it). Named from the plant number and table">Generate + save file</button>
 </header>
 <main>
   <div class="card">
@@ -159,19 +163,19 @@
     <div class="sub" style="margin-top:4px">
       <div class="subhead">destination</div>
       <div class="row">
-        <label class="f f-lg">table name<input id="pTable" placeholder="kjol"></label>
-        <label class="f f-sm">plant number<input id="pPlant" placeholder="12345"></label>
+        <label class="f f-lg" title="Names the three tables the script fills: iw_par_<name>_param, iw_par_<name>_groups, iw_set_<name>. Lowercase letters and digits">table name<input id="pTable" placeholder="kjol" title="Names the three tables the script fills: iw_par_<name>_param, iw_par_<name>_groups, iw_set_<name>. Lowercase letters and digits"></label>
+        <label class="f f-sm" title="Identifies the plant. Used only in the generated file name, never in the SQL itself">plant number<input id="pPlant" placeholder="12345" title="Identifies the plant. Used only in the generated file name, never in the SQL itself"></label>
       </div>
     </div>
 
     <div class="sub">
       <div class="subhead">output</div>
       <div class="row" id="optCore"></div>
-      <details style="margin-top:2px"><summary>more options</summary>
+      <details style="margin-top:2px"><summary title="Eleven further toggles, grouped by what they affect: alias text, state texts, points and groups, motherwords">more options</summary>
         <div id="optMore"></div>
       </details>
     </div>
-    <details class="help"><summary>help</summary>
+    <details class="help"><summary title="What the table name and plant number do, and every one of the sixteen option checkboxes">help</summary>
       <div class="helpbody">
         <b>table name</b> names the three database tables the SQL script fills:
         <code>iw_par_&lt;name&gt;_param</code>, <code>iw_par_&lt;name&gt;_groups</code>,
@@ -278,7 +282,7 @@
 
   <div class="card">
     <h2>Groups</h2>
-    <details class="help"><summary>help</summary>
+    <details class="help"><summary title="What groups are for, and why every group a point uses must exist here">help</summary>
       <div class="helpbody">
         Groups decide how points are <b>grouped in the IWMAC display</b>. Left field =
         the short key you type in a point's <i>group</i> column
@@ -300,7 +304,7 @@
     </details>
     <div class="grp-grid" id="groups"></div>
     <div class="row" style="margin-top:8px">
-      <button id="btnAddGroup">+ group</button>
+      <button id="btnAddGroup" title="Add an empty group row - key on the left, the name the operator sees on the right">+ group</button>
       <button id="btnDefaultGroups" class="ghost"
               title="aio/dio/alm/misc/sch - the standard set used by nearly every real list">
         + default groups (aio, dio, alm, misc, sch)</button>
@@ -309,7 +313,7 @@
 
   <div class="card">
     <h2>State texts</h2>
-    <details class="help"><summary>help</summary>
+    <details class="help"><summary title="How numeric register values become words the operator reads">help</summary>
       <div class="helpbody">
         A state list translates a register's <b>numeric values into words</b> in IWMAC —
         instead of the operator seeing <span class="ex">2</span>, they see
@@ -337,12 +341,12 @@
       </div>
     </details>
     <div class="st-grid" id="statetexts"></div>
-    <button id="btnAddState" style="margin-top:8px">+ state list</button>
+    <button id="btnAddState" style="margin-top:8px" title="Add a state-text list: one value=word per line, referenced from a point's state column by its id">+ state list</button>
   </div>
 
   <div class="card">
     <h2>Points <span class="chips" id="pointStats"></span></h2>
-    <details class="help"><summary>help</summary>
+    <details class="help"><summary title="All seventeen columns explained in table order">help</summary>
       <div class="helpbody">
         One row per Modbus point. Minimum per row: <b>group</b>, <b>datatype</b>,
         <b>addr</b>, <b>text</b>. Hover any column header for its meaning.
@@ -460,38 +464,38 @@
     <div class="tblwrap">
       <table class="points">
         <thead><tr>
-          <th></th>
-          <th title="Group key - must exist in Groups above">group</th>
-          <th title="Register type + width + swap, e.g. A_Hold_I16_N. Bit_Hold/Bit_Input for single bits">datatype</th>
-          <th title="Register address exactly as documented; the subtract_one option handles 1-based docs">addr</th>
-          <th title="Bit 0-31 inside the register, or nibble syntax 5#4. Motherword rows are synthesized automatically">bit</th>
-          <th title="Alias part 1: system number, e.g. 360.001">system no</th>
-          <th title="Alias part 2: short tag, e.g. RT401">tag</th>
-          <th title="Main descriptive text (Norwegian). 'Reserve.' marks a spare row">text</th>
-          <th title="Alias suffix in parentheses; auto-filled by state texts when enabled">extra</th>
-          <th title="Alarm priority: A=alarm (default in real lists), N=note">alarm</th>
-          <th title="Engineering unit key, e.g. C, %, Pa - must exist in the unit table">unit</th>
-          <th title="Display scaling: x0.1 = register / 10 (most common)">scale</th>
-          <th title="r=read only, rw=writable. Bits become vr/vrw automatically">rw</th>
-          <th title="Polling override - blank = automatic (r=norm, rw=slow, digital=slow). Measured read-only values log min/1 even on slow">freq</th>
-          <th title="Online indication - mark 1-3 reliable read points">onl</th>
-          <th title="Display decimals 0-3 -> format %.Nf">dec</th>
-          <th title="State-text list id from the section above">state</th>
-          <th title="Exclude this row from the groups block">no grp</th>
-          <th></th>
+          <th title="Row number - not written to the database"></th>
+          <th data-col="group">group</th>
+          <th data-col="datatype">datatype</th>
+          <th data-col="addr">addr</th>
+          <th data-col="bit">bit</th>
+          <th data-col="system_no">system no</th>
+          <th data-col="tag">tag</th>
+          <th data-col="text">text</th>
+          <th data-col="extra">extra</th>
+          <th data-col="alarm">alarm</th>
+          <th data-col="unit">unit</th>
+          <th data-col="scale">scale</th>
+          <th data-col="rw">rw</th>
+          <th data-col="update_freq">freq</th>
+          <th data-col="online">onl</th>
+          <th data-col="decimals">dec</th>
+          <th data-col="statetext">state</th>
+          <th data-col="no_group">no grp</th>
+          <th title="Row actions: ⧉ duplicates with addr + 1, ✕ deletes"></th>
         </tr></thead>
         <tbody id="points"></tbody>
       </table>
     </div>
     <div class="row" style="margin-top:8px">
-      <button id="btnAddPoint">+ point</button>
+      <button id="btnAddPoint" title="Append an empty point row at the bottom of the table">+ point</button>
       <span style="font-size:11.5px;color:var(--dim)">tip: ⧉ duplicates a row with addr + 1</span>
     </div>
   </div>
 
   <div class="card" id="cardSys">
     <h2>Units &amp; driver (iw_sys)</h2>
-    <details class="help"><summary>help</summary>
+    <details class="help"><summary title="When to fill this card in at all, and what each block emits">help</summary>
       <div class="helpbody">
         Registers the physical <b>devices</b> and the <b>driver</b> in IWMAC — the
         <code>iw_sys_*</code> blocks at the end of the SQL. Skip this card entirely when
@@ -517,48 +521,50 @@
       </div>
     </details>
     <div class="row">
-      <label class="chk"><input type="checkbox" id="sysUnits"> units block</label>
-      <label class="chk"><input type="checkbox" id="sysSettings"> settings block</label>
+      <label class="chk" title="Emit one iw_sys_plant_units row per device below, plus the order-number link. Off when the plant already has its units registered"><input type="checkbox" id="sysUnits"> units block</label>
+      <label class="chk" title="Emit the iw_mb.exe process registration and every driver communication setting. Off when the plant already has its driver configured"><input type="checkbox" id="sysSettings"> settings block</label>
     </div>
 
     <div class="sub">
       <div class="subhead">driver identity</div>
       <div class="row">
-        <label class="f f-lg">owner / driver name<input id="sysOwner" placeholder="EM270"></label>
-        <label class="f f-sm">reg.type<input id="sysRegType"></label>
-        <label class="f f-sm">order no<input id="sysOrderNo"></label>
-        <label class="f f-xs">addr prefix<select id="sysPrefix"><option>0_</option><option>1_</option></select></label>
+        <label class="f f-lg" title="Ties the whole block together: it is the settings owner, the driver_type and the process name. Used by both blocks, e.g. EM270 or GRUNDFOS">owner / driver name<input id="sysOwner" placeholder="EM270" title="Ties the whole block together: it is the settings owner, the driver_type and the process name. Used by both blocks, e.g. EM270 or GRUNDFOS"></label>
+        <label class="f f-sm" title="Registration type recorded against the units - leave blank unless the delivery specifies one">reg.type<input id="sysRegType" title="Registration type recorded against the units - leave blank unless the delivery specifies one"></label>
+        <label class="f f-sm" title="Order number linked to the units in iw_sys_order_no">order no<input id="sysOrderNo" title="Order number linked to the units in iw_sys_order_no"></label>
+        <label class="f f-xs" title="Prefix put in front of every device address: 0_ for the first driver on the plant, 1_ for the second">addr prefix<select id="sysPrefix" title="Prefix put in front of every device address: 0_ for the first driver on the plant, 1_ for the second"><option>0_</option><option>1_</option></select></label>
       </div>
     </div>
 
     <div class="sub gated" id="sysUnitsBox">
       <div class="subhead">devices<span class="n" id="unitCount"></span></div>
       <table id="unitTable" style="max-width:760px">
-        <thead><tr><th></th><th>unit id</th><th>unit name</th><th>addr</th>
-          <th>view order</th><th></th></tr></thead>
+        <thead><tr><th title="Row number - not written to the database"></th><th data-col="unit_id">unit id</th>
+          <th data-col="unit_name">unit name</th><th data-col="driver_addr">addr</th>
+          <th data-col="view_order">view order</th>
+          <th title="Row actions: ⧉ duplicates with the next id and address, ✕ deletes"></th></tr></thead>
         <tbody id="unitRows"></tbody>
       </table>
       <div class="empty" id="unitEmpty">No devices yet — the units block emits nothing.</div>
-      <button id="btnAddUnit" style="margin-top:8px">+ device</button>
+      <button id="btnAddUnit" style="margin-top:8px" title="Add one physical device on the bus - each becomes an iw_sys_plant_units row">+ device</button>
     </div>
 
     <div class="sub gated" id="sysCommBox">
       <div class="subhead">communication</div>
       <div class="row">
-        <label class="f f-xs">mode<select id="commMode"><option>tcp</option><option>rtu</option></select></label>
-        <label class="f f-md cm-tcp">IP<input id="commIp" placeholder="192.168.1.10"></label>
-        <label class="f f-xs cm-tcp">port<input id="commPort" type="number" value="502"></label>
-        <label class="f f-sm cm-rtu">COM port<input id="commCom" placeholder="COM1"></label>
-        <label class="f f-sm cm-rtu">baud<select id="commBaud"><option>19200</option><option>9600</option></select></label>
-        <label class="f f-sm cm-rtu">parity<select id="commParity"><option>even</option><option>odd</option><option>none</option></select></label>
-        <label class="f f-xs cm-rtu">stop bits<select id="commStop"><option>1</option><option>2</option></select></label>
+        <label class="f f-xs" title="Modbus TCP over Ethernet, or RTU over a serial line. The fields beside this follow your choice">mode<select id="commMode" title="Modbus TCP over Ethernet, or RTU over a serial line. The fields beside this follow your choice"><option>tcp</option><option>rtu</option></select></label>
+        <label class="f f-md cm-tcp" title="IP address of the device or gateway on the plant network">IP<input id="commIp" placeholder="192.168.1.10" title="IP address of the device or gateway on the plant network"></label>
+        <label class="f f-xs cm-tcp" title="Modbus TCP port - 502 unless the device documentation says otherwise">port<input id="commPort" type="number" value="502" title="Modbus TCP port - 502 unless the device documentation says otherwise"></label>
+        <label class="f f-sm cm-rtu" title="Serial port on the IWMAC machine the bus is wired to, e.g. COM1">COM port<input id="commCom" placeholder="COM1" title="Serial port on the IWMAC machine the bus is wired to, e.g. COM1"></label>
+        <label class="f f-sm cm-rtu" title="Serial speed - must match every device on the bus">baud<select id="commBaud" title="Serial speed - must match every device on the bus"><option>19200</option><option>9600</option></select></label>
+        <label class="f f-sm cm-rtu" title="Serial parity - must match every device on the bus">parity<select id="commParity" title="Serial parity - must match every device on the bus"><option>even</option><option>odd</option><option>none</option></select></label>
+        <label class="f f-xs cm-rtu" title="Serial stop bits - must match every device on the bus">stop bits<select id="commStop" title="Serial stop bits - must match every device on the bus"><option>1</option><option>2</option></select></label>
       </div>
     </div>
   </div>
 
   <div class="card">
     <h2>Result</h2>
-    <details class="help"><summary>help</summary>
+    <details class="help"><summary title="What Validate, Generate SQL and Generate + save file each do, and how to read the result">help</summary>
       <div class="helpbody">
         <b>Validate</b> checks everything without generating. <b>Generate SQL</b> shows
         the script here; <b>Generate + save file</b> also writes/downloads it. Red ✕
@@ -593,7 +599,7 @@
         <li><b>Direct link to a project:</b> add <code>#file-name</code> to the page URL,
           e.g. <code>…/#example-em24-gavazzi.json</code>.</li>
         <li><b>copy SQL</b> under the preview copies the whole script to the clipboard;
-          the chip shows how many INSERT statements it holds.</li>
+          the chip counts the rows it writes, the same figure in either SQL format.</li>
         <li>Missing datatype, unit or scale key? Do not improvise — extend
           <code>data/tables/*.csv</code> in the repository so every future list can use
           it too.</li>
@@ -634,6 +640,37 @@ const OPT_HELP = {
   alarms_to_alm:"move alarm points (A/B/C/N) into the 'alm' group - needs auto_groups on",
   proper_case_states:"Proper-case state words, as Excel's WorksheetFunction.Proper did",
 };
+
+/* Column hover text. Single source for the points table: the header cells get it
+   from data-col at load, every row input gets it in addPointRow, so a header and
+   its cells can never drift apart. */
+const COL_HELP = {
+  group:"Display group key - must exist in the Groups card. Also builds the key: element_id = <group>_<driver_id>",
+  datatype:"Register type, width and word order. Supplies the read/write function codes, raw type, swap, application class and parameter type",
+  addr:"Register number exactly as the documentation prints it - subtract_one handles 1-based docs. Gives driver_id = 0_<readfunc>_<addr>",
+  bit:"Bit 0-31 inside the word, or nibble syntax 5#4. Needs a Bit_* datatype; the motherword row is synthesized for you",
+  system_no:"Alias part 1: the plant system number, e.g. 360.001. Switched off wholesale by use_system_no",
+  tag:"Alias part 2: the short component tag, e.g. RT401. Switched off wholesale by use_tag",
+  text:"The description the operator reads - the only alias part always included. 'Reserve.' marks a spare row, written inactive",
+  extra:"Alias suffix in parentheses. Overwritten on generate when statetext_in_alias is on and the row has a state list",
+  alarm:"Alarm priority written to plant_pri: A alarm (fleet default), B/C lower, N note. Moves the row to the alm group only when auto_groups and alarms_to_alm are both on",
+  unit:"Engineering unit key from the unit table - becomes eng_unit. Add a missing unit to the table rather than inventing a spelling",
+  scale:"Scaling key - supplies the scale factor plus raw and engineering min/max in one block. x0.1 dominates the real fleet",
+  rw:"r read-only, rw writable (setpoints, commands). Bit rows are promoted to vr/vrw automatically; rw also emits the write half of the driver id",
+  update_freq:"Polling override. Blank derives it: analog and integral values norm read-only / slow writable, digital IO slow. Use slow for energy totals",
+  online:"Online indication - IWMAC uses these to see the unit is alive. Mark 1-3 reliable, always-readable points; at least one is required",
+  decimals:"Display decimals, written as format %.Nf. Pair it with the scale: x0.1 goes with 1",
+  statetext:"Id of a list from the State texts card - serialized to IWMAC JSON so the operator sees words instead of numbers",
+  no_group:"Keep this row out of the groups block: it still exists as a parameter, but not in the operator's menu",
+};
+const UNIT_COL_HELP = {
+  unit_id:"Device id in IWMAC, e.g. ID01 - the ⧉ button bumps the trailing number",
+  unit_name:"Name the operator sees for this physical device, e.g. Carel EVD 01",
+  driver_addr:"Modbus slave address of this device on the bus. The 0_/1_ prefix is added for you",
+  view_order:"Sort position of this device in the IWMAC device list",
+};
+for (const th of document.querySelectorAll("th[data-col]"))
+  th.title = COL_HELP[th.dataset.col] || UNIT_COL_HELP[th.dataset.col] || "";
 
 const $ = id => document.getElementById(id);
 const el = (tag, attrs={}, ...kids) => {
@@ -696,10 +733,13 @@ function collectOptions() {
 function addGroupRow(name="", alias="") {
   $("groups").append(el("div",{class:"grp-row"},
     el("input",{class:"g-name", placeholder:"name (e.g. zone1)", value:name,
+                title:"The short key you type in a point's group column. Every group a point uses must exist here or validation stops",
                 oninput:refreshGroupList}),
     el("input",{class:"g-alias", placeholder:"display alias (e.g. Zone 1)", value:alias,
+                title:"The name the operator sees for this group in IWMAC. Blank falls back to the key itself",
                 style:"width:260px"}),
-    el("button",{class:"ghost", onclick:e=>{e.target.parentNode.remove();refreshGroupList();}},"✕")));
+    el("button",{class:"ghost", title:"delete this group - points still referencing it will fail validation",
+                 onclick:e=>{e.target.parentNode.remove();refreshGroupList();}},"✕")));
 }
 function collectGroups() {
   const out = {};
@@ -718,10 +758,14 @@ function refreshGroupList() {
 function addStateRow(id="", states=null) {
   const text = states ? Object.entries(states).map(([n,w]) => `${n}=${w}`).join("\n") : "";
   $("statetexts").append(el("div",{class:"st-row"},
-    el("label",{class:"f"},"id",
-      el("input",{class:"st-id", type:"number", value:id, style:"width:70px"})),
-    el("textarea",{class:"st-states", placeholder:"1=Kjøling\n2=Oppvarming"}, text),
-    el("button",{class:"ghost", onclick:e=>e.target.parentNode.remove()},"✕")));
+    el("label",{class:"f", title:"The number a point puts in its state column to use this list"},"id",
+      el("input",{class:"st-id", type:"number", value:id, style:"width:70px",
+                  title:"The number a point puts in its state column to use this list"})),
+    el("textarea",{class:"st-states",
+                   title:"One value=word per line, e.g. 0=Av. Serialized to IWMAC JSON so the operator sees the word; proper_case_states controls the casing",
+                   placeholder:"1=Kjøling\n2=Oppvarming"}, text),
+    el("button",{class:"ghost", title:"delete this list - points still referencing its id will fail validation",
+                 onclick:e=>e.target.parentNode.remove()},"✕")));
 }
 function collectStates() {
   const out = {};
@@ -746,19 +790,21 @@ function bumpTail(s) {
 }
 function addUnitRow(u = {}) {
   const tb = $("unitRows");
+  const uh = k => UNIT_COL_HELP[k];
   const tr = el("tr",{},
-    el("td",{class:"num"}, String(tb.children.length + 1)),
-    el("td",{}, el("input",{class:"u-id", value:u.unit_id||"", placeholder:"ID01", style:"width:80px"})),
-    el("td",{}, el("input",{class:"u-name", value:u.unit_name||"", placeholder:"Carel EVD 01", style:"width:220px"})),
-    el("td",{}, el("input",{class:"u-addr", value:u.driver_addr??"", placeholder:"1", style:"width:64px"})),
-    el("td",{}, el("input",{class:"u-vo", type:"number", value:u.view_order??0, style:"width:70px"})),
+    el("td",{class:"num", title:"Row number - not written to the database"},
+       String(tb.children.length + 1)),
+    el("td",{}, el("input",{class:"u-id", value:u.unit_id||"", placeholder:"ID01", style:"width:80px", title:uh("unit_id")})),
+    el("td",{}, el("input",{class:"u-name", value:u.unit_name||"", placeholder:"Carel EVD 01", style:"width:220px", title:uh("unit_name")})),
+    el("td",{}, el("input",{class:"u-addr", value:u.driver_addr??"", placeholder:"1", style:"width:64px", title:uh("driver_addr")})),
+    el("td",{}, el("input",{class:"u-vo", type:"number", value:u.view_order??0, style:"width:70px", title:uh("view_order")})),
     el("td",{},
       el("button",{class:"ghost", title:"duplicate with next id/address",
         onclick:()=>{ const d = unitData(tr);
                       addUnitRow({unit_id:bumpTail(d.unit_id), unit_name:bumpTail(d.unit_name),
                                   driver_addr:bumpTail(d.driver_addr), view_order:d.view_order});
                       renumberUnits(); }},"⧉"),
-      el("button",{class:"ghost", onclick:()=>{ tr.remove(); renumberUnits(); }},"✕")));
+      el("button",{class:"ghost", title:"remove this device", onclick:()=>{ tr.remove(); renumberUnits(); }},"✕")));
   tb.append(tr);
 }
 function renumberUnits() {
@@ -839,7 +885,8 @@ const DT_COMMON = ["Bit_Hold","A_Hold_I16_N","Digital_X_N","A_Input_I16_N","Bit_
                    "A_Input_U16_N","I_Hold_I16_N","Coil_X_N","A_Hold_F_N","WORD"];
 const SCALE_ORDER = ["x0.1","x0.01","x1","x0.001","INV","x10","x100","x1000"];
 function dtSelect(value) {
-  const s = el("select",{class:"p-datatype"}, el("option",{value:""},""));
+  const s = el("select",{class:"p-datatype", title:COL_HELP.datatype},
+                el("option",{value:""},""));
   const names = BOOT.datatypes.map(d => d.name);
   const common = DT_COMMON.filter(n => names.includes(n));
   const og1 = el("optgroup",{label:"common"});
@@ -855,8 +902,8 @@ function dtSelect(value) {
   }
   return s;
 }
-function pick(cls, value, items) {
-  const s = el("select",{class:cls});
+function pick(cls, value, items, title) {
+  const s = el("select",{class:cls, title});
   for (const it of items) s.append(el("option",{value:it}, it===""?"":String(it)));
   if (value != null && value !== "" && !items.includes(value))
     s.append(el("option",{value}, String(value)));
@@ -871,26 +918,28 @@ function addPointRow(p={}) {
   const tb = $("points");
   const tr = el("tr",{});
   tr._orig = p;   // fields the GUI does not edit (element_id, menu, active, ranges) survive
+  const h = k => COL_HELP[k];   // same string the column header shows
   tr.append(
-    el("td",{class:"num"}, String(tb.children.length+1)),
-    el("td",{}, el("input",{class:"p-group", list:"dlGroups", value:p.group||""})),
+    el("td",{class:"num", title:"Row number - not written to the database"},
+       String(tb.children.length+1)),
+    el("td",{}, el("input",{class:"p-group", list:"dlGroups", value:p.group||"", title:h("group")})),
     el("td",{}, dtSelect(p.datatype)),
-    el("td",{}, el("input",{class:"p-addr", type:"number", value:p.addr ?? "", style:"width:78px"})),
+    el("td",{}, el("input",{class:"p-addr", type:"number", value:p.addr ?? "", style:"width:78px", title:h("addr")})),
     el("td",{}, el("input",{class:"p-bit", inputmode:"numeric", value:p.bit ?? "", style:"width:54px",
-                            placeholder:"", title:"0-31 or nibble 5#4"})),
-    el("td",{}, el("input",{class:"p-system_no", value:p.system_no||"", style:"width:80px"})),
-    el("td",{}, el("input",{class:"p-tag", value:p.tag||"", style:"width:76px"})),
-    el("td",{}, el("input",{class:"p-text", value:p.text||""})),
-    el("td",{}, el("input",{class:"p-extra", value:p.extra||"", style:"width:110px"})),
-    el("td",{}, pick("p-alarm", p.alarm, ["","A","N","B","C"])),
-    el("td",{}, el("input",{class:"p-unit", list:"dlUnits", value:p.unit||"", style:"width:78px"})),
-    el("td",{}, pick("p-scale", p.scale, scaleItems())),
-    el("td",{}, pick("p-rw", p.rw||"r", ["r","rw","vr","vrw"])),
-    el("td",{}, pick("p-update_freq", p.update_freq, ["","fast","norm","slow","once","never"])),
-    el("td",{}, el("input",{class:"p-online", type:"checkbox", checked:p.online?"":undefined})),
-    el("td",{}, pick("p-decimals", p.decimals ?? "", ["",0,1,2,3])),
-    el("td",{}, el("input",{class:"p-statetext", type:"number", value:p.statetext ?? "", style:"width:52px"})),
-    el("td",{}, el("input",{class:"p-no_group", type:"checkbox", checked:p.no_group?"":undefined})),
+                            placeholder:"", title:h("bit")})),
+    el("td",{}, el("input",{class:"p-system_no", value:p.system_no||"", style:"width:80px", title:h("system_no")})),
+    el("td",{}, el("input",{class:"p-tag", value:p.tag||"", style:"width:76px", title:h("tag")})),
+    el("td",{}, el("input",{class:"p-text", value:p.text||"", title:h("text")})),
+    el("td",{}, el("input",{class:"p-extra", value:p.extra||"", style:"width:110px", title:h("extra")})),
+    el("td",{}, pick("p-alarm", p.alarm, ["","A","N","B","C"], h("alarm"))),
+    el("td",{}, el("input",{class:"p-unit", list:"dlUnits", value:p.unit||"", style:"width:78px", title:h("unit")})),
+    el("td",{}, pick("p-scale", p.scale, scaleItems(), h("scale"))),
+    el("td",{}, pick("p-rw", p.rw||"r", ["r","rw","vr","vrw"], h("rw"))),
+    el("td",{}, pick("p-update_freq", p.update_freq, ["","fast","norm","slow","once","never"], h("update_freq"))),
+    el("td",{}, el("input",{class:"p-online", type:"checkbox", checked:p.online?"":undefined, title:h("online")})),
+    el("td",{}, pick("p-decimals", p.decimals ?? "", ["",0,1,2,3], h("decimals"))),
+    el("td",{}, el("input",{class:"p-statetext", type:"number", value:p.statetext ?? "", style:"width:52px", title:h("statetext")})),
+    el("td",{}, el("input",{class:"p-no_group", type:"checkbox", checked:p.no_group?"":undefined, title:h("no_group")})),
     el("td",{},
       el("button",{class:"ghost", title:"duplicate (addr + 1)",
                    onclick:()=>{ const d = rowData(tr);
@@ -913,11 +962,17 @@ function updateStats() {
   const onl = real.filter(r => r.online).length;
   const alarms = real.filter(r => r.alarm).length;
   $("pointStats").replaceChildren(
-    el("span",{class:"chip"}, `${real.length} points`),
-    el("span",{class:"chip"}, `${bits} bits`),
-    el("span",{class:"chip"}, `${rw} writable`),
-    el("span",{class:"chip"}, `${alarms} alarms`),
-    el("span",{class:"chip", style: onl ? "" : "color:var(--amber)"},
+    el("span",{class:"chip", title:"Rows with a datatype, address or text - blank rows are not counted"},
+       `${real.length} points`),
+    el("span",{class:"chip", title:"Rows addressing a single bit inside a word. Their motherword rows are added at generate time, so this is not the final row count"},
+       `${bits} bits`),
+    el("span",{class:"chip", title:"Rows the operator can write to (rw or vrw) - setpoints and commands"},
+       `${rw} writable`),
+    el("span",{class:"chip", title:"Rows carrying an alarm priority letter (A, B, C or N)"},
+       `${alarms} alarms`),
+    el("span",{class:"chip", style: onl ? "" : "color:var(--amber)",
+               title: onl ? "Points marked as online indication - IWMAC uses them to see the unit is alive"
+                          : "No point is marked online - validation will fail until at least one is"},
        `${onl} online${onl ? "" : " ⚠"}`));
 }
 function rowData(tr) {
@@ -990,10 +1045,18 @@ function showResult(res, sqlWanted) {
   if (res.written)
     out.append(el("div",{class:"msg ok"}, "✓ Wrote " + res.written));
   const pre = el("pre",{class:"sql"}, res.sql || "");
-  const lines = (res.sql || "").split("\r\n").filter(l => l.startsWith("INSERT")).length;
+  // Count records, not one format's keyword: legacy writes one INSERT per record,
+  // modern writes multi-row REPLACE INTO blocks, so counting "INSERT" reported 0 for
+  // every script in the default format.
+  const srcLines = (res.sql || "").split(/\r?\n/);
+  const inserts = srcLines.filter(l => l.startsWith("INSERT INTO")).length;
+  const tuples = srcLines.filter(l => /^\(.*\),?;?$/.test(l)).length;
+  const rows = inserts || tuples;
   out.append(el("div",{class:"sqlbar"},
-    el("span",{class:"chip"}, `${lines} INSERT statements`),
-    el("button",{onclick:async e=>{
+    el("span",{class:"chip", title:"Rows this script writes across the group, param and set tables - the same count either SQL format"},
+       `${rows} rows`),
+    el("button",{title:"Copy the whole script to the clipboard, ready to paste into the plant database",
+                 onclick:async e=>{
       await navigator.clipboard.writeText(res.sql || "");
       e.target.textContent = "copied ✓";
       setTimeout(()=>e.target.textContent = "copy SQL", 1500);
