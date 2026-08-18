@@ -6,7 +6,7 @@
 
 const PYODIDE_VERSION = "0.26.4";
 const PYODIDE_URL = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
-const STATIC_PROJECTS = ["example-kjol.json"];
+const STATIC_PROJECTS = ["example-kjol.json", "example-em24-gavazzi.json"];
 
 function _overlay(text, error) {
   let div = document.getElementById("pyodideOverlay");
@@ -82,6 +82,13 @@ window.PYODIDE_API = async (path, body) => {
     }
     return res;
   }
+  if (path === "/api/parse") {
+    const res = JSON.parse(glue.parse_project(body.text));
+    if (res.error) throw new Error(res.error);
+    return res.project;
+  }
+  if (path === "/api/yaml")
+    return { text: glue.yaml_text(JSON.stringify(body.project)) };
   if (path === "/api/save") {
     const name = body.file || "project.yaml";
     if (name.endsWith(".json")) {

@@ -100,10 +100,13 @@
   <select id="fileSelect" title="Project file"></select>
   <button id="btnLoad">Load</button>
   <button id="btnNew" class="ghost">New</button>
-  <button id="btnImportJson" class="ghost" title="Load a Copilot-generated project JSON from disk">Import JSON</button>
-  <input id="jsonFile" type="file" accept=".json,application/json" hidden>
-  <input id="fileName" size="24" placeholder="project-name.yaml" title="File name for Save">
-  <button id="btnSave">Save YAML</button>
+  <button id="btnImportJson" class="ghost"
+          title="Load a project file from disk - Copilot-generated JSON or an exported YAML">Import project</button>
+  <input id="jsonFile" type="file" accept=".json,.yaml,.yml,application/json" hidden>
+  <input id="fileName" size="24" placeholder="project-name.yaml" title="File name for Save / Export">
+  <button id="btnSave" title="Save into the projects folder (browser build: downloads)">Save</button>
+  <button id="btnExport" class="ghost"
+          title="Download the project as a file to continue later - .yaml or .json by extension">Export</button>
   <span style="flex:1"></span>
   <button id="btnValidate">Validate</button>
   <button id="btnGenerate" class="primary">Generate SQL</button>
@@ -470,21 +473,66 @@ $("btnDefaultGroups").onclick = () => {
 };
 $("btnAddState").onclick = () => addStateRow();
 $("btnAddPoint").onclick = () => { addPointRow(); renumber(); };
+/* ---------- autosave: unsaved work survives closing the page ---------- */
+const AUTOSAVE_KEY = "modbusgen_autosave";
+let autosaveTimer = null;
+function queueAutosave() {
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(
+        {when: Date.now(), file: $("fileName").value, project: collectProject()}));
+    } catch {}
+  }, 1500);
+}
+document.addEventListener("input", queueAutosave);
+document.addEventListener("change", queueAutosave);
+
 $("btnNew").onclick = () => {
+  localStorage.removeItem(AUTOSAVE_KEY);
   $("fileName").value = "new-project.yaml";
   showProject({points:[]});
+  $("out").replaceChildren(el("div",{class:"msg note"}, "New empty project."));
 };
 $("btnImportJson").onclick = () => $("jsonFile").click();
 $("jsonFile").onchange = async e => {
   const file = e.target.files[0];
   if (!file) return;
   try {
-    showProject(JSON.parse(await file.text()));
+    const text = await file.text();
+    const data = /\.ya?ml$/i.test(file.name)
+      ? await api("/api/parse", {text})
+      : JSON.parse(text);
+    showProject(data);
     $("fileName").value = file.name;
     $("out").replaceChildren(el("div",{class:"msg note"},
-      `Imported ${file.name} - review, then Validate and Save.`));
-  } catch (err) { showError(new Error(`invalid JSON in ${file.name}: ${err.message}`)); }
+      `Imported ${file.name} - review, then Validate and Save/Export.`));
+    queueAutosave();
+  } catch (err) { showError(new Error(`could not import ${file.name}: ${err.message}`)); }
   e.target.value = "";
+};
+
+function downloadTextFile(name, text) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], {type:"text/plain;charset=utf-8"}));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+$("btnExport").onclick = async () => {
+  let name = $("fileName").value.trim() || "project.json";
+  if (!/\.(json|ya?ml)$/i.test(name)) name += ".json";
+  try {
+    if (/\.ya?ml$/i.test(name)) {
+      const res = await api("/api/yaml", {project: collectProject()});
+      downloadTextFile(name, res.text);
+    } else {
+      downloadTextFile(name, JSON.stringify(collectProject(), null, 2) + "\n");
+    }
+    $("out").replaceChildren(el("div",{class:"msg ok"},
+      `✓ Exported ${name} - import it later to continue where you left off.`));
+  } catch (e) { showError(e); }
 };
 $("btnLoad").onclick = async () => {
   const file = $("fileSelect").value;
@@ -530,6 +578,17 @@ async function init() {
     $("fileSelect").value = hash;
     $("fileName").value = hash;
     showProject(await api("/api/project?file=" + encodeURIComponent(hash)));
+    return;
+  }
+  let restored = null;
+  try { restored = JSON.parse(localStorage.getItem(AUTOSAVE_KEY) || "null"); } catch {}
+  if (restored?.project && (restored.project.table ||
+                            (restored.project.points || []).some(p => p.datatype || p.text))) {
+    showProject(restored.project);
+    $("fileName").value = restored.file || "";
+    const when = new Date(restored.when).toLocaleString();
+    $("out").replaceChildren(el("div",{class:"msg note"},
+      `Restored unsaved work from ${when}. "New" discards it; Save or Export to keep it.`));
   } else {
     showProject({points:[]});
   }
