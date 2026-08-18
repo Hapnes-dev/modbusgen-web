@@ -776,18 +776,41 @@
     <h2>Result</h2>
     <details class="help"><summary title="What Validate, Generate SQL and Generate + save file each do, and how to read the result">help</summary>
       <div class="helpbody">
-        <b>Validate</b> checks everything without generating. <b>Generate SQL</b> shows
-        the script here; <b>Generate + save file</b> also writes/downloads it. Red ✕
-        errors block generation and must be fixed; amber ⚠ warnings (missing motherwords,
-        blank texts) do not block but deserve a look. Import the finished
-        <code>…SQL File.txt</code> into the plant database as before.
-        <p>When validation fails, a blue <b>How to fix</b> panel follows the errors with
-        the step to take for each one, and the points it applies to. Errors of the same
-        kind are collapsed into a single recommendation, so forty rows missing a group
-        give you one instruction rather than forty. Where a safe mechanical repair
-        exists, the recommendation carries a <b>fix:</b> button that applies it and
-        validates again - point edits are undoable, option changes show as amber
-        deviations. Judgement calls (duplicates, unknown table keys) stay manual.</p>
+        <h4>The three buttons</h4>
+        <ul>
+          <li><b>Validate</b> — every check, nothing generated. Run it freely while
+            editing.</li>
+          <li><b>Generate SQL</b> — validates, then shows the script here. Nothing is
+            written anywhere.</li>
+          <li><b>Generate + save file</b> — the same, and writes the
+            <code>…SQL File.txt</code> (browser build: downloads it). Import that file
+            into the plant database as before.</li>
+        </ul>
+
+        <h4>Reading the outcome</h4>
+        <ul>
+          <li>A green dot with <b>Valid</b> and the point/group counts means clear to
+            generate. The same verdict sits beside the Validate button in the toolbar,
+            and dims when you edit afterwards.</li>
+          <li>Errors list in red, <b>block generation</b>, and mark the failing rows red
+            in the Points table — a <i>failing</i> chip up there shows only those rows.</li>
+          <li>Amber warnings (missing motherwords, blank alias texts) do not block, but
+            deserve a look before delivery.</li>
+        </ul>
+
+        <h4>How to fix</h4>
+        <p>On failure, a blue panel follows the errors: one recommendation per error
+        kind, naming the points it applies to. Where a safe mechanical repair exists it
+        carries a <b>fix:</b> button that applies the repair and validates again — point
+        edits are undoable, option changes show as amber deviations. Judgement calls
+        (duplicate ids, unknown table keys, which points get <i>online</i>) stay
+        manual.</p>
+
+        <h4>The script</h4>
+        <p>The chip counts the rows it writes — the same figure in either SQL format.
+        <b>copy SQL</b> puts the whole script on the clipboard; <b>export SQL</b>
+        downloads exactly these bytes, cp1252-encoded the way the IWMAC tables expect —
+        Norwegian text survives.</p>
       </div>
     </details>
     <div id="out"><div class="msg note">Validate or generate to see results.</div></div>
