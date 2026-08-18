@@ -411,17 +411,30 @@
         the short key you type in a point's <i>group</i> column
         (<span class="ex">aio</span>), right field = the name shown to the operator
         (<span class="ex">Analoge inn/ut</span>).
+
+        <h4>Defining them</h4>
         <ul>
-          <li>Every group used by a point <b>must exist here</b> — validation stops
-            otherwise.</li>
-          <li>The five defaults (<code>aio dio alm misc sch</code>) are what nearly every
-            existing plant list uses — one click adds them.</li>
-          <li>Display order in IWMAC = row order here.</li>
-          <li>The group key also becomes the first part of the point's
-            <code>element_id</code> (<span class="ex">aio_0_3_100</span>), so pick keys
-            before generating, not after.</li>
-          <li>A point with <i>no grp</i> ticked keeps its param/set rows but is left out
-            of the group display (used for motherwords and helper registers).</li>
+          <li>Every group a point uses <b>must exist here</b> — validation stops
+            otherwise, and its <b>fix:</b> button can create the missing ones for you,
+            key as alias, rename after.</li>
+          <li>The five defaults (<code>aio dio alm misc sch</code>) are what nearly
+            every existing plant list uses — one click adds them, and the keys
+            autocomplete in the points table.</li>
+          <li>Display order in IWMAC = row order here. Saving from the GUI writes that
+            order, replacing any order numbers an imported project carried.</li>
+        </ul>
+
+        <h4>How they bind to points</h4>
+        <ul>
+          <li>The key becomes the first part of the point's <code>element_id</code>
+            (<span class="ex">aio_0_3_100</span>) — pick keys before generating, not
+            after; renaming later changes every id in the group.</li>
+          <li><i>auto_groups</i> in the Project card fills empty group cells from the
+            datatype's default, and with <i>alarms_to_alm</i> moves lettered rows to
+            <code>alm</code>.</li>
+          <li>A point with <i>no grp</i> ticked keeps its param/set rows but stays out
+            of the operator menu; synthesized motherwords are excluded on their own
+            while <i>exclude_motherwords_from_groups</i> is on.</li>
         </ul>
       </div>
     </details>
