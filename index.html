@@ -107,14 +107,15 @@
   th[data-sort="asc"]::after{content:"\25B2"}
   th[data-sort="desc"]::after{content:"\25BC"}
   tr.hidden{display:none}
-  /* multi-select: the row-number cell is the drag handle, so dragging can never
-     be confused with selecting text inside a cell */
-  .points td.num{cursor:pointer;user-select:none}
-  .points td.num:hover{color:var(--text);background:var(--panel2)}
-  .points tr.sel > td{background:rgba(77,163,255,.14)}
-  .points tr.sel > td.num{background:rgba(77,163,255,.28);color:#fff}
-  .points tr.sel:hover > td{background:rgba(77,163,255,.18)}
-  body.rowdrag{cursor:pointer;user-select:none}
+  /* multi-select: click anywhere on a row. A faint wash, because it sits behind
+     every input in the row and must not fight with them for attention. */
+  .points tr.sel > td{background:rgba(77,163,255,.10)}
+  .points tr.sel > td.num{background:rgba(77,163,255,.18);color:var(--text)}
+  .points tr.sel:hover > td{background:rgba(77,163,255,.14)}
+  .points tr.sel > td:first-child{box-shadow:inset 2px 0 0 var(--accent)}
+  /* only while a drag has actually crossed rows - otherwise selecting text
+     inside a single input would stop working */
+  body.rowdrag,body.rowdrag .points{user-select:none}
   .bulkbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px;
            padding:8px 10px;border:1px solid var(--accent2);border-radius:6px;
            background:rgba(77,163,255,.07)}
@@ -526,11 +527,13 @@
 
         <h4>Editing many rows at once</h4>
         <ul>
-          <li><b>Select by the row numbers</b> in the left column: click one, or press
-            and drag down for a range. <b>Shift-click</b> extends from the last one,
-            <b>Ctrl-click</b> adds or removes a single row. <code>Esc</code> clears.
-            The numbers are the handle so that dragging never fights with selecting
-            text inside a cell.</li>
+          <li><b>Click anywhere on a row</b> to highlight it, and keep the button down
+            while dragging up or down to take in the rows you pass. <b>Shift-click</b>
+            extends from the last one, <b>Ctrl-click</b> adds or removes a single row,
+            <code>Esc</code> clears. Clicking a cell still puts the cursor in it, so a
+            single click both marks the row and lets you type.</li>
+          <li>The bar appears once <b>two or more</b> rows are highlighted - one row on
+            its own is just the row you are working in.</li>
           <li>A bar appears under the table: pick a column, give a value, and
             <b>apply</b> writes it to every selected row. <b>fill down</b> instead copies
             that column's value from the topmost selected row into the rest, leaving
@@ -585,7 +588,7 @@
     </div>
     <div class="bulkbar" id="bulkBar" hidden>
       <span class="chip" id="bulkCount"
-            title="Rows currently selected. Drag the row numbers to change the range, Esc to clear"></span>
+            title="Rows currently selected. Drag across rows to change the range, Esc to clear"></span>
       <span class="lbl">set</span>
       <select id="bulkCol" title="Which column the value below is written to"></select>
       <span id="bulkValueSlot"></span>
@@ -1032,7 +1035,7 @@ function addPointRow(p={}) {
   tr._orig = p;   // fields the GUI does not edit (element_id, menu, active, ranges) survive
   const h = k => COL_HELP[k];   // same string the column header shows
   tr.append(
-    el("td",{class:"num", title:"Row number, and the handle for selecting rows: click, drag down for a range, shift-click to extend, ctrl-click to add one. Not written to the database"},
+    el("td",{class:"num", title:"Row number - not written to the database"},
        String(tb.children.length+1)),
     el("td",{}, el("input",{class:"p-group", list:"dlGroups", value:p.group||"", title:h("group")})),
     el("td",{}, dtSelect(p.datatype)),
@@ -1184,8 +1187,10 @@ function ptSelectRange(a, b) {
 function ptPaintSelection() {
   for (const tr of $("points").children) tr.classList.toggle("sel", ptSel.has(tr));
   const n = ptSel.size;
-  $("bulkBar").hidden = n === 0;
-  if (n) $("bulkCount").textContent = `${n} row${n === 1 ? "" : "s"} selected`;
+  // A single click selects the row under the cursor, so the bar would otherwise
+  // be on screen permanently while editing. It is for editing rows together.
+  $("bulkBar").hidden = n < 2;
+  if (n > 1) $("bulkCount").textContent = `${n} rows selected`;
 }
 function ptClearSelection() { ptSel.clear(); ptSelAnchor = null; ptPaintSelection(); }
 
@@ -1403,12 +1408,13 @@ $("btnDefaultGroups").onclick = () => {
 $("btnAddState").onclick = () => addStateRow();
 $("btnAddPoint").onclick = () => { addPointRow(); renumber(); };
 
-/* points multi-select: drag the row numbers */
+/* points multi-select: press anywhere on a row and drag across rows.
+   Deliberately no preventDefault - the cell under the cursor must still take
+   focus so the row stays editable by clicking straight into it. */
 $("points").addEventListener("mousedown", e => {
-  const num = e.target.closest("td.num");
-  if (!num) return;
-  const tr = num.parentElement;
-  e.preventDefault();                    // no text selection while dragging
+  if (e.button !== 0) return;
+  const tr = e.target.closest("tr");
+  if (!tr || tr.parentElement !== $("points")) return;
   if (e.shiftKey && ptSelAnchor) {
     ptSelectRange(ptSelAnchor, tr);
   } else if (e.ctrlKey || e.metaKey) {
@@ -1420,12 +1426,16 @@ $("points").addEventListener("mousedown", e => {
     ptPaintSelection();
   }
   ptDragging = true;
-  document.body.classList.add("rowdrag");
 });
 $("points").addEventListener("mouseover", e => {
   if (!ptDragging || !ptSelAnchor) return;
   const tr = e.target.closest("tr");
-  if (tr && tr.parentElement === $("points")) ptSelectRange(ptSelAnchor, tr);
+  if (!tr || tr.parentElement !== $("points") || tr === ptSelAnchor) return;
+  // the drag has left its starting row, so this is a row selection, not a text
+  // selection inside one input - suppress the text drag from here on
+  document.body.classList.add("rowdrag");
+  document.getSelection()?.removeAllRanges();
+  ptSelectRange(ptSelAnchor, tr);
 });
 document.addEventListener("mouseup", () => {
   ptDragging = false;
