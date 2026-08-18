@@ -50,6 +50,12 @@
                  border-color:var(--accent2);color:#081120;font-weight:600}
   button.primary:hover{filter:brightness(1.1)}
   button.ghost{background:transparent}
+  /* transient result shown on the button itself - the Result card is far below
+     the toolbar, so a confirmation down there is easy to miss entirely */
+  button.okflash{border-color:var(--green);color:var(--green)}
+  button.badflash{border-color:var(--red);color:var(--red)}
+  button.working{opacity:.75}
+  button:disabled{opacity:.55;cursor:default}
   .chk{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--text)}
   .chk:hover{color:#fff}
   /* banded sub-sections, shared by the project and units & driver cards */
@@ -119,6 +125,9 @@
   .bulkbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px;
            padding:8px 10px;border:1px solid var(--accent2);border-radius:6px;
            background:rgba(77,163,255,.07)}
+  /* display:flex above beats the UA rule for [hidden], so say it explicitly -
+     without this the bar never hides and keeps showing a stale count */
+  .bulkbar[hidden]{display:none}
   .bulkbar select,.bulkbar input{font-size:12px;padding:3px 6px}
   .bulkbar button{font-size:12px;padding:3px 10px}
   .bulkbar .lbl{font-size:11px;color:var(--dim)}
@@ -197,7 +206,7 @@
           title="Load a project file from disk - Copilot-generated JSON or an exported YAML">Import project</button>
   <input id="jsonFile" type="file" accept=".json,.yaml,.yml,application/json" hidden>
   <input id="fileName" size="24" placeholder="project-name.yaml" title="File name for Save / Export">
-  <button id="btnSave" title="Save into the projects folder (browser build: downloads)">Save</button>
+  <button id="btnSave" title="Save the project into the projects folder under the name beside this button (browser build: downloads it). The button reports the outcome">Save</button>
   <button id="btnExport" class="ghost"
           title="Download the project as a file to continue later - .yaml or .json by extension">Export</button>
   <span style="flex:1"></span>
@@ -1262,7 +1271,8 @@ function ptPaintSelection() {
   // A single click selects the row under the cursor, so the bar would otherwise
   // be on screen permanently while editing. It is for editing rows together.
   $("bulkBar").hidden = n < 2;
-  if (n > 1) $("bulkCount").textContent = `${n} rows selected`;
+  // set unconditionally: guarding on n > 1 left the previous count on screen
+  $("bulkCount").textContent = n === 1 ? "1 row selected" : `${n} rows selected`;
 }
 function ptClearSelection() { ptSel.clear(); ptSelAnchor = null; ptPaintSelection(); }
 
@@ -1639,8 +1649,10 @@ function downloadTextFile(name, text) {
 }
 
 $("btnExport").onclick = async () => {
+  const btn = $("btnExport");
   let name = $("fileName").value.trim() || "project.json";
   if (!/\.(json|ya?ml)$/i.test(name)) name += ".json";
+  btnBusy(btn, "exporting…");
   try {
     if (/\.ya?ml$/i.test(name)) {
       const res = await api("/api/yaml", {project: collectProject()});
@@ -1650,7 +1662,8 @@ $("btnExport").onclick = async () => {
     }
     $("out").replaceChildren(el("div",{class:"msg ok"},
       `✓ Exported ${name} - import it later to continue where you left off.`));
-  } catch (e) { showError(e); }
+    btnFlash(btn, "exported ✓", "ok");
+  } catch (e) { btnFlash(btn, "export failed", "bad", 2600); showError(e); }
 };
 $("btnLoad").onclick = async () => {
   const file = $("fileSelect").value;
@@ -1661,16 +1674,53 @@ $("btnLoad").onclick = async () => {
     $("out").replaceChildren(el("div",{class:"msg note"}, "Loaded " + file));
   } catch (e) { showError(e); }
 };
+/* Report on the button that was pressed. _restore survives overlapping flashes
+   so a second click cannot leave a button stuck reading "saved ✓". */
+function btnBusy(btn, text) {
+  clearTimeout(btn._flashTimer);
+  btn._restore = btn._restore ?? btn.textContent;
+  btn.textContent = text;
+  btn.disabled = true;
+  btn.classList.add("working");
+  btn.classList.remove("okflash","badflash");
+}
+function btnFlash(btn, text, kind, ms = 1800) {
+  clearTimeout(btn._flashTimer);
+  btn._restore = btn._restore ?? btn.textContent;
+  btn.textContent = text;
+  btn.disabled = false;
+  btn.classList.remove("working");
+  btn.classList.toggle("okflash", kind === "ok");
+  btn.classList.toggle("badflash", kind === "bad");
+  btn._flashTimer = setTimeout(() => {
+    // never restore to nothing: a stray timer must not blank the button
+    if (btn._restore != null && btn._restore !== "") btn.textContent = btn._restore;
+    btn._restore = null;
+    btn.classList.remove("okflash","badflash");
+  }, ms);
+}
+
 $("btnSave").onclick = async () => {
+  const btn = $("btnSave");
   const file = $("fileName").value.trim();
-  if (!file) { showError(new Error("enter a file name first")); return; }
+  if (!file) {
+    btnFlash(btn, "name it first", "bad", 2200);
+    $("fileName").focus();
+    showError(new Error("enter a file name first"));
+    return;
+  }
+  btnBusy(btn, "saving…");
   try {
     await api("/api/save", {file, project: collectProject()});
     $("out").replaceChildren(el("div",{class:"msg ok"}, "Saved " + file));
     if (![...$("fileSelect").options].some(o => o.value === file))
       $("fileSelect").append(el("option",{value:file}, file));
     $("fileSelect").value = file;
-  } catch (e) { showError(e); }
+    btnFlash(btn, "saved ✓", "ok");
+  } catch (e) {
+    btnFlash(btn, "save failed", "bad", 2600);
+    showError(e);
+  }
 };
 $("btnValidate").onclick = async () => {
   try { showResult(await api("/api/validate", {project: collectProject()}), false); }
@@ -1681,8 +1731,12 @@ $("btnGenerate").onclick = async () => {
   catch (e) { showError(e); }
 };
 $("btnSaveSql").onclick = async () => {
-  try { showResult(await api("/api/generate", {project: collectProject(), save:true}), true); }
-  catch (e) { showError(e); }
+  const btn = $("btnSaveSql");
+  btnBusy(btn, "generating…");
+  try {
+    showResult(await api("/api/generate", {project: collectProject(), save:true}), true);
+    btnFlash(btn, "written ✓", "ok");
+  } catch (e) { btnFlash(btn, "failed", "bad", 2600); showError(e); }
 };
 
 async function init() {
