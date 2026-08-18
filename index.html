@@ -86,6 +86,20 @@
           margin:6px 0 0}
   details summary{cursor:pointer;color:var(--dim);font-size:12.5px;margin:6px 0}
   details summary:hover{color:var(--text)}
+  details.help{margin:-2px 0 10px}
+  details.help summary{display:inline-flex;gap:6px;align-items:center;font-size:12px;
+    list-style:none;user-select:none}
+  details.help summary::before{content:"ⓘ";color:var(--accent);font-size:13px}
+  details.help[open] summary{color:var(--text)}
+  .helpbody{background:var(--panel2);border:1px solid var(--line);border-radius:6px;
+    padding:10px 14px;margin-top:6px;font-size:12.5px;color:#b9c0cc;line-height:1.55;
+    max-width:980px}
+  .helpbody b{color:var(--text)}
+  .helpbody code{background:#12151b;border:1px solid var(--line);border-radius:4px;
+    padding:0 5px;font-size:12px;color:#a8d8ff}
+  .helpbody ul{margin:6px 0;padding-left:20px}
+  .helpbody li{margin:3px 0}
+  .helpbody .ex{color:var(--green)}
   .pill{font-size:11px;background:var(--panel2);border:1px solid var(--line);
         border-radius:10px;padding:2px 8px;color:var(--amber)}
   .grp-grid,.st-grid{display:flex;flex-direction:column;gap:6px}
@@ -124,10 +138,61 @@
     <details><summary>more options</summary>
       <div class="row" id="optMore"></div>
     </details>
+    <details class="help"><summary>help</summary>
+      <div class="helpbody">
+        <b>table name</b> names the three database tables the SQL script fills:
+        <code>iw_par_&lt;name&gt;_param</code>, <code>iw_par_&lt;name&gt;_groups</code>,
+        <code>iw_set_&lt;name&gt;</code>. Lowercase letters/digits, e.g.
+        <span class="ex">kjol</span>. <b>plant number</b> only appears in the SQL file name.
+        <ul>
+          <li><b>subtract_one</b> — on when the device documentation counts registers
+            from 1 (most do, incl. <code>4xxxx</code>-style lists:
+            <span class="ex">40101 → addr 101 → polled as 100</span>). Off when the doc
+            gives zero-based protocol addresses. Enter addresses exactly as documented —
+            this switch handles the offset for every point at once.</li>
+          <li><b>truncate</b> — the script empties the tables before inserting
+            (normal for a re-import). <b>create_tables</b> — add
+            <code>CREATE TABLE IF NOT EXISTS</code>, only needed the first time a plant
+            gets this table.</li>
+          <li><b>force_active</b> — every point gets <code>active=1</code> regardless of
+            the per-point active field. Rows with text
+            <span class="ex">Reserve.</span> stay inactive (spare rows).</li>
+          <li><b>auto_motherwords</b> — bit rows need their whole word polled once;
+            the tool creates that row for you. Leave on unless you add motherword rows
+            yourself.</li>
+          <li>Under <i>more options</i>: <b>use_system_no / use_tag / use_extra</b>
+            control which parts build the alias text
+            (<span class="ex">360.001-RT401-Romtemperatur-(1=Drift)</span>);
+            <b>statetext_only_rw</b> / <b>statetext_in_alias</b> control where state
+            texts end up; <b>auto_groups</b> fills empty group cells from the datatype's
+            default group.</li>
+        </ul>
+      </div>
+    </details>
   </div>
 
   <div class="card">
     <h2>Groups</h2>
+    <details class="help"><summary>help</summary>
+      <div class="helpbody">
+        Groups decide how points are <b>grouped in the IWMAC display</b>. Left field =
+        the short key you type in a point's <i>group</i> column
+        (<span class="ex">aio</span>), right field = the name shown to the operator
+        (<span class="ex">Analoge inn/ut</span>).
+        <ul>
+          <li>Every group used by a point <b>must exist here</b> — validation stops
+            otherwise.</li>
+          <li>The five defaults (<code>aio dio alm misc sch</code>) are what nearly every
+            existing plant list uses — one click adds them.</li>
+          <li>Display order in IWMAC = row order here.</li>
+          <li>The group key also becomes the first part of the point's
+            <code>element_id</code> (<span class="ex">aio_0_3_100</span>), so pick keys
+            before generating, not after.</li>
+          <li>A point with <i>no grp</i> ticked keeps its param/set rows but is left out
+            of the group display (used for motherwords and helper registers).</li>
+        </ul>
+      </div>
+    </details>
     <div class="grp-grid" id="groups"></div>
     <div class="row" style="margin-top:8px">
       <button id="btnAddGroup">+ group</button>
@@ -139,14 +204,81 @@
 
   <div class="card">
     <h2>State texts</h2>
+    <details class="help"><summary>help</summary>
+      <div class="helpbody">
+        A state list translates a register's <b>numeric values into words</b> in IWMAC —
+        instead of the operator seeing <span class="ex">2</span>, they see
+        <span class="ex">Avriming</span>. Typical use: operating-mode and status
+        registers whose documentation says something like
+        <i>"0 = Off, 1 = Run, 2 = Defrost"</i>.
+        <ul>
+          <li>Make <b>one list per distinct enumeration</b> in the device documentation,
+            and give it a free-choice <b>id</b> number (1, 2, 3 …).</li>
+          <li>One state per line, written <code>number=word</code>:<br>
+            <span class="ex">0=Av</span><br><span class="ex">1=Drift</span><br>
+            <span class="ex">2=Avriming</span></li>
+          <li><b>Keep the vendor's numbers exactly</b>; translate only the words
+            (Norwegian). Numbers must be 0 or higher — an enum with negative values
+            cannot be a state list; leave that point without one.</li>
+          <li>Attach a list to a point by typing its id in the point's
+            <b>state</b> column. Several points can share one list — define the
+            enumeration once.</li>
+          <li>On generate, the list becomes the IWMAC state JSON in the point's
+            <code>format_extra</code> field. The options <i>statetext_only_rw</i>
+            (JSON only on writable points) and <i>statetext_in_alias</i> (plain text
+            appended to the alias) fine-tune the behaviour.</li>
+          <li>A point with a state list usually needs no unit, scale or decimals.</li>
+        </ul>
+      </div>
+    </details>
     <div class="st-grid" id="statetexts"></div>
     <button id="btnAddState" style="margin-top:8px">+ state list</button>
-    <div class="msg note" style="margin-top:8px">One state per line, e.g. <b>1=Kjøling</b>.
-      Reference the list id from a point's <b>state</b> column.</div>
   </div>
 
   <div class="card">
     <h2>Points <span class="chips" id="pointStats"></span></h2>
+    <details class="help"><summary>help</summary>
+      <div class="helpbody">
+        One row per Modbus point. Minimum per row: <b>group</b>, <b>datatype</b>,
+        <b>addr</b>, <b>text</b>. Hover any column header for its meaning.
+        <ul>
+          <li><b>addr</b> — the register number exactly as the device documentation
+            prints it (strip a <code>4xxxx</code>/<code>3xxxxx</code> prefix:
+            <span class="ex">40101 → 101</span>). The <i>subtract_one</i> option handles
+            the 1-based offset globally — never subtract yourself.</li>
+          <li><b>datatype</b> — the "common" group covers nearly everything:
+            <code>A_Hold_I16_N</code> analog holding register ·
+            <code>A_Input_I16_N</code> analog input register ·
+            <code>I_Hold_U16_N</code> plain integer/counter ·
+            <code>Digital_X_N</code> discrete input · <code>Coil_X_N</code> coil ·
+            <code>Bit_Hold</code>/<code>Bit_Input</code> one bit inside a word ·
+            <code>…_I32/U32/F</code> for 32-bit values. If the doc says the word order is
+            reversed (LSW first — energy meters often do), use the <code>_W</code>
+            variants.</li>
+          <li><b>bit rows</b> — set <i>bit</i> 0–31 and use a <code>Bit_*</code>
+            datatype. The required motherword row is created automatically on generate.
+            Alarm bits: alarm letter <span class="ex">A</span> + group
+            <span class="ex">alm</span>.</li>
+          <li><b>rw</b> — <code>rw</code> only when the documentation says the register
+            is writable (setpoints, commands); everything else <code>r</code>.</li>
+          <li><b>onl</b> — tick on 1–3 reliable, always-readable points (a temperature
+            or status register). IWMAC uses them to detect that the unit is online;
+            at least one is required.</li>
+          <li><b>scale + dec</b> — doc says <i>"value × 0.1"</i> → scale
+            <span class="ex">x0.1</span>, dec <span class="ex">1</span>. dec sets the
+            display format <code>%.1f</code>.</li>
+          <li><b>unit</b> — pick from the list (autocomplete). Temperature =
+            <span class="ex">C</span>. Missing unit? Leave empty and add it to the unit
+            table instead of inventing a spelling.</li>
+          <li><b>text</b> — short Norwegian description; it is what the operator reads.
+            <span class="ex">Reserve.</span> marks a spare row (kept in the list,
+            set inactive).</li>
+          <li>⧉ duplicates a row with <b>addr + 1</b> — fastest way through a
+            sequential register block. Every <code>driver_id</code>/<code>element_id</code>
+            must be unique; duplicates are caught by Validate.</li>
+        </ul>
+      </div>
+    </details>
     <div class="tblwrap">
       <table class="points">
         <thead><tr>
@@ -180,7 +312,44 @@
 
   <div class="card">
     <h2>Result</h2>
+    <details class="help"><summary>help</summary>
+      <div class="helpbody">
+        <b>Validate</b> checks everything without generating. <b>Generate SQL</b> shows
+        the script here; <b>Generate + save file</b> also writes/downloads it. Red ✕
+        errors block generation and must be fixed; amber ⚠ warnings (missing motherwords,
+        blank texts) do not block but deserve a look. Import the finished
+        <code>…SQL File.txt</code> into the plant database as before.
+      </div>
+    </details>
     <div id="out"><div class="msg note">Validate or generate to see results.</div></div>
+  </div>
+
+  <div class="card">
+    <h2>Workflow &amp; tips</h2>
+    <div class="helpbody" style="max-width:none">
+      <b>Typical workflow:</b> ① fill table name + plant and check <i>subtract_one</i>
+      against the device docs → ② add groups (start with the defaults) → ③ define state
+      lists for enumerated registers → ④ enter points, or <b>Import project</b> a
+      Copilot-generated JSON → ⑤ <b>Validate</b>, fix what it lists → ⑥ <b>Generate</b>.
+      <ul>
+        <li><b>Let Copilot do the typing:</b> give it the device's register PDF together
+          with the authoring guide (<code>docs/11-ai-json-authoring.md</code> in the
+          repository); it returns a JSON file that Import project loads directly.</li>
+        <li><b>Continue later:</b> the editor autosaves in this browser — reopening the
+          page restores unsaved work. <b>Export</b> downloads the project as a file
+          (<code>.yaml</code> or <code>.json</code> by the name you type) for keeping,
+          mailing or another machine; <b>Import project</b> brings it back.</li>
+        <li><b>Old Excel workbooks:</b> convert with
+          <code>modbusgen import-xlsm old.xlsm</code> (CLI), then open the result here.</li>
+        <li><b>Direct link to a project:</b> add <code>#file-name</code> to the page URL,
+          e.g. <code>…/#example-em24-gavazzi.json</code>.</li>
+        <li><b>copy SQL</b> under the preview copies the whole script to the clipboard;
+          the chip shows how many INSERT statements it holds.</li>
+        <li>Missing datatype, unit or scale key? Do not improvise — extend
+          <code>data/tables/*.csv</code> in the repository so every future list can use
+          it too.</li>
+      </ul>
+    </div>
   </div>
 </main>
 <datalist id="dlUnits"></datalist>
