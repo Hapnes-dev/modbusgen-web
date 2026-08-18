@@ -205,6 +205,18 @@
   .pill{font-size:11px;background:var(--panel2);border:1px solid var(--line);
         border-radius:10px;padding:2px 8px;color:var(--amber)}
   .grp-grid,.st-grid{display:flex;flex-direction:column;gap:6px}
+  /* state lists: one structured value=word line per state */
+  .st-grid{flex-direction:row;flex-wrap:wrap;gap:10px;align-items:flex-start}
+  .st-list{border:1px solid var(--line);border-radius:6px;background:var(--panel2);
+           padding:8px 10px 10px}
+  .st-head{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+  .st-head .lbl{font-size:11px;color:var(--dim)}
+  .st-lines{display:flex;flex-direction:column;gap:4px}
+  .st-line{display:flex;gap:6px;align-items:center}
+  .st-line .sv{width:52px;text-align:right;font-family:Consolas,monospace;font-size:12px}
+  .st-line .sw{width:200px;font-size:12.5px}
+  .st-line .eq{color:var(--dim);font-size:11px}
+  .st-list .addline{margin-top:6px;font-size:11.5px;padding:2px 9px}
   .grp-row{display:flex;gap:6px;align-items:center}
   .st-row{display:flex;gap:8px;align-items:flex-start}
   .st-row textarea{width:360px;height:74px;font-family:Consolas,monospace;font-size:12px}
@@ -409,9 +421,12 @@
         <ul>
           <li>Make <b>one list per distinct enumeration</b> in the device documentation,
             and give it a free-choice <b>id</b> number (1, 2, 3 …).</li>
-          <li>One state per line, written <code>number=word</code>:<br>
-            <span class="ex">0=Av</span><br><span class="ex">1=Drift</span><br>
-            <span class="ex">2=Avriming</span></li>
+          <li>One state per line — the number box carries the register value, the text
+            box the word: <span class="ex">0</span> = <span class="ex">Av</span>,
+            <span class="ex">1</span> = <span class="ex">Drift</span>. <b>Enter</b> in a
+            word box (or <b>+ state</b>) adds the next line with the value counted on;
+            <b>pasting a whole vendor list</b> like <code>0=Av&#10;1=Drift</code> into a
+            word box fills all the lines at once.</li>
           <li><b>Keep the vendor's numbers exactly</b>; translate only the words
             (Norwegian). Numbers must be 0 or higher — an enum with negative values
             cannot be a state list; leave that point without one.</li>
@@ -427,7 +442,7 @@
       </div>
     </details>
     <div class="st-grid" id="statetexts"></div>
-    <button id="btnAddState" style="margin-top:8px" title="Add a state-text list: one value=word per line, referenced from a point's state column by its id">+ state list</button>
+    <button id="btnAddState" style="margin-top:8px" title="Add a state-text list - one value and word per line, referenced from a point's state column by its id">+ state list</button>
   </div>
 
   <div class="card">
@@ -935,27 +950,74 @@ function refreshGroupList() {
 }
 
 /* ---------- state texts ---------- */
+function addStateLine(box, value="", word="", focusWord=false) {
+  const lines = box.querySelector(".st-lines");
+  const line = el("div",{class:"st-line"},
+    el("input",{class:"sv", inputmode:"numeric", value:String(value),
+                title:"The register value, exactly as the device documentation numbers it (0 or higher)"}),
+    el("span",{class:"eq"},"="),
+    el("input",{class:"sw", value:word, placeholder:"Drift",
+                title:"The word the operator sees for this value (Norwegian). Enter adds the next state; pasting a 0=Av list fills all lines at once"}),
+    el("button",{class:"ghost rowbtn", title:"remove this state",
+                 onclick:()=>line.remove()},"✕"));
+  const sw = line.querySelector(".sw");
+  sw.addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); stAddNext(box); }
+  });
+  // pasting a whole vendor list (0=Av\n1=Drift) into a word box fills the list
+  sw.addEventListener("paste", e => {
+    const text = (e.clipboardData || window.clipboardData).getData("text");
+    if (!/\n/.test(text) && !/=/.test(text)) return;   // ordinary word paste
+    const pairs = [];
+    for (const l of text.split(/\r?\n/)) {
+      const m = l.match(/^\s*(\d+)\s*=\s*(.+?)\s*$/);
+      if (m) pairs.push([m[1], m[2]]);
+    }
+    if (!pairs.length) return;
+    e.preventDefault();
+    const [first, ...rest] = pairs;
+    line.querySelector(".sv").value = first[0];
+    sw.value = first[1];
+    for (const [v, w] of rest) addStateLine(box, v, w);
+    sw.dispatchEvent(new Event("input", {bubbles:true}));
+  });
+  lines.append(line);
+  if (focusWord) sw.focus();
+  return line;
+}
+function stAddNext(box) {
+  // next value = last value + 1, the numbering vendors use
+  const vals = [...box.querySelectorAll(".sv")].map(i => Number(i.value)).filter(Number.isFinite);
+  addStateLine(box, vals.length ? Math.max(...vals) + 1 : 0, "", true);
+}
 function addStateRow(id="", states=null) {
-  const text = states ? Object.entries(states).map(([n,w]) => `${n}=${w}`).join("\n") : "";
-  $("statetexts").append(el("div",{class:"st-row"},
-    el("label",{class:"f", title:"The number a point puts in its state column to use this list"},"id",
-      el("input",{class:"st-id", type:"number", value:id, style:"width:70px",
-                  title:"The number a point puts in its state column to use this list"})),
-    el("textarea",{class:"st-states",
-                   title:"One value=word per line, e.g. 0=Av. Serialized to IWMAC JSON so the operator sees the word; proper_case_states controls the casing",
-                   placeholder:"1=Kjøling\n2=Oppvarming"}, text),
-    el("button",{class:"ghost rowbtn", title:"delete this list - points still referencing its id will fail validation",
-                 onclick:e=>e.target.parentNode.remove()},"✕")));
+  const box = el("div",{class:"st-list"},
+    el("div",{class:"st-head"},
+      el("span",{class:"lbl", title:"The number a point puts in its state column to use this list"},"id"),
+      el("input",{class:"st-id", type:"number", value:id, style:"width:64px",
+                  title:"The number a point puts in its state column to use this list"}),
+      el("span",{class:"h2fill"}),
+      el("button",{class:"ghost rowbtn", title:"delete this whole list - points still referencing its id will fail validation",
+                   onclick:e=>box.remove()},"✕")),
+    el("div",{class:"st-lines"}),
+    el("button",{class:"ghost addline",
+                 title:"Add the next state - the value continues from the last line. Enter in a word box does the same",
+                 onclick:()=>stAddNext(box)},"+ state"));
+  const entries = states ? Object.entries(states) : [];
+  if (entries.length) for (const [v, w] of entries) addStateLine(box, v, w);
+  else addStateLine(box, 0, "");
+  $("statetexts").append(box);
 }
 function collectStates() {
   const out = {};
-  for (const row of $("statetexts").children) {
-    const id = row.querySelector(".st-id").value.trim();
+  for (const box of $("statetexts").children) {
+    const id = box.querySelector(".st-id").value.trim();
     if (!id) continue;
     const states = {};
-    for (const line of row.querySelector(".st-states").value.split("\n")) {
-      const m = line.match(/^\s*(\d+)\s*=\s*(.+?)\s*$/);
-      if (m) states[m[1]] = m[2];
+    for (const line of box.querySelectorAll(".st-line")) {
+      const v = line.querySelector(".sv").value.trim();
+      const w = line.querySelector(".sw").value.trim();
+      if (/^\d+$/.test(v) && w) states[v] = w;
     }
     out[id] = states;
   }
