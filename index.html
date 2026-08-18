@@ -124,6 +124,13 @@
   .bulkbar .lbl{font-size:11px;color:var(--dim)}
   .bulkbar .danger{border-color:#7a3b3b;color:var(--red)}
   .bulkbar .danger:hover{border-color:var(--red)}
+  /* ⧉ and ✕ are different widths in the fallback font, so a content-sized button
+     comes out a different size for each. Fix the box and centre the glyph. */
+  .rowbtn{width:26px;height:24px;padding:0;font-size:12px;line-height:1;
+          display:inline-flex;align-items:center;justify-content:center;
+          vertical-align:middle}
+  td.acts{white-space:nowrap;padding-left:4px}
+  td.acts .rowbtn + .rowbtn{margin-left:4px}
   .card.maximized{position:fixed;inset:8px;z-index:60;margin:0;
                   display:flex;flex-direction:column;overflow:hidden}
   .card.maximized .tblwrap{max-height:none;flex:1;min-height:0}
@@ -852,7 +859,7 @@ function addGroupRow(name="", alias="") {
     el("input",{class:"g-alias", placeholder:"display alias (e.g. Zone 1)", value:alias,
                 title:"The name the operator sees for this group in IWMAC. Blank falls back to the key itself",
                 style:"width:260px"}),
-    el("button",{class:"ghost", title:"delete this group - points still referencing it will fail validation",
+    el("button",{class:"ghost rowbtn", title:"delete this group - points still referencing it will fail validation",
                  onclick:e=>{e.target.parentNode.remove();refreshGroupList();}},"✕")));
 }
 function collectGroups() {
@@ -878,7 +885,7 @@ function addStateRow(id="", states=null) {
     el("textarea",{class:"st-states",
                    title:"One value=word per line, e.g. 0=Av. Serialized to IWMAC JSON so the operator sees the word; proper_case_states controls the casing",
                    placeholder:"1=Kjøling\n2=Oppvarming"}, text),
-    el("button",{class:"ghost", title:"delete this list - points still referencing its id will fail validation",
+    el("button",{class:"ghost rowbtn", title:"delete this list - points still referencing its id will fail validation",
                  onclick:e=>e.target.parentNode.remove()},"✕")));
 }
 function collectStates() {
@@ -912,13 +919,13 @@ function addUnitRow(u = {}) {
     el("td",{}, el("input",{class:"u-name", value:u.unit_name||"", placeholder:"Carel EVD 01", style:"width:220px", title:uh("unit_name")})),
     el("td",{}, el("input",{class:"u-addr", value:u.driver_addr??"", placeholder:"1", style:"width:64px", title:uh("driver_addr")})),
     el("td",{}, el("input",{class:"u-vo", type:"number", value:u.view_order??0, style:"width:70px", title:uh("view_order")})),
-    el("td",{},
-      el("button",{class:"ghost", title:"duplicate with next id/address",
+    el("td",{class:"acts"},
+      el("button",{class:"ghost rowbtn", title:"duplicate with next id/address",
         onclick:()=>{ const d = unitData(tr);
                       addUnitRow({unit_id:bumpTail(d.unit_id), unit_name:bumpTail(d.unit_name),
                                   driver_addr:bumpTail(d.driver_addr), view_order:d.view_order});
                       renumberUnits(); }},"⧉"),
-      el("button",{class:"ghost", title:"remove this device", onclick:()=>{ tr.remove(); renumberUnits(); }},"✕")));
+      el("button",{class:"ghost rowbtn", title:"remove this device", onclick:()=>{ tr.remove(); renumberUnits(); }},"✕")));
   tb.append(tr);
 }
 function renumberUnits() {
@@ -1055,13 +1062,13 @@ function addPointRow(p={}) {
     el("td",{}, pick("p-decimals", p.decimals ?? "", ["",0,1,2,3], h("decimals"))),
     el("td",{}, el("input",{class:"p-statetext", type:"number", value:p.statetext ?? "", style:"width:52px", title:h("statetext")})),
     el("td",{}, el("input",{class:"p-no_group", type:"checkbox", checked:p.no_group?"":undefined, title:h("no_group")})),
-    el("td",{},
-      el("button",{class:"ghost", title:"duplicate (addr + 1)",
+    el("td",{class:"acts"},
+      el("button",{class:"ghost rowbtn", title:"duplicate (addr + 1)",
                    onclick:()=>{ const d = rowData(tr);
                                  if (typeof d.addr === "number") d.addr += 1;
                                  delete d.element_id;
                                  addPointRow(d); renumber(); }},"⧉"),
-      el("button",{class:"ghost", title:"delete",
+      el("button",{class:"ghost rowbtn", title:"delete",
                    onclick:()=>{ tr.remove(); renumber(); }},"✕")));
   tb.append(tr);
 }
