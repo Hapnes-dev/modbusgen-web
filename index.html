@@ -210,9 +210,11 @@
           title="Load a project file from disk - Copilot-generated JSON or an exported YAML">Import project</button>
   <input id="jsonFile" type="file" accept=".json,.yaml,.yml,application/json" hidden>
   <input id="fileName" size="24" placeholder="project-name.yaml" title="File name for Save / Export">
-  <button id="btnSave" title="Save the project into the projects folder under the name beside this button (browser build: downloads it). The button reports the outcome">Save</button>
+  <button id="btnSave" title="Keep the project in this browser under the name beside this button. Nothing is written to disk and nothing is downloaded - use Export for a file. The button reports the outcome">Save</button>
   <button id="btnExport" class="ghost"
           title="Download the project as a file to continue later - .yaml or .json by extension">Export</button>
+  <button id="btnDelete" class="ghost" disabled
+          title="Select a project saved in this browser to delete it">Delete</button>
   <span style="flex:1"></span>
   <button id="btnValidate"
           title="Check the project without producing SQL: unknown table keys, duplicate ids, undefined groups, unresolved state refs, no online point. Warnings do not block">Validate</button>
@@ -743,7 +745,11 @@
           with the authoring guide (<code>docs/11-ai-json-authoring.md</code> in the
           repository); it returns a JSON file that Import project loads directly.</li>
         <li><b>Continue later:</b> the editor autosaves in this browser — reopening the
-          page restores unsaved work. <b>Export</b> downloads the project as a file
+          page restores unsaved work. <b>Save</b> keeps a named copy in this browser, and
+          those appear in the picker under <i>saved in this browser</i>; <b>Delete</b>
+          removes the selected one, after asking once. Nothing there leaves this machine
+          or survives clearing site data.</li>
+        <li><b>For a real file:</b> <b>Export</b> downloads the project
           (<code>.yaml</code> or <code>.json</code> by the name you type) for keeping,
           mailing or another machine; <b>Import project</b> brings it back.</li>
         <li><b>Old Excel workbooks:</b> convert with
@@ -1758,12 +1764,25 @@ $("btnExport").onclick = async () => {
   } catch (e) { btnFlash(btn, "export failed", "bad", 2600); showError(e); }
 };
 $("btnLoad").onclick = async () => {
-  const file = $("fileSelect").value;
-  if (!file) return;
+  const value = $("fileSelect").value;
+  if (!value) return;
+  if (value.startsWith(LOCAL_PREFIX)) {
+    const name = value.slice(LOCAL_PREFIX.length);
+    const rec = savedAll()[name];
+    if (!rec) {                                  // cleared in another tab
+      refreshFileSelect("");
+      showError(new Error(`"${name}" is no longer stored in this browser`));
+      return;
+    }
+    showProject(rec.project);
+    $("fileName").value = name;
+    outNote(`Loaded "${name}" from this browser, saved ${new Date(rec.when).toLocaleString()}.`);
+    return;
+  }
   try {
-    showProject(await api("/api/project?file=" + encodeURIComponent(file)));
-    $("fileName").value = file;
-    $("out").replaceChildren(el("div",{class:"msg note"}, "Loaded " + file));
+    showProject(await api("/api/project?file=" + encodeURIComponent(value)));
+    $("fileName").value = value;
+    outNote("Loaded " + value);
   } catch (e) { showError(e); }
 };
 /* Report on the button that was pressed. _restore survives overlapping flashes
@@ -1776,7 +1795,7 @@ function btnBusy(btn, text) {
   btn.classList.add("working");
   btn.classList.remove("okflash","badflash");
 }
-function btnFlash(btn, text, kind, ms = 1800) {
+function btnFlash(btn, text, kind, ms = 1800, onRestore) {
   clearTimeout(btn._flashTimer);
   btn._restore = btn._restore ?? btn.textContent;
   btn.textContent = text;
@@ -1789,31 +1808,107 @@ function btnFlash(btn, text, kind, ms = 1800) {
     if (btn._restore != null && btn._restore !== "") btn.textContent = btn._restore;
     btn._restore = null;
     btn.classList.remove("okflash","badflash");
+    // the flash re-enabled the button; whoever owns its enabled state re-decides
+    if (onRestore) onRestore();
   }, ms);
 }
+function btnReset(btn, label) {                 // cancel a flash without enabling anything
+  clearTimeout(btn._flashTimer);
+  btn._flashTimer = null;
+  btn._restore = null;
+  btn.textContent = label;
+  btn.classList.remove("okflash","badflash","working");
+}
 
-$("btnSave").onclick = async () => {
+/* ---------- projects kept in this browser ----------
+   Save keeps a named copy in localStorage and touches neither the disk nor the
+   download folder; Export is the one that produces a file. Entries are listed
+   in the picker under their own heading and prefixed "local:" in the option
+   value, so nothing here can be confused with a file in the projects folder. */
+const SAVED_KEY = "modbusgen_saved";
+const LOCAL_PREFIX = "local:";
+function savedAll() {
+  try { return JSON.parse(localStorage.getItem(SAVED_KEY) || "{}"); } catch { return {}; }
+}
+function savedWrite(all) { localStorage.setItem(SAVED_KEY, JSON.stringify(all)); }
+
+function refreshFileSelect(select) {
+  const sel = $("fileSelect");
+  const want = select ?? sel.value;
+  const cached = Object.keys(savedAll()).sort();
+  sel.replaceChildren(el("option",{value:""},"- project file -"));
+  if (cached.length) {
+    const g = el("optgroup",{label:"saved in this browser"});
+    for (const n of cached) g.append(el("option",{value:LOCAL_PREFIX + n}, n));
+    sel.append(g);
+  }
+  if (BOOT?.projects?.length) {
+    const g = el("optgroup",{label:"projects folder"});
+    for (const p of BOOT.projects) g.append(el("option",{value:p}, p));
+    sel.append(g);
+  }
+  sel.value = want;
+  if (sel.value !== want) sel.value = "";      // the wanted entry is gone
+  syncDeleteButton();
+}
+function syncDeleteButton() {
+  const v = $("fileSelect").value, btn = $("btnDelete");
+  const local = v.startsWith(LOCAL_PREFIX);
+  // picking something else cancels a delete waiting for its second press, and
+  // must not leave the button enabled behind it
+  if (btn._armed) { btn._armed = false; btnReset(btn, "Delete"); }
+  btn.disabled = !local;
+  btn.title = local
+    ? `Delete "${v.slice(LOCAL_PREFIX.length)}" from this browser. Asks once first; files in the projects folder are never touched`
+    : "Select a project saved in this browser to delete it. Files in the projects folder cannot be deleted from here";
+}
+function outNote(text, kind = "note") {
+  $("out").replaceChildren(el("div",{class:"msg " + kind}, text));
+}
+
+$("btnSave").onclick = () => {
   const btn = $("btnSave");
-  const file = $("fileName").value.trim();
-  if (!file) {
+  const name = $("fileName").value.trim();
+  if (!name) {
     btnFlash(btn, "name it first", "bad", 2200);
     $("fileName").focus();
-    showError(new Error("enter a file name first"));
     return;
   }
-  btnBusy(btn, "saving…");
   try {
-    await api("/api/save", {file, project: collectProject()});
-    $("out").replaceChildren(el("div",{class:"msg ok"}, "Saved " + file));
-    if (![...$("fileSelect").options].some(o => o.value === file))
-      $("fileSelect").append(el("option",{value:file}, file));
-    $("fileSelect").value = file;
-    btnFlash(btn, "saved ✓", "ok");
+    const all = savedAll();
+    const existed = name in all;
+    all[name] = {when: Date.now(), project: collectProject()};
+    savedWrite(all);
+    refreshFileSelect(LOCAL_PREFIX + name);
+    btnFlash(btn, existed ? "updated ✓" : "saved ✓", "ok");
+    outNote(`${existed ? "Updated" : "Saved"} "${name}" in this browser. `
+          + "It stays on this machine and in this browser only - use Export for a file you can keep or send.");
   } catch (e) {
     btnFlash(btn, "save failed", "bad", 2600);
-    showError(e);
+    showError(new Error("this browser refused to store the project: " + (e.message || e)));
   }
 };
+
+$("btnDelete").onclick = () => {
+  const btn = $("btnDelete"), v = $("fileSelect").value;
+  if (!v.startsWith(LOCAL_PREFIX)) return;
+  const name = v.slice(LOCAL_PREFIX.length);
+  if (!btn._armed) {                     // deleting someone's work deserves a second press
+    btn._armed = true;
+    btnFlash(btn, "delete?", "bad", 3000);
+    setTimeout(() => { btn._armed = false; }, 3000);
+    outNote(`Press Delete again to remove "${name}" from this browser. Nothing has been deleted yet.`, "warn");
+    return;
+  }
+  btn._armed = false;
+  const all = savedAll();
+  delete all[name];
+  savedWrite(all);
+  refreshFileSelect("");
+  btnFlash(btn, "deleted ✓", "ok", 1800, syncDeleteButton);   // re-disable once the flash ends
+  outNote(`Removed "${name}" from this browser. The editor still holds it - Save puts it back.`);
+};
+$("fileSelect").addEventListener("change", syncDeleteButton);
 $("btnValidate").onclick = async () => {
   try { showResult(await api("/api/validate", {project: collectProject()}), false); }
   catch (e) { showError(e); }
@@ -1834,9 +1929,7 @@ $("btnSaveSql").onclick = async () => {
 async function init() {
   BOOT = await api("/api/bootstrap");
   $("dlUnits").replaceChildren(...BOOT.units.map(u => el("option",{value:u})));
-  $("fileSelect").replaceChildren(
-    el("option",{value:""},"- project file -"),
-    ...BOOT.projects.map(p => el("option",{value:p}, p)));
+  refreshFileSelect("");        // projects folder plus anything saved in this browser
   const hash = decodeURIComponent(location.hash.slice(1));
   if (hash && BOOT.projects.includes(hash)) {       // deep link: index.html#file.yaml
     $("fileSelect").value = hash;
@@ -1852,7 +1945,7 @@ async function init() {
     $("fileName").value = restored.file || "";
     const when = new Date(restored.when).toLocaleString();
     $("out").replaceChildren(el("div",{class:"msg note"},
-      `Restored unsaved work from ${when}. "New" discards it; Save or Export to keep it.`));
+      `Restored unsaved work from ${when}. "New" discards it; Save keeps it in this browser under a name, Export writes a file.`));
   } else {
     showProject({points:[]});
   }
