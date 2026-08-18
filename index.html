@@ -253,7 +253,7 @@
         <div id="optMore"></div>
       </details>
     </div>
-    <details class="help"><summary title="What the table name and plant number do, and every one of the sixteen option checkboxes">help</summary>
+    <details class="help"><summary title="What the table name and plant number do, and every option checkbox">help</summary>
       <div class="helpbody">
         <b>table name</b> names the three database tables the SQL script fills:
         <code>iw_par_&lt;name&gt;_param</code>, <code>iw_par_&lt;name&gt;_groups</code>,
@@ -306,6 +306,10 @@
 
         <h4>State texts</h4>
         <ul>
+          <li><b>use_json</b><span class="dflt">on</span> — the master switch the Excel
+            tool had (Prot!B54): off suppresses every state text at once — no
+            <code>format_extra</code> JSON and no list in the alias — while the state ids
+            stay in the project for turning back on.</li>
           <li><b>statetext_only_rw</b><span class="dflt">off</span> — emit the state-text
             JSON only for writable points (<code>rw</code>/<code>vrw</code>); read-only
             points keep their state list in the project but ship an empty
@@ -329,6 +333,10 @@
             <i>range min</i>/<i>range max</i> into the param record. Off leaves both
             columns blank even when the point has values, which is what the fleet does;
             the scaling table already supplies the raw/eng limits.</li>
+          <li><b>override_decimal</b><span class="dflt">off</span> — fill <i>dec</i> from
+            the unit table: units with a decimals entry (<span class="ex">Pa</span>,
+            <span class="ex">ppm</span>, <span class="ex">m3/h</span> → 0) overwrite the
+            row's own value, as the Excel helper did; units without one leave it alone.</li>
           <li><b>auto_groups</b><span class="dflt">off</span> — fill an empty group cell
             from the datatype's default group, so points only need a group where you want
             to override it.</li>
@@ -787,8 +795,8 @@ const OPT_CORE = ["subtract_one","truncate","create_tables","force_active","auto
 // clusters under "more options" - same grouping as the Project card help
 const OPT_MORE = [
   {title:"alias text",      names:["use_system_no","use_tag","use_extra","proper_case_states"]},
-  {title:"state texts",     names:["statetext_only_rw","statetext_in_alias"]},
-  {title:"points & groups", names:["include_minmax","auto_groups","alarms_to_alm"]},
+  {title:"state texts",     names:["use_json","statetext_only_rw","statetext_in_alias"]},
+  {title:"points & groups", names:["include_minmax","override_decimal","auto_groups","alarms_to_alm"]},
   {title:"motherwords",     names:["require_motherwords","exclude_motherwords_from_groups"]},
 ];
 // hover text for every boolean option - keep in step with the Project card help
@@ -802,6 +810,8 @@ const OPT_HELP = {
   use_tag:"include the point's tag in the alias text",
   use_extra:"append the point's extra in parentheses at the end of the alias",
   include_minmax:"carry the point's range min/max into the param record",
+  override_decimal:"fill dec from the unit table's decimals entry, overwriting hand-typed values on matching units",
+  use_json:"master gate on state texts - off means no format_extra JSON and no state list in the alias, whatever the rows say",
   statetext_only_rw:"emit state-text JSON only for writable points (rw/vrw)",
   statetext_in_alias:"also flatten the state list into the point's extra, so it shows in the alias",
   require_motherwords:"a missing motherword becomes a hard error instead of a warning",
