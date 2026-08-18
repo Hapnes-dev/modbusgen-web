@@ -119,6 +119,10 @@
   .points tr.sel > td.num{background:rgba(77,163,255,.18);color:var(--text)}
   .points tr.sel:hover > td{background:rgba(77,163,255,.14)}
   .points tr.sel > td:first-child{box-shadow:inset 2px 0 0 var(--accent)}
+  /* rows validation rejected - survives selection so both stay readable */
+  .points tr.bad > td{background:rgba(255,107,107,.13)}
+  .points tr.bad > td:first-child{box-shadow:inset 2px 0 0 var(--red);color:var(--red)}
+  .points tr.bad.sel > td{background:rgba(255,107,107,.2)}
   /* only while a drag has actually crossed rows - otherwise selecting text
      inside a single input would stop working */
   body.rowdrag,body.rowdrag .points{user-select:none}
@@ -1118,7 +1122,8 @@ function addPointRow(p={}) {
    is the one place a sort becomes real. */
 let PT_SEQ = 0;                       // next sequence number to hand out
 let ptSort = {col:null, dir:null};    // dir: "asc" | "desc" | null
-const ptFilters = new Set();          // bits | writable | alarms | online
+const ptFilters = new Set();          // bits | writable | alarms | online | failing
+const ptBad = new Set();              // rows the last validation rejected
 
 function ptRows() { return [...$("points").children]; }
 function ptDataOrder() { return ptRows().sort((a,b) => a._seq - b._seq); }
@@ -1147,6 +1152,9 @@ function ptPassesFilters(d) {
   }
   return true;
 }
+function ptPassesBadFilter(tr) {
+  return !ptFilters.has("failing") || tr.classList.contains("bad");
+}
 function applyPointView() {
   const needle = ($("ptSearch").value || "").trim().toLowerCase();
   const rows = ptDataOrder();
@@ -1155,7 +1163,7 @@ function applyPointView() {
   let shown = 0;
   for (const tr of rows) {
     const d = data.get(tr);
-    const ok = ptMatches(d, needle) && ptPassesFilters(d);
+    const ok = ptMatches(d, needle) && ptPassesFilters(d) && ptPassesBadFilter(tr);
     tr.classList.toggle("hidden", !ok);
     if (ok) shown++;
   }
@@ -1388,6 +1396,15 @@ function updateStats() {
                onclick:()=>{ ptFilters.has("online") ? ptFilters.delete("online") : ptFilters.add("online");
                              updateStats(); applyPointView(); }},
        `${onl} online${onl ? "" : " ⚠"}`));
+  // only while the last validation left something marked
+  if (ptBad.size)
+    $("pointStats").append(el("span",{
+      class:"chip toggle warnfilter" + (ptFilters.has("failing") ? " on" : ""),
+      style:"color:var(--red);border-color:#5b2b33",
+      title:"Rows the last Validate rejected. Click to show only those; editing does not clear the marks, the next Validate does",
+      onclick:()=>{ ptFilters.has("failing") ? ptFilters.delete("failing") : ptFilters.add("failing");
+                    updateStats(); applyPointView(); }},
+      `${ptBad.size} failing`));
 }
 function rowData(tr) {
   const v = cls => tr.querySelector("."+cls)?.value?.trim() ?? "";
@@ -1435,6 +1452,7 @@ function showProject(data) {
   ptSort = {col:null, dir:null};
   ptFilters.clear();
   ptSel.clear(); ptSelAnchor = null;
+  ptBad.clear();
   ptUndo.length = 0; ptPreEdit = null; ptUpdateUndoButton();
   if ($("ptSearch")) $("ptSearch").value = "";
   for (const p of data.points || []) addPointRow(p);
@@ -1525,6 +1543,36 @@ function renderAdvice(errors) {
   return box;
 }
 
+/* ---------- mark the rows validation rejected ----------
+   Errors count points after motherword synthesis, which inserts rows the table
+   never had. point_rows from the backend maps each validated point back to the
+   row that was sent, so nothing here has to guess. */
+function clearBadRows() {
+  for (const tr of $("points").children) tr.classList.remove("bad");
+  ptBad.clear();
+  // with no marked rows an armed "failing" filter would hide the whole table
+  ptFilters.delete("failing");
+  applyPointView();
+}
+function markBadRows(errors, pointRows) {
+  clearBadRows();
+  const rows = ptDataOrder();
+  let unmappable = 0;
+  for (const e of errors) {
+    const m = e.match(/^point (\d+)/);
+    if (!m) continue;                                  // project-wide error, no row
+    const validated = Number(m[1]);
+    const src = Array.isArray(pointRows) ? pointRows[validated - 1] : validated;
+    if (!src) { unmappable++; continue; }               // a synthesized motherword
+    const tr = rows[src - 1];
+    if (tr) { tr.classList.add("bad"); ptBad.add(tr); }
+  }
+  applyPointView();
+  const first = ptDataOrder().find(tr => tr.classList.contains("bad"));
+  if (first) first.scrollIntoView({block:"center"});
+  return {marked: ptBad.size, unmappable};
+}
+
 function showResult(res, sqlWanted) {
   const out = $("out");
   out.replaceChildren();
@@ -1539,8 +1587,12 @@ function showResult(res, sqlWanted) {
       res.errors.map(e => "✕ " + e).join("\n")));
     const advice = renderAdvice(res.errors);
     if (advice) out.append(advice);
+    markBadRows(res.errors, res.point_rows);
+    updateStats();
     return;
   }
+  clearBadRows();
+  updateStats();
   if (!sqlWanted) {
     out.append(el("div",{class:"msg ok"},
       `✓ Valid: ${res.points} point(s), ${res.groups} group(s).`));
