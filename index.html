@@ -72,6 +72,10 @@
   button:disabled{opacity:.55;cursor:default}
   .chk{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--text)}
   .chk:hover{color:#fff}
+  /* option differs from the template default - the defaults are the recommendation */
+  .chk.dev{color:var(--amber)}
+  .chk.dev:hover{color:var(--amber)}
+  #btnOptReset{font-size:11.5px;padding:2px 9px}
   /* banded sub-sections, shared by the project and units & driver cards */
   .sub{margin-top:14px}
   .subhead{display:flex;align-items:center;gap:8px;margin:0 0 8px;
@@ -275,6 +279,10 @@
     <div class="sub">
       <div class="subhead">output</div>
       <div class="row" id="optCore"></div>
+      <div class="row" style="margin-top:2px">
+        <button id="btnOptReset" class="ghost" hidden
+                title="Set every option back to the template defaults - the recommended setup for a normal list. Amber names mark the ones currently differing">reset to recommended</button>
+      </div>
       <details style="margin-top:2px"><summary title="Eleven further toggles, grouped by what they affect: alias text, state texts, points and groups, motherwords">more options</summary>
         <div id="optMore"></div>
       </details>
@@ -908,7 +916,17 @@ function renderOptions(values) {
   const box = (name) => {
     const cb = el("input", {type:"checkbox", id:"opt_"+name});
     cb.checked = values[name] !== undefined ? values[name] : BOOT.defaults[name];
-    return el("label",{class:"chk", title:OPT_HELP[name]||name}, cb, name);
+    const label = el("label",{class:"chk"}, cb, name);
+    const sync = () => {
+      const dev = cb.checked !== BOOT.defaults[name];
+      label.classList.toggle("dev", dev);
+      label.title = (OPT_HELP[name] || name) + (dev
+        ? " — DIFFERS from the template default, which is the recommended setting"
+        : "");
+    };
+    cb.addEventListener("change", sync);
+    sync();
+    return label;
   };
   const bools = Object.keys(BOOT.defaults).filter(n => typeof BOOT.defaults[n] === "boolean");
 
@@ -928,6 +946,13 @@ function renderOptions(values) {
       el("div",{class:"optlbl"}, title),
       el("div",{class:"row"}, ...names.map(box))));
   }
+  updateOptReset();
+}
+function updateOptReset() {
+  const devs = document.querySelectorAll("#optCore .chk.dev, #optMore .chk.dev").length;
+  const btn = $("btnOptReset");
+  btn.hidden = devs === 0;
+  if (devs) btn.textContent = `reset to recommended (${devs})`;
 }
 function collectOptions() {
   const out = {};
@@ -1808,6 +1833,10 @@ document.addEventListener("mouseup", () => {
   ptDragging = false;
   document.body.classList.remove("rowdrag");
 });
+
+$("btnOptReset").onclick = () => { renderOptions({}); markValStale(); };
+for (const id of ["optCore","optMore"])
+  $(id).addEventListener("change", updateOptReset);
 
 $("bulkCol").replaceChildren(...BULK_COLS.map(c =>
   el("option",{value:c}, BULK_LABEL[c] || c)));
