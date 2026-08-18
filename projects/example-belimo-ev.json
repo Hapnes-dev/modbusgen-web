@@ -1,4 +1,5 @@
 {
+  "$schema": "../schema/project.schema.json",
   "table": "belimoev",
   "plant": "0",
   "options": { "subtract_one": false },
