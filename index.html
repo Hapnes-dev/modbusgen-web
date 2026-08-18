@@ -158,6 +158,10 @@
   .msg.ok{background:#1e3328;color:var(--green);border:1px solid #2b5b3f}
   .msg.warn{background:#33290f;color:var(--amber);border:1px solid #57430f}
   .msg.note{background:#262b35;color:var(--dim);border:1px solid var(--line)}
+  .msg.fix{background:#1d2a38;color:#a9cbef;border:1px solid #2f4d70;
+           font-family:inherit;font-size:13px}
+  .msg.fix b{color:#dbe9f8}
+  .msg.fix .where{color:var(--dim);font-family:Consolas,monospace;font-size:11.5px}
   .sqlbar{display:flex;gap:8px;align-items:center;margin-top:10px}
   /* match the row-count chip rather than the page's full-size buttons */
   .sqlbar button{font-size:12px;padding:3px 10px;line-height:1.5}
@@ -715,6 +719,10 @@
         errors block generation and must be fixed; amber ⚠ warnings (missing motherwords,
         blank texts) do not block but deserve a look. Import the finished
         <code>…SQL File.txt</code> into the plant database as before.
+        <p>When validation fails, a blue <b>How to fix</b> panel follows the errors with
+        the step to take for each one, and the points it applies to. Errors of the same
+        kind are collapsed into a single recommendation, so forty rows missing a group
+        give you one instruction rather than forty.</p>
       </div>
     </details>
     <div id="out"><div class="msg note">Validate or generate to see results.</div></div>
@@ -1429,6 +1437,88 @@ function showProject(data) {
 }
 
 /* ---------- output ---------- */
+/* Validation says what is wrong; this says what to do about it. Kept on the
+   client so validate.py stays the single diagnosis and its messages remain the
+   contract the CLI and the tests rely on. One entry per error the validator can
+   produce - if you add a check there, add its advice here. */
+const FIX_ADVICE = [
+  [/datatype missing/,
+   "Choose a datatype. It supplies the read and write function codes, so nothing else about the row can be derived until it is set."],
+  [/datatype '.*' not in .*datatypes\.csv/,
+   "That datatype key does not exist. Pick one from the dropdown, or add the row to data/tables/datatypes.csv rather than inventing a spelling."],
+  [/group missing/,
+   "Give the row a group, or switch on auto_groups in the Project card to fill it from the datatype's default group."],
+  [/group '.*' has no alias in 'groups'/,
+   "Define that group in the Groups card — '+ group', or '+ default groups' for the standard aio/dio/alm/misc/sch set."],
+  [/addr must be a non-negative integer/,
+   "Enter the register number exactly as the documentation prints it, digits only, with any 4xxxx/3xxxxx prefix stripped."],
+  [/addr \d+ with subtract_one would go below 0/,
+   "Address 0 cannot have 1 subtracted from it. Either the documentation is already 0-based — turn subtract_one off — or the address is wrong."],
+  [/bit must be 0\.\.31 or nibble syntax/,
+   "Bit must be 0–31, or the nibble form start#length such as 5#4."],
+  [/bit addressing needs a register datatype/,
+   "Bits live inside a register: use Bit_Hold or Bit_Input. Coils and discrete inputs are already single bits, so they take no bit number."],
+  [/rw must be one of/,
+   "Use r for read-only or rw for writable. vr and vrw are applied automatically to bit rows — you do not type them."],
+  [/has no write function; rw is impossible/,
+   "The datatype table marks that register read-only. Set rw back to r, or choose a datatype that has a write function."],
+  [/alarm must be one of/,
+   "The alarm letter must be A, B, C or N. Leave it blank for a point that raises no alarm."],
+  [/unit '.*' not in .*units\.csv/,
+   "Pick a unit from the autocomplete list, or add it to data/tables/units.csv so every future list can use it too."],
+  [/scale '.*' not in .*scaling\.csv/,
+   "Pick a scale from the list, or add it to data/tables/scaling.csv. x0.1 covers most of the real fleet."],
+  [/decimals must be 0\.\.3/,
+   "Decimals must be 0, 1, 2 or 3 — or blank to leave the display format empty."],
+  [/statetext \d+ not defined in 'statetexts'/,
+   "Add a list with that id in the State texts card, or clear the state column on the row."],
+  [/update_freq must be/,
+   "Leave freq blank to let it be derived, or choose fast, norm, slow, once or never."],
+  [/duplicate driver_id/,
+   "Two rows poll the same register and bit. Change one of the addresses, or delete the copy. Applying one address across several rows in a bulk edit causes this — use duplicate, which steps the address."],
+  [/duplicate element_id/,
+   "Two rows resolve to the same key. Change the group or the address on one of them, or give one an explicit element_id in the project file."],
+  [/motherword must be read-only/,
+   "Set that row's rw to r. A motherword exists to poll the word its bits live in; it is never written."],
+  [/has no motherword row/,
+   "Switch on auto_motherwords in the Project card to have it created, or add a row at the same address with the bit column left empty."],
+  [/no point has online: true/,
+   "Tick onl on one to three reliable, always-readable points — a temperature or a status register. IWMAC uses them to tell that the unit is alive."],
+  [/share view order/,
+   "Give each group its own view order in the Groups card; two groups cannot sit at the same position."],
+];
+function adviseOn(errors) {
+  const byAdvice = new Map();
+  for (const e of errors) {
+    const hit = FIX_ADVICE.find(([re]) => re.test(e));
+    if (!hit) continue;
+    if (!byAdvice.has(hit[1])) byAdvice.set(hit[1], new Set());
+    const m = e.match(/^point (\d+)/);
+    if (m) byAdvice.get(hit[1]).add(Number(m[1]));
+  }
+  return byAdvice;
+}
+function renderAdvice(errors) {
+  const advice = adviseOn(errors);
+  if (!advice.size) return null;
+  const box = el("div",{class:"msg fix"},
+    el("b",{}, advice.size === 1 ? "How to fix it" : `How to fix these (${advice.size} things)`));
+  for (const [text, points] of advice) {
+    const pts = [...points].sort((a,b) => a-b);
+    const where = pts.length
+      ? (pts.length > 8 ? `points ${pts.slice(0,8).join(", ")} +${pts.length-8} more`
+                        : `point${pts.length > 1 ? "s" : ""} ${pts.join(", ")}`)
+      : "";
+    box.append(el("div",{style:"margin-top:6px"},
+      where ? el("span",{class:"where"}, where + " — ") : "", text));
+  }
+  const unmatched = errors.filter(e => !FIX_ADVICE.some(([re]) => re.test(e)));
+  if (unmatched.length)
+    box.append(el("div",{style:"margin-top:6px",class:"where"},
+      `${unmatched.length} other error(s) above have no stock advice — read the message itself.`));
+  return box;
+}
+
 function showResult(res, sqlWanted) {
   const out = $("out");
   out.replaceChildren();
@@ -1441,6 +1531,8 @@ function showResult(res, sqlWanted) {
   if (res.errors && res.errors.length) {
     out.append(el("div",{class:"msg err"},
       res.errors.map(e => "✕ " + e).join("\n")));
+    const advice = renderAdvice(res.errors);
+    if (advice) out.append(advice);
     return;
   }
   if (!sqlWanted) {
