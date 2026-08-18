@@ -107,6 +107,22 @@
   th[data-sort="asc"]::after{content:"\25B2"}
   th[data-sort="desc"]::after{content:"\25BC"}
   tr.hidden{display:none}
+  /* multi-select: the row-number cell is the drag handle, so dragging can never
+     be confused with selecting text inside a cell */
+  .points td.num{cursor:pointer;user-select:none}
+  .points td.num:hover{color:var(--text);background:var(--panel2)}
+  .points tr.sel > td{background:rgba(77,163,255,.14)}
+  .points tr.sel > td.num{background:rgba(77,163,255,.28);color:#fff}
+  .points tr.sel:hover > td{background:rgba(77,163,255,.18)}
+  body.rowdrag{cursor:pointer;user-select:none}
+  .bulkbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px;
+           padding:8px 10px;border:1px solid var(--accent2);border-radius:6px;
+           background:rgba(77,163,255,.07)}
+  .bulkbar select,.bulkbar input{font-size:12px;padding:3px 6px}
+  .bulkbar button{font-size:12px;padding:3px 10px}
+  .bulkbar .lbl{font-size:11px;color:var(--dim)}
+  .bulkbar .danger{border-color:#7a3b3b;color:var(--red)}
+  .bulkbar .danger:hover{border-color:var(--red)}
   .card.maximized{position:fixed;inset:8px;z-index:60;margin:0;
                   display:flex;flex-direction:column;overflow:hidden}
   .card.maximized .tblwrap{max-height:none;flex:1;min-height:0}
@@ -508,6 +524,27 @@
             Everything still validates and generates.</li>
         </ul>
 
+        <h4>Editing many rows at once</h4>
+        <ul>
+          <li><b>Select by the row numbers</b> in the left column: click one, or press
+            and drag down for a range. <b>Shift-click</b> extends from the last one,
+            <b>Ctrl-click</b> adds or removes a single row. <code>Esc</code> clears.
+            The numbers are the handle so that dragging never fights with selecting
+            text inside a cell.</li>
+          <li>A bar appears under the table: pick a column, give a value, and
+            <b>apply</b> writes it to every selected row. <b>fill down</b> instead copies
+            that column's value from the topmost selected row into the rest, leaving
+            every other column alone.</li>
+          <li><b>duplicate</b> copies each selected row with <span class="ex">addr + 1</span>;
+            <b>delete</b> removes them all.</li>
+          <li><i>addr</i> and <i>bit</i> are deliberately missing from the column list —
+            writing one address across many rows would produce duplicate
+            <code>driver_id</code>s and fail validation. Use ⧉ or <b>duplicate</b>, which
+            step the address for you.</li>
+          <li>Selection follows what is on screen: rows hidden by search or a filter drop
+            out of it, so a bulk edit can never change a row you cannot see.</li>
+        </ul>
+
         <h4>Working with rows</h4>
         <ul>
           <li>⧉ duplicates a row with <b>addr + 1</b> — the fastest way through a
@@ -545,6 +582,21 @@
         </tr></thead>
         <tbody id="points"></tbody>
       </table>
+    </div>
+    <div class="bulkbar" id="bulkBar" hidden>
+      <span class="chip" id="bulkCount"
+            title="Rows currently selected. Drag the row numbers to change the range, Esc to clear"></span>
+      <span class="lbl">set</span>
+      <select id="bulkCol" title="Which column the value below is written to"></select>
+      <span id="bulkValueSlot"></span>
+      <button id="bulkApply" class="primary"
+              title="Write that value into this column on every selected row">apply</button>
+      <button id="bulkFill"
+              title="Copy this column's value from the topmost selected row down into the rest - leaves the other columns alone">fill down</button>
+      <span class="h2fill"></span>
+      <button id="bulkDup" title="Duplicate every selected row, appended at the bottom with addr + 1">duplicate</button>
+      <button id="bulkDel" class="danger" title="Delete every selected row">delete</button>
+      <button id="bulkClear" class="ghost" title="Clear the selection (Esc)">✕</button>
     </div>
     <div class="row" style="margin-top:8px">
       <button id="btnAddPoint" title="Append an empty point row at the bottom of the table">+ point</button>
@@ -980,7 +1032,7 @@ function addPointRow(p={}) {
   tr._orig = p;   // fields the GUI does not edit (element_id, menu, active, ranges) survive
   const h = k => COL_HELP[k];   // same string the column header shows
   tr.append(
-    el("td",{class:"num", title:"Row number - not written to the database"},
+    el("td",{class:"num", title:"Row number, and the handle for selecting rows: click, drag down for a range, shift-click to extend, ctrl-click to add one. Not written to the database"},
        String(tb.children.length+1)),
     el("td",{}, el("input",{class:"p-group", list:"dlGroups", value:p.group||"", title:h("group")})),
     el("td",{}, dtSelect(p.datatype)),
@@ -1083,6 +1135,13 @@ function applyPointView() {
   }
   $("btnPtOrder").hidden = !(ptSort.col && ptSort.dir);
 
+  // A hidden row must not stay selected: a bulk edit would then change rows the
+  // user cannot see. Selection follows what is on screen.
+  if (ptSel.size) {
+    for (const tr of [...ptSel]) if (tr.classList.contains("hidden") || !tr.parentElement) ptSel.delete(tr);
+    ptPaintSelection();
+  }
+
   const info = $("ptFilterInfo");
   const filtered = needle || ptFilters.size;
   info.hidden = !filtered;
@@ -1105,6 +1164,85 @@ function ptCommitOrder() {
   applyPointView();
   renumber();
 }
+/* ---------- points: multi-row selection and bulk edit ----------
+   The drag handle is the row-number cell only. Starting a drag anywhere else
+   would fight with selecting text inside a cell, and every other cell in this
+   table is an input. Selection works on the visible rows in the order you see
+   them, so it behaves the same in a sorted or filtered view. */
+const ptSel = new Set();
+let ptSelAnchor = null, ptDragging = false;
+
+function ptVisible() { return [...$("points").children].filter(t => !t.classList.contains("hidden")); }
+function ptSelectRange(a, b) {
+  const rows = ptVisible();
+  const i = rows.indexOf(a), j = rows.indexOf(b);
+  if (i < 0 || j < 0) return;
+  ptSel.clear();
+  for (let k = Math.min(i,j); k <= Math.max(i,j); k++) ptSel.add(rows[k]);
+  ptPaintSelection();
+}
+function ptPaintSelection() {
+  for (const tr of $("points").children) tr.classList.toggle("sel", ptSel.has(tr));
+  const n = ptSel.size;
+  $("bulkBar").hidden = n === 0;
+  if (n) $("bulkCount").textContent = `${n} row${n === 1 ? "" : "s"} selected`;
+}
+function ptClearSelection() { ptSel.clear(); ptSelAnchor = null; ptPaintSelection(); }
+
+/* Columns worth setting in bulk. bit and addr are excluded on purpose: writing
+   one address to many rows would guarantee duplicate driver_ids. */
+const BULK_COLS = ["group","datatype","system_no","tag","text","extra","alarm","unit",
+                   "scale","rw","update_freq","online","decimals","statetext","no_group"];
+const BULK_LABEL = {system_no:"system no", update_freq:"freq", online:"onl",
+                    decimals:"dec", statetext:"state", no_group:"no grp"};
+function bulkValueControl(col) {
+  const mk = items => pick("bulk-val", "", items, COL_HELP[col]);
+  switch (col) {
+    case "datatype":   { const s = dtSelect(""); s.className = "bulk-val"; return s; }
+    case "alarm":      return mk(["","A","N","B","C"]);
+    case "scale":      return mk(scaleItems());
+    case "rw":         return mk(["r","rw","vr","vrw"]);
+    case "update_freq":return mk(["","fast","norm","slow","once","never"]);
+    case "decimals":   return mk(["",0,1,2,3]);
+    case "online": case "no_group": return mk(["off","on"]);
+    case "group":      return el("input",{class:"bulk-val", list:"dlGroups", title:COL_HELP[col]});
+    case "unit":       return el("input",{class:"bulk-val", list:"dlUnits", title:COL_HELP[col]});
+    case "statetext":  return el("input",{class:"bulk-val", type:"number", style:"width:70px", title:COL_HELP[col]});
+    default:           return el("input",{class:"bulk-val", title:COL_HELP[col]});
+  }
+}
+function bulkRefreshValue() {
+  $("bulkValueSlot").replaceChildren(bulkValueControl($("bulkCol").value));
+}
+function bulkCell(tr, col) { return tr.querySelector(".p-" + col); }
+function bulkWrite(tr, col, value) {
+  const cell = bulkCell(tr, col);
+  if (!cell) return;
+  if (cell.type === "checkbox") cell.checked = (value === "on" || value === true);
+  else cell.value = value;
+}
+function bulkRead(tr, col) {
+  const cell = bulkCell(tr, col);
+  if (!cell) return "";
+  return cell.type === "checkbox" ? (cell.checked ? "on" : "off") : cell.value;
+}
+function bulkTargets() {                       // visible order, so "topmost" means what you see
+  return ptVisible().filter(tr => ptSel.has(tr));
+}
+function bulkApply() {
+  const col = $("bulkCol").value, ctrl = document.querySelector(".bulk-val");
+  if (!ctrl) return;
+  for (const tr of bulkTargets()) bulkWrite(tr, col, ctrl.value);
+  updateStats(); applyPointView(); ptPaintSelection();
+}
+function bulkFillDown() {
+  const col = $("bulkCol").value, rows = bulkTargets();
+  if (rows.length < 2) return;
+  const source = bulkRead(rows[0], col);
+  for (const tr of rows.slice(1)) bulkWrite(tr, col, source);
+  updateStats(); applyPointView(); ptPaintSelection();
+}
+
 function ptSetMaximized(on) {
   const card = $("points").closest(".card");
   card.classList.toggle("maximized", on);
@@ -1193,6 +1331,7 @@ function showProject(data) {
   PT_SEQ = 0;
   ptSort = {col:null, dir:null};
   ptFilters.clear();
+  ptSel.clear(); ptSelAnchor = null;
   if ($("ptSearch")) $("ptSearch").value = "";
   for (const p of data.points || []) addPointRow(p);
   if (!(data.points || []).length) addPointRow();
@@ -1264,6 +1403,58 @@ $("btnDefaultGroups").onclick = () => {
 $("btnAddState").onclick = () => addStateRow();
 $("btnAddPoint").onclick = () => { addPointRow(); renumber(); };
 
+/* points multi-select: drag the row numbers */
+$("points").addEventListener("mousedown", e => {
+  const num = e.target.closest("td.num");
+  if (!num) return;
+  const tr = num.parentElement;
+  e.preventDefault();                    // no text selection while dragging
+  if (e.shiftKey && ptSelAnchor) {
+    ptSelectRange(ptSelAnchor, tr);
+  } else if (e.ctrlKey || e.metaKey) {
+    ptSel.has(tr) ? ptSel.delete(tr) : ptSel.add(tr);
+    ptSelAnchor = tr;
+    ptPaintSelection();
+  } else {
+    ptSel.clear(); ptSel.add(tr); ptSelAnchor = tr;
+    ptPaintSelection();
+  }
+  ptDragging = true;
+  document.body.classList.add("rowdrag");
+});
+$("points").addEventListener("mouseover", e => {
+  if (!ptDragging || !ptSelAnchor) return;
+  const tr = e.target.closest("tr");
+  if (tr && tr.parentElement === $("points")) ptSelectRange(ptSelAnchor, tr);
+});
+document.addEventListener("mouseup", () => {
+  ptDragging = false;
+  document.body.classList.remove("rowdrag");
+});
+
+$("bulkCol").replaceChildren(...BULK_COLS.map(c =>
+  el("option",{value:c}, BULK_LABEL[c] || c)));
+bulkRefreshValue();
+$("bulkCol").onchange = bulkRefreshValue;
+$("bulkApply").onclick = bulkApply;
+$("bulkFill").onclick = bulkFillDown;
+$("bulkClear").onclick = ptClearSelection;
+$("bulkDup").onclick = () => {
+  for (const tr of bulkTargets()) {
+    const d = rowData(tr);
+    if (typeof d.addr === "number") d.addr += 1;
+    delete d.element_id;                 // a copy must not inherit an explicit id
+    addPointRow(d);
+  }
+  ptClearSelection(); renumber();
+};
+$("bulkDel").onclick = () => {
+  const rows = bulkTargets();
+  if (!rows.length) return;
+  for (const tr of rows) tr.remove();
+  ptClearSelection(); renumber();
+};
+
 /* points view controls */
 $("ptSearch").addEventListener("input", applyPointView);
 $("btnPtOrder").onclick = ptCommitOrder;
@@ -1278,6 +1469,8 @@ document.addEventListener("keydown", e => {
   else if (e.key === "Escape") {
     if (document.activeElement === $("ptSearch") && $("ptSearch").value) {
       $("ptSearch").value = ""; applyPointView();
+    } else if (ptSel.size) {
+      ptClearSelection();
     } else if ($("points").closest(".card").classList.contains("maximized")) {
       ptSetMaximized(false);
     }
