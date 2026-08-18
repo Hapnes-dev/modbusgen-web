@@ -52,6 +52,21 @@
   button.ghost{background:transparent}
   .chk{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--text)}
   .chk:hover{color:#fff}
+  /* units & driver card: grouped sub-sections, uniform field widths */
+  #cardSys .sub{margin-top:14px}
+  #cardSys .subhead{display:flex;align-items:center;gap:8px;margin:0 0 8px;
+                    font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;
+                    color:var(--dim)}
+  #cardSys .subhead::after{content:"";flex:1;height:1px;background:var(--line)}
+  #cardSys .subhead .n{text-transform:none;letter-spacing:0;color:var(--line2)}
+  #cardSys .gated{transition:opacity .12s}
+  #cardSys .gated.off{opacity:.55}
+  #cardSys .empty{font-size:12px;color:var(--dim);padding:7px 2px 1px}
+  #cardSys label.f>input,#cardSys label.f>select{width:100%;box-sizing:border-box}
+  #cardSys .f-xs{width:78px}
+  #cardSys .f-sm{width:104px}
+  #cardSys .f-md{width:136px}
+  #cardSys .f-lg{width:190px}
   table{border-collapse:collapse;width:100%}
   th{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--dim);
      text-align:left;padding:5px 6px;border-bottom:1px solid var(--line2);
@@ -170,7 +185,7 @@
     </details>
   </div>
 
-  <div class="card">
+  <div class="card" id="cardSys">
     <h2>Units &amp; driver (iw_sys)</h2>
     <details class="help"><summary>help</summary>
       <div class="helpbody">
@@ -200,27 +215,40 @@
     <div class="row">
       <label class="chk"><input type="checkbox" id="sysUnits"> units block</label>
       <label class="chk"><input type="checkbox" id="sysSettings"> settings block</label>
-      <label class="f">owner / driver name<input id="sysOwner" size="10" placeholder="EM270"></label>
-      <label class="f">reg.type<input id="sysRegType" size="8"></label>
-      <label class="f">order no<input id="sysOrderNo" size="8"></label>
-      <label class="f">addr prefix<select id="sysPrefix"><option>0_</option><option>1_</option></select></label>
     </div>
-    <div class="row" style="margin-top:8px">
-      <label class="f">mode<select id="commMode"><option>tcp</option><option>rtu</option></select></label>
-      <label class="f">IP<input id="commIp" size="12" placeholder="192.168.1.10"></label>
-      <label class="f">port<input id="commPort" type="number" value="502" style="width:70px"></label>
-      <label class="f">COM port<input id="commCom" size="4"></label>
-      <label class="f">baud<select id="commBaud"><option>19200</option><option>9600</option></select></label>
-      <label class="f">parity<select id="commParity"><option>even</option><option>odd</option><option>none</option></select></label>
-      <label class="f">stop bits<select id="commStop"><option>1</option><option>2</option></select></label>
+
+    <div class="sub">
+      <div class="subhead">driver identity</div>
+      <div class="row">
+        <label class="f f-lg">owner / driver name<input id="sysOwner" placeholder="EM270"></label>
+        <label class="f f-sm">reg.type<input id="sysRegType"></label>
+        <label class="f f-sm">order no<input id="sysOrderNo"></label>
+        <label class="f f-xs">addr prefix<select id="sysPrefix"><option>0_</option><option>1_</option></select></label>
+      </div>
     </div>
-    <div style="margin-top:10px">
-      <table style="max-width:760px">
+
+    <div class="sub gated" id="sysUnitsBox">
+      <div class="subhead">devices<span class="n" id="unitCount"></span></div>
+      <table id="unitTable" style="max-width:760px">
         <thead><tr><th></th><th>unit id</th><th>unit name</th><th>addr</th>
           <th>view order</th><th></th></tr></thead>
         <tbody id="unitRows"></tbody>
       </table>
-      <button id="btnAddUnit" style="margin-top:6px">+ device</button>
+      <div class="empty" id="unitEmpty">No devices yet — the units block emits nothing.</div>
+      <button id="btnAddUnit" style="margin-top:8px">+ device</button>
+    </div>
+
+    <div class="sub gated" id="sysCommBox">
+      <div class="subhead">communication</div>
+      <div class="row">
+        <label class="f f-xs">mode<select id="commMode"><option>tcp</option><option>rtu</option></select></label>
+        <label class="f f-md cm-tcp">IP<input id="commIp" placeholder="192.168.1.10"></label>
+        <label class="f f-xs cm-tcp">port<input id="commPort" type="number" value="502"></label>
+        <label class="f f-sm cm-rtu">COM port<input id="commCom" placeholder="COM1"></label>
+        <label class="f f-sm cm-rtu">baud<select id="commBaud"><option>19200</option><option>9600</option></select></label>
+        <label class="f f-sm cm-rtu">parity<select id="commParity"><option>even</option><option>odd</option><option>none</option></select></label>
+        <label class="f f-xs cm-rtu">stop bits<select id="commStop"><option>1</option><option>2</option></select></label>
+      </div>
     </div>
   </div>
 
@@ -539,6 +567,21 @@ function addUnitRow(u = {}) {
 }
 function renumberUnits() {
   [...$("unitRows").children].forEach((tr,i)=>tr.firstChild.textContent=String(i+1));
+  syncSysUi();
+}
+/* Show only the comm fields the selected mode uses, hide the empty device table
+   behind a one-line empty state, and dim a block whose checkbox is off. Dimming
+   only — the fields stay editable so a list can be prepared before enabling. */
+function syncSysUi() {
+  const rtu = $("commMode").value === "rtu";
+  for (const e of document.querySelectorAll("#cardSys .cm-tcp")) e.style.display = rtu ? "none" : "";
+  for (const e of document.querySelectorAll("#cardSys .cm-rtu")) e.style.display = rtu ? "" : "none";
+  const n = $("unitRows").children.length;
+  $("unitTable").style.display = n ? "" : "none";
+  $("unitEmpty").style.display = n ? "none" : "";
+  $("unitCount").textContent = n ? `${n} device${n === 1 ? "" : "s"}` : "";
+  $("sysUnitsBox").classList.toggle("off", !$("sysUnits").checked);
+  $("sysCommBox").classList.toggle("off", !$("sysSettings").checked);
 }
 function unitData(tr) {
   const v = c => tr.querySelector("."+c)?.value?.trim() ?? "";
@@ -590,6 +633,8 @@ function showSystem(s) {
   renumberUnits();
 }
 $("btnAddUnit").onclick = () => { addUnitRow(); renumberUnits(); };
+for (const id of ["commMode","sysUnits","sysSettings"]) $(id).addEventListener("change", syncSysUi);
+syncSysUi();
 
 /* ---------- points ---------- */
 // most-used datatypes across the real workbook fleet (docs/12), most frequent first
