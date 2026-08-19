@@ -2036,6 +2036,48 @@ $("points").addEventListener("change", ptCommitPendingEdit);
 $("points").addEventListener("focusout", e => {
   if (!e.relatedTarget || !$("points").contains(e.relatedTarget)) ptCommitPendingEdit();
 });
+
+/* Excel-style paste: a multi-cell clipboard (rows = lines, columns = tabs)
+   pasted into any table cell fills the visible rows downward from that cell,
+   column by column to the right, the way a spreadsheet would. A single plain
+   value keeps the browser's normal paste. Rows are created when the block
+   runs past the table; selects only take values they already list; checkbox
+   columns are left alone. The whole paste is one undo step. */
+$("points").addEventListener("paste", e => {
+  if (!e.target.matches("input, select")) return;
+  const text = (e.clipboardData || window.clipboardData).getData("text");
+  if (!text) return;
+  const lines = text.replace(/\r/g, "").split("\n");
+  if (lines.length && lines[lines.length - 1] === "") lines.pop();   // Excel's trailing newline
+  if (lines.length < 2 && !text.includes("\t")) return;              // ordinary paste
+  e.preventDefault();
+  ptCommitPendingEdit();
+  ptPushState(null, `paste ${lines.length} row${lines.length === 1 ? "" : "s"}`);
+  const startTd = e.target.closest("td");
+  const colIdx = [...startTd.parentElement.children].indexOf(startTd);
+  const rows = ptVisible();
+  let r = rows.indexOf(startTd.parentElement);
+  let lastRow = rows[r];
+  for (const line of lines) {
+    let row = rows[r];
+    if (!row) { row = addPointRow(); rows.push(row); }
+    lastRow = row;
+    line.split("\t").forEach((v, j) => {
+      const cell = row.children[colIdx + j];
+      const f = cell && cell.querySelector("input, select");
+      if (!f) return;
+      v = v.trim();
+      if (f.matches("select")) {
+        if ([...f.options].some(o => o.value === v)) f.value = v;
+      } else if (f.type !== "checkbox") f.value = v;
+    });
+    r++;
+  }
+  renumber();
+  ptPreEdit = ptCapture();   // typing after the paste diffs against the pasted state
+  e.target.dispatchEvent(new Event("input", {bubbles: true}));   // reach the autosave hook
+  lastRow.scrollIntoView({block: "nearest", behavior: "smooth"});
+});
 $("btnPtUndo").onclick = ptDoUndo;
 ptUpdateUndoButton();
 
