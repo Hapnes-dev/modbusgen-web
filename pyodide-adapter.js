@@ -87,6 +87,11 @@ window.PYODIDE_API = async (path, body) => {
     if (res.error) throw new Error(res.error);
     return res.project;
   }
+  if (path === "/api/import-sql") {
+    const res = JSON.parse(glue.import_sql_json(body.text));
+    if (res.error) throw new Error(res.error);
+    return res;
+  }
   if (path === "/api/yaml")
     return { text: glue.yaml_text(JSON.stringify(body.project)) };
   if (path === "/api/save") {

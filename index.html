@@ -253,6 +253,9 @@
   <button id="btnImportJson" class="ghost"
           title="Load a project file from disk - Copilot-generated JSON or an exported YAML">Import project</button>
   <input id="jsonFile" type="file" accept=".json,.yaml,.yml,application/json" hidden>
+  <button id="btnImportSql" class="ghost"
+          title="Convert a generated SQL script back into an editable project - accepts the modern REPLACE format and the old Excel tool's INSERT format. Export afterwards for the .json file">Import SQL</button>
+  <input id="sqlFile" type="file" accept=".sql,.txt" hidden>
   <input id="fileName" size="24" placeholder="project-name.yaml" title="File name for Save / Export">
   <button id="btnSave" title="Keep the project in this browser under the name beside this button. Nothing is written to disk and nothing is downloaded - use Export for a file. The button reports the outcome">Save</button>
   <button id="btnExport" class="ghost"
@@ -900,6 +903,11 @@
             keeping, mailing, another machine.</li>
           <li><b>Old Excel workbooks:</b> <code>modbusgen import-xlsm old.xlsm</code>
             (CLI), then open the result here.</li>
+          <li><b>Existing SQL scripts:</b> <b>Import SQL</b> rebuilds an editable
+            project from a generated script — modern <code>REPLACE</code> or legacy
+            <code>INSERT</code> format, no workbook needed. The plant number is not in
+            the SQL: set it before generating. <b>Export</b> then gives the
+            <code>.json</code>. CLI: <code>modbusgen import-sql "…SQL File.txt"</code>.</li>
           <li><b>Direct link:</b> add <code>#file-name</code> to the URL, e.g.
             <code>…/#example-belimo-ev.json</code>.</li>
           <li><b>Missing datatype, unit or scale key?</b> Do not improvise — extend
@@ -2124,6 +2132,27 @@ $("jsonFile").onchange = async e => {
       `Imported ${file.name} - review, then Validate and Save/Export.`));
     queueAutosave();
   } catch (err) { showError(new Error(`could not import ${file.name}: ${err.message}`)); }
+  e.target.value = "";
+};
+$("btnImportSql").onclick = () => $("sqlFile").click();
+$("sqlFile").onchange = async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    /* IWMAC scripts are cp1252; fall back to it when the bytes are not valid UTF-8 */
+    const buf = await file.arrayBuffer();
+    let text;
+    try { text = new TextDecoder("utf-8", {fatal: true}).decode(buf); }
+    catch { text = new TextDecoder("windows-1252").decode(buf); }
+    const res = await api("/api/import-sql", {text});
+    showProject(res.project);
+    $("fileName").value = (res.project.table || file.name.replace(/\.[^.]*$/, "")) + ".json";
+    $("out").replaceChildren(
+      el("div",{class:"msg ok"},
+        `✓ Converted ${file.name} - review (plant number!), then Validate and Export for the .json file.`),
+      ...res.notes.map(n => el("div",{class:"msg note"}, n)));
+    queueAutosave();
+  } catch (err) { showError(new Error(`could not convert ${file.name}: ${err.message}`)); }
   e.target.value = "";
 };
 
