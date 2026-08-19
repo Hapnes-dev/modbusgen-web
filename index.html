@@ -59,6 +59,7 @@
     box-shadow:none}
   button{cursor:pointer}
   button:hover{border-color:var(--accent)}
+  a{color:var(--accent)} a:visited{color:var(--accent)}   /* UA visited-purple is unreadable on the dark theme */
   button:active{transform:translateY(1px)}
   button.primary{background:linear-gradient(180deg,var(--accent),var(--accent2));
                  border-color:var(--accent2);color:#081120;font-weight:600}
@@ -896,9 +897,8 @@
           <li><b>Let Copilot do the typing:</b> give the
             <a href="https://m365.cloud.microsoft/chat/?titleId=T_579a0384-1b7f-c331-433d-505a5c37425a&amp;source=embedded-builder"
                target="_blank" rel="noopener">Modbus List Helper</a> agent the register
-            PDF; the returned JSON loads via <b>Import project</b>. (Plain Copilot chat
-            works too — upload <code>docs/11-ai-json-authoring.md</code> and, for known
-            partner documents, <code>docs/13-partner-doc-interpretation.md</code> with it.)</li>
+            PDF and answer its questions; the JSON it returns loads via
+            <b>Import project</b>.</li>
           <li><b>Your work stays here:</b> the editor autosaves in this browser, and
             <b>Save</b> keeps named copies (picker: <i>saved in this browser</i>;
             <b>Delete</b> asks once). <b>Export</b> is the real file
