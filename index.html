@@ -811,7 +811,7 @@
         <label class="f f-md cm-tcp" title="IP address of the device or gateway on the plant network">IP<input id="commIp" placeholder="192.168.1.10" title="IP address of the device or gateway on the plant network"></label>
         <label class="f f-xs cm-tcp" title="Modbus TCP port - 502 unless the device documentation says otherwise">port<input id="commPort" type="number" value="502" title="Modbus TCP port - 502 unless the device documentation says otherwise"></label>
         <label class="f f-sm cm-rtu" title="Serial port on the IWMAC machine the bus is wired to, e.g. COM1">COM port<input id="commCom" placeholder="COM1" title="Serial port on the IWMAC machine the bus is wired to, e.g. COM1"></label>
-        <label class="f f-sm cm-rtu" title="Serial speed - must match every device on the bus">baud<select id="commBaud" title="Serial speed - must match every device on the bus"><option>19200</option><option>9600</option></select></label>
+        <label class="f f-sm cm-rtu" title="Serial speed - must match every device on the bus">baud<select id="commBaud" title="Serial speed - must match every device on the bus"><option>19200</option><option>9600</option><option>300</option><option>600</option><option>1200</option><option>2400</option><option>4800</option><option>14400</option><option>38400</option><option>57600</option><option>76800</option><option>115200</option></select></label>
         <label class="f f-sm cm-rtu" title="Serial parity - must match every device on the bus">parity<select id="commParity" title="Serial parity - must match every device on the bus"><option>even</option><option>odd</option><option>none</option></select></label>
         <label class="f f-xs cm-rtu" title="Serial stop bits - must match every device on the bus">stop bits<select id="commStop" title="Serial stop bits - must match every device on the bus"><option>1</option><option>2</option></select></label>
       </div>
@@ -1244,7 +1244,11 @@ function showSystem(s) {
   $("commIp").value = c.ip || "";
   $("commPort").value = c.port ?? 502;
   $("commCom").value = c.com_port || "";
-  $("commBaud").value = String(c.baudrate || 19200);
+  const baud = String(c.baudrate || 19200);
+  // an unlisted rate must not silently fall back to the first option
+  if (![...$("commBaud").options].some(o => o.value === baud))
+    $("commBaud").add(new Option(baud, baud));
+  $("commBaud").value = baud;
   $("commParity").value = c.parity || "even";
   $("commStop").value = String(c.stop_bits || 1);
   $("unitRows").replaceChildren();
