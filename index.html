@@ -1327,10 +1327,12 @@ function addPointRow(p={}) {
                                  const d = rowData(tr);
                                  if (typeof d.addr === "number") d.addr += 1;
                                  delete d.element_id;
-                                 addPointRow(d); renumber(); }},"⧉"),
+                                 const nr = addPointRow(d); renumber();
+                                 nr.scrollIntoView({block:"nearest", behavior:"smooth"}); }},"⧉"),
       el("button",{class:"ghost rowbtn", title:"delete",
                    onclick:()=>{ ptPushState(null,"delete row"); tr.remove(); renumber(); }},"✕")));
   tb.append(tr);
+  return tr;
 }
 /* ---------- points: view state (sort / search / filters) ----------
    Sorting is a VIEW operation. rules.generate derives each group's view_order
@@ -1958,7 +1960,11 @@ $("btnDefaultGroups").onclick = () => {
   refreshGroupList();
 };
 $("btnAddState").onclick = () => addStateRow();
-$("btnAddPoint").onclick = () => { ptPushState(null,"add point"); addPointRow(); renumber(); };
+$("btnAddPoint").onclick = () => { ptPushState(null,"add point");
+  const tr = addPointRow(); renumber();
+  tr.scrollIntoView({block:"nearest", behavior:"smooth"});
+  // preventScroll: the focus jump would cancel the smooth scroll above
+  tr.querySelector(".p-group").focus({preventScroll:true}); };
 
 /* points multi-select: press anywhere on a row and drag across rows.
    Deliberately no preventDefault - the cell under the cursor must still take
