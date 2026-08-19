@@ -1,0 +1,15 @@
+<!-- Full-bleed variant: no rounded corners and no transparency, because iOS draws its
+     own mask over apple-touch-icon and renders transparent corners as black. The
+     glyph is inset a little further so it survives both a rounded and a circular mask. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="modbusgen">
+  <title>modbusgen</title>
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4da3ff"/>
+      <stop offset="1" stop-color="#2f6fb5"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" fill="url(#tile)"/>
+  <path d="M14 40 H23 V24 H33 V40 H43 V24 H50" fill="none" stroke="#fff"
+        stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
