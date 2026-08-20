@@ -11,7 +11,8 @@ const XLSM_TEMPLATE = "Modbustemplate.xlsm?v=c69048c74c";     // copied in by bu
 const XLSM_VFS_PATH = "/modbustemplate.xlsm";    // where it lands inside Pyodide
 
 let _py = null;              // the runtime itself, for FS access and micropip
-let _xlsmReady = null;       // one-shot promise: openpyxl + template are loaded
+let _openpyxlReady = null;   // one-shot: openpyxl installed (import and export)
+let _templateReady = null;   // one-shot: the blank workbook is in the VFS (export)
 
 function _overlay(text, error) {
   let div = document.getElementById("pyodideOverlay");
@@ -38,7 +39,7 @@ window.PYODIDE_READY = (async () => {
   _overlay("Loading YAML support…");
   await py.loadPackage("pyyaml");
   _overlay("Loading modbusgen…");
-  const buf = await (await fetch("modbusgen-src.zip?v=0979fc978b")).arrayBuffer();
+  const buf = await (await fetch("modbusgen-src.zip?v=b413cab848")).arrayBuffer();
   py.unpackArchive(buf, "zip");
   py.runPython("import sys; sys.path.insert(0, 'src')");
   const glue = py.pyimport("modbusgen.webapi");
@@ -50,30 +51,41 @@ window.PYODIDE_READY = (async () => {
   throw e;
 });
 
-/* Excel export needs openpyxl (~1 MB from PyPI) and the 640 KB template, which is
-   most of a megabyte nobody should pay for just to open the page. Both load on the
-   first Export Excel click and are cached for the rest of the session. The template
-   goes into Pyodide's own filesystem so the bytes never cross the JSON boundary. */
-function _ensureXlsm() {
-  if (_xlsmReady) return _xlsmReady;
-  _xlsmReady = (async () => {
+/* Excel support is ~1 MB nobody should pay for just to open the page, so it loads on
+   first use and is cached for the session. Split in two because reading a workbook
+   needs only the library, while writing one also needs the 640 KB blank template -
+   which goes into Pyodide's own filesystem so the bytes never cross the JSON
+   boundary. A failure clears the promise so the next click retries. */
+function _ensureOpenpyxl() {
+  if (_openpyxlReady) return _openpyxlReady;
+  _openpyxlReady = (async () => {
     _overlay("Loading Excel support (~1 MB, first use only)…");
     try {
-      const templateBytes = fetch(XLSM_TEMPLATE).then(r => {
-        if (!r.ok) throw new Error(`${XLSM_TEMPLATE} (HTTP ${r.status})`);
-        return r.arrayBuffer();
-      });
       await _py.loadPackage("micropip");
       await _py.pyimport("micropip").install("openpyxl");
-      _py.FS.writeFile(XLSM_VFS_PATH, new Uint8Array(await templateBytes));
     } catch (e) {
-      _xlsmReady = null;                       // let the next click retry
+      _openpyxlReady = null;
       throw new Error("could not load Excel support: " + (e.message || e));
     } finally {
       document.getElementById("pyodideOverlay")?.remove();
     }
   })();
-  return _xlsmReady;
+  return _openpyxlReady;
+}
+
+function _ensureTemplate() {
+  if (_templateReady) return _templateReady;
+  _templateReady = (async () => {
+    try {
+      const r = await fetch(XLSM_TEMPLATE);
+      if (!r.ok) throw new Error(`${XLSM_TEMPLATE} (HTTP ${r.status})`);
+      _py.FS.writeFile(XLSM_VFS_PATH, new Uint8Array(await r.arrayBuffer()));
+    } catch (e) {
+      _templateReady = null;
+      throw new Error("could not load the Modbustemplate workbook: " + (e.message || e));
+    }
+  })();
+  return _templateReady;
 }
 
 function _downloadB64(name, b64) {
@@ -126,8 +138,15 @@ window.PYODIDE_API = async (path, body) => {
   if (path === "/api/yaml")
     return { text: glue.yaml_text(JSON.stringify(body.project)) };
   if (path === "/api/xlsm") {
-    await _ensureXlsm();
+    await _ensureOpenpyxl();
+    await _ensureTemplate();
     return JSON.parse(glue.xlsm_json(JSON.stringify(body.project), XLSM_VFS_PATH));
+  }
+  if (path === "/api/import-xlsm") {
+    await _ensureOpenpyxl();          // reading a workbook needs no template
+    const res = JSON.parse(glue.import_xlsm_json(body.b64, body.filename || ""));
+    if (res.error) throw new Error(res.error);
+    return res;
   }
   if (path === "/api/save") {
     const name = body.file || "project.yaml";

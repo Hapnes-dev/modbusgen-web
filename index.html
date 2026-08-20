@@ -265,6 +265,9 @@
   <button id="btnImportSql" class="ghost"
           title="Convert a generated SQL script back into an editable project - accepts the modern REPLACE format and the old Excel tool's INSERT format. Export afterwards for the .json file">Import SQL</button>
   <input id="sqlFile" type="file" accept=".sql,.txt" hidden>
+  <button id="btnImportXlsm" class="ghost"
+          title="Convert a filled Modbustemplate workbook into an editable project - both template generations are recognised. Export afterwards for the .json file">Insert Excel</button>
+  <input id="xlsmFile" type="file" accept=".xlsm,.xlsx" hidden>
   <input id="fileName" size="24" placeholder="project-name.yaml" title="File name for Save / Export">
   <button id="btnSave" title="Keep the project in this browser under the name beside this button. Nothing is written to disk and nothing is downloaded - use Export for a file. The button reports the outcome">Save</button>
   <button id="btnExport" class="ghost"
@@ -2284,6 +2287,37 @@ $("sqlFile").onchange = async e => {
   e.target.value = "";
 };
 
+/* Insert Excel: the reverse of Export Excel. The workbook is binary, so it travels
+   as base64 rather than text - the browser build additionally installs openpyxl on
+   the first use, which can take a few seconds. */
+$("btnImportXlsm").onclick = () => $("xlsmFile").click();
+$("xlsmFile").onchange = async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const btn = $("btnImportXlsm");
+  btnBusy(btn, "converting…");
+  try {
+    const buf = new Uint8Array(await file.arrayBuffer());
+    let bin = "";
+    for (let i = 0; i < buf.length; i += 0x8000)      // chunked: apply() has an arg cap
+      bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+    const res = await api("/api/import-xlsm", {b64: btoa(bin), filename: file.name});
+    if (res.error) throw new Error(res.error);
+    showProject(res.project);
+    $("fileName").value = (res.project.table || file.name.replace(/\.[^.]*$/, "")) + ".json";
+    $("out").replaceChildren(
+      el("div",{class:"msg ok"},
+        `✓ Converted ${file.name} - review (plant number!), then Validate and Export for the .json file.`),
+      ...(res.notes || []).map(n => el("div",{class:"msg note"}, n)));
+    btnFlash(btn, "converted ✓", "ok");
+    queueAutosave();
+  } catch (err) {
+    btnFlash(btn, "convert failed", "bad", 2600);
+    showError(new Error(`could not convert ${file.name}: ${err.message}`));
+  }
+  e.target.value = "";
+};
+
 /* The SQL is encoded cp1252 server-side because the IWMAC tables are latin1;
    downloading res.sql as a UTF-8 string would mangle æøå. Ship the bytes. */
 function downloadBytes(name, b64, type = "text/plain") {
@@ -2540,6 +2574,6 @@ $("points").addEventListener("input", () => {
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=6d769d2eb2"></script>
+<script src="pyodide-adapter.js?v=09eb31b91d"></script>
 </body>
 </html>
