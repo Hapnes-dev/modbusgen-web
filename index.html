@@ -269,6 +269,8 @@
   <button id="btnSave" title="Keep the project in this browser under the name beside this button. Nothing is written to disk and nothing is downloaded - use Export for a file. The button reports the outcome">Save</button>
   <button id="btnExport" class="ghost"
           title="Download the project as a file to continue later - .yaml or .json by extension">Export</button>
+  <button id="btnXlsm" class="ghost"
+          title="Download this project as a filled Modbustemplate workbook (.xlsm), for anyone still working in the old Excel tool. Open it and run the workbook's macro to regenerate its output columns">Export Excel</button>
   <button id="btnDelete" class="ghost" disabled
           title="Select a project saved in this browser to delete it">Delete</button>
   <span style="flex:1"></span>
@@ -2284,12 +2286,12 @@ $("sqlFile").onchange = async e => {
 
 /* The SQL is encoded cp1252 server-side because the IWMAC tables are latin1;
    downloading res.sql as a UTF-8 string would mangle æøå. Ship the bytes. */
-function downloadBytes(name, b64) {
+function downloadBytes(name, b64, type = "text/plain") {
   const bin = atob(b64);
   const buf = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([buf], {type:"text/plain"}));
+  a.href = URL.createObjectURL(new Blob([buf], {type}));
   a.download = name;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
@@ -2319,6 +2321,27 @@ $("btnExport").onclick = async () => {
     btnFlash(btn, "exported ✓", "ok");
   } catch (e) { btnFlash(btn, "export failed", "bad", 2600); showError(e); }
 };
+/* Back into the old Excel tool. Only the local GUI can do this - the browser build
+   ships neither openpyxl nor the 640 KB template - so the button removes itself
+   there rather than offering a download that cannot happen. */
+if (window.PYODIDE_API) $("btnXlsm").remove();
+else $("btnXlsm").onclick = async () => {
+  const btn = $("btnXlsm");
+  btnBusy(btn, "building…");
+  try {
+    const res = await api("/api/xlsm", {project: collectProject()});
+    if (res.error) throw new Error(res.error);
+    downloadBytes(res.filename, res.b64,
+                  "application/vnd.ms-excel.sheet.macroEnabled.12");
+    $("out").replaceChildren(
+      el("div",{class:"msg ok"},
+        `✓ Exported ${res.filename} - open it and run the workbook's macro to fill `
+        + `its generated columns.`),
+      ...(res.notes || []).map(n => el("div",{class:"msg note"}, n)));
+    btnFlash(btn, "exported ✓", "ok");
+  } catch (e) { btnFlash(btn, "export failed", "bad", 2600); showError(e); }
+};
+
 $("btnLoad").onclick = async () => {
   const value = $("fileSelect").value;
   if (!value) return;
