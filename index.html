@@ -2321,17 +2321,9 @@ $("btnExport").onclick = async () => {
     btnFlash(btn, "exported ✓", "ok");
   } catch (e) { btnFlash(btn, "export failed", "bad", 2600); showError(e); }
 };
-/* Back into the old Excel tool. Only the local GUI can do this - the browser build
-   ships neither openpyxl nor the 640 KB template - so the button removes itself
-   there rather than offering a download that cannot happen.
-
-   The test has to wait for DOMContentLoaded: the browser build appends
-   pyodide-adapter.js after this script, so window.PYODIDE_API does not exist yet
-   while this line is being parsed. Checking it here directly left the button on the
-   public site, where clicking it reached the adapter's "unknown api path" throw. */
-addEventListener("DOMContentLoaded", () => {
-  if (window.PYODIDE_API) $("btnXlsm").remove();
-});
+/* Back into the old Excel tool, in both backends. The browser build has further to
+   go - openpyxl and the template are fetched on the first click - so the button can
+   sit busy for a while the first time. */
 $("btnXlsm").onclick = async () => {
   const btn = $("btnXlsm");
   btnBusy(btn, "building…");

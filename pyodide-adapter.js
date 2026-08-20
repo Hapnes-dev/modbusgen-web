@@ -7,6 +7,11 @@
 const PYODIDE_VERSION = "0.26.4";
 const PYODIDE_URL = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
 const STATIC_PROJECTS = ["example-belimo-ev.json"];
+const XLSM_TEMPLATE = "Modbustemplate.xlsm";     // copied in by build_web.py
+const XLSM_VFS_PATH = "/modbustemplate.xlsm";    // where it lands inside Pyodide
+
+let _py = null;              // the runtime itself, for FS access and micropip
+let _xlsmReady = null;       // one-shot promise: openpyxl + template are loaded
 
 function _overlay(text, error) {
   let div = document.getElementById("pyodideOverlay");
@@ -29,7 +34,7 @@ window.PYODIDE_READY = (async () => {
   s.src = PYODIDE_URL + "pyodide.js";
   document.head.append(s);
   await new Promise((ok, bad) => { s.onload = ok; s.onerror = bad; });
-  const py = await loadPyodide({ indexURL: PYODIDE_URL });
+  const py = _py = await loadPyodide({ indexURL: PYODIDE_URL });
   _overlay("Loading YAML support…");
   await py.loadPackage("pyyaml");
   _overlay("Loading modbusgen…");
@@ -44,6 +49,32 @@ window.PYODIDE_READY = (async () => {
            " - check your internet connection and reload.", true);
   throw e;
 });
+
+/* Excel export needs openpyxl (~1 MB from PyPI) and the 640 KB template, which is
+   most of a megabyte nobody should pay for just to open the page. Both load on the
+   first Export Excel click and are cached for the rest of the session. The template
+   goes into Pyodide's own filesystem so the bytes never cross the JSON boundary. */
+function _ensureXlsm() {
+  if (_xlsmReady) return _xlsmReady;
+  _xlsmReady = (async () => {
+    _overlay("Loading Excel support (~1 MB, first use only)…");
+    try {
+      const templateBytes = fetch(XLSM_TEMPLATE).then(r => {
+        if (!r.ok) throw new Error(`${XLSM_TEMPLATE} (HTTP ${r.status})`);
+        return r.arrayBuffer();
+      });
+      await _py.loadPackage("micropip");
+      await _py.pyimport("micropip").install("openpyxl");
+      _py.FS.writeFile(XLSM_VFS_PATH, new Uint8Array(await templateBytes));
+    } catch (e) {
+      _xlsmReady = null;                       // let the next click retry
+      throw new Error("could not load Excel support: " + (e.message || e));
+    } finally {
+      document.getElementById("pyodideOverlay")?.remove();
+    }
+  })();
+  return _xlsmReady;
+}
 
 function _downloadB64(name, b64) {
   const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
@@ -94,6 +125,10 @@ window.PYODIDE_API = async (path, body) => {
   }
   if (path === "/api/yaml")
     return { text: glue.yaml_text(JSON.stringify(body.project)) };
+  if (path === "/api/xlsm") {
+    await _ensureXlsm();
+    return JSON.parse(glue.xlsm_json(JSON.stringify(body.project), XLSM_VFS_PATH));
+  }
   if (path === "/api/save") {
     const name = body.file || "project.yaml";
     if (name.endsWith(".json")) {
