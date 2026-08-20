@@ -793,9 +793,9 @@
       <div class="subhead">driver identity</div>
       <div class="row">
         <label class="f f-lg" title="Ties the whole block together: it is the settings owner, the driver_type and the process name. Used by both blocks, e.g. EM270 or GRUNDFOS">owner / driver name<input id="sysOwner" placeholder="EM270" title="Ties the whole block together: it is the settings owner, the driver_type and the process name. Used by both blocks, e.g. EM270 or GRUNDFOS"></label>
-        <label class="f f-sm" title="Registration type recorded against the units - leave blank unless the delivery specifies one">reg.type<input id="sysRegType" title="Registration type recorded against the units - leave blank unless the delivery specifies one"></label>
-        <label class="f f-sm" title="Order number linked to the units in iw_sys_order_no">order no<input id="sysOrderNo" title="Order number linked to the units in iw_sys_order_no"></label>
-        <label class="f f-xs" title="Prefix put in front of every device address: 0_ for the first driver on the plant, 1_ for the second">addr prefix<select id="sysPrefix" title="Prefix put in front of every device address: 0_ for the first driver on the plant, 1_ for the second"><option>0_</option><option>1_</option></select></label>
+        <label class="f f-sm" title="Registration type recorded against the units. Mirrors the owner / driver name until you type your own value here - clear it if the delivery wants it blank">reg.type<input id="sysRegType" title="Registration type recorded against the units. Mirrors the owner / driver name until you type your own value here - clear it if the delivery wants it blank"></label>
+        <label class="f f-sm" title="Order number linked to the units in iw_sys_order_no. Mirrors the owner / driver name until you type your own value here">order no<input id="sysOrderNo" title="Order number linked to the units in iw_sys_order_no. Mirrors the owner / driver name until you type your own value here"></label>
+        <label class="f f-xs" title="Prefix put in front of every device address. Follows the comm mode - 1_ for tcp, 0_ for rtu - until you pick one yourself">addr prefix<select id="sysPrefix" title="Prefix put in front of every device address. Follows the comm mode - 1_ for tcp, 0_ for rtu - until you pick one yourself"><option>0_</option><option>1_</option></select></label>
       </div>
     </div>
 
@@ -1246,9 +1246,10 @@ function showSystem(s) {
   $("sysOwner").value = s.owner || "";
   $("sysRegType").value = s.reg_type || "";
   $("sysOrderNo").value = s.order_no || "";
-  $("sysPrefix").value = s.driver_addr_prefix || "0_";
   const c = s.comm || {};
   $("commMode").value = c.mode || "tcp";
+  // mode first: a project that carries no prefix takes the one its mode implies
+  $("sysPrefix").value = s.driver_addr_prefix || PREFIX_FOR_MODE[$("commMode").value];
   $("commIp").value = c.ip || "";
   $("commPort").value = c.port ?? 502;
   $("commCom").value = c.com_port || "";
@@ -1265,7 +1266,41 @@ function showSystem(s) {
                      driver_addr:s.driver_addr, view_order:s.view_order||0}] : []);
   for (const u of rows) addUnitRow(u);
   renumberUnits();
+  sysRelink();
 }
+
+/* Two conveniences in the system block, both "linked until you say otherwise":
+   the address prefix follows the comm mode (tcp -> 1_, rtu -> 0_), and reg.type
+   and order no mirror the owner/driver name, which is the delivery convention
+   here. Each link breaks the moment you edit that field yourself, so a value you
+   chose - or a blank you left on purpose - is never overwritten afterwards.
+   Loading a project re-establishes each link from what the file actually carries,
+   so an imported list with its own prefix or a deliberately blank reg.type keeps
+   it. Programmatic writes below do not fire input events; the owner keystroke
+   that triggered them bubbles to the document autosave hook, which is enough. */
+const PREFIX_FOR_MODE = {tcp: "1_", rtu: "0_"};
+let prefixLinked = true;
+const ownerMirror = {sysRegType: true, sysOrderNo: true};
+
+function sysRelink() {
+  const owner = $("sysOwner").value.trim();
+  prefixLinked = $("sysPrefix").value === PREFIX_FOR_MODE[$("commMode").value];
+  // Exact match, so an empty field only stays linked while the owner is empty too:
+  // a loaded project whose reg.type is blank against a real owner meant it blank.
+  for (const id of Object.keys(ownerMirror))
+    ownerMirror[id] = $(id).value.trim() === owner;
+}
+$("commMode").addEventListener("change", () => {
+  if (prefixLinked) $("sysPrefix").value = PREFIX_FOR_MODE[$("commMode").value];
+});
+$("sysPrefix").addEventListener("change", () => { prefixLinked = false; });
+$("sysOwner").addEventListener("input", () => {
+  const owner = $("sysOwner").value.trim();
+  for (const id of Object.keys(ownerMirror)) if (ownerMirror[id]) $(id).value = owner;
+});
+for (const id of Object.keys(ownerMirror))
+  $(id).addEventListener("input", () => { ownerMirror[id] = false; });
+
 $("btnAddUnit").onclick = () => { addUnitRow(); renumberUnits(); };
 for (const id of ["commMode","sysUnits","sysSettings"]) $(id).addEventListener("change", syncSysUi);
 syncSysUi();
