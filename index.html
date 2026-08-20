@@ -792,7 +792,7 @@
     <div class="sub">
       <div class="subhead">driver identity</div>
       <div class="row">
-        <label class="f f-lg" title="Ties the whole block together: it is the settings owner, the driver_type and the process name. Used by both blocks, e.g. EM270 or GRUNDFOS">owner / driver name<input id="sysOwner" placeholder="EM270" title="Ties the whole block together: it is the settings owner, the driver_type and the process name. Used by both blocks, e.g. EM270 or GRUNDFOS"></label>
+        <label class="f f-lg" title="Ties the whole block together: it is the settings owner, the driver_type and the process name. Uppercase, no spaces. Used by both blocks, e.g. EM270 or GRUNDFOS">owner / driver name<input id="sysOwner" placeholder="EM270" title="Ties the whole block together: it is the settings owner, the driver_type and the process name. Uppercase, no spaces. Used by both blocks, e.g. EM270 or GRUNDFOS"></label>
         <label class="f f-sm" title="Registration type recorded against the units. Lowercase, no spaces. Mirrors the owner / driver name until you type your own value here - clear it if the delivery wants it blank">reg.type<input id="sysRegType" title="Registration type recorded against the units. Lowercase, no spaces. Mirrors the owner / driver name until you type your own value here - clear it if the delivery wants it blank"></label>
         <label class="f f-sm" title="Order number linked to the units in iw_sys_order_no. Lowercase, no spaces. Mirrors the owner / driver name until you type your own value here">order no<input id="sysOrderNo" title="Order number linked to the units in iw_sys_order_no. Lowercase, no spaces. Mirrors the owner / driver name until you type your own value here"></label>
         <label class="f f-xs" title="Prefix put in front of every device address. Follows the comm mode - 1_ for tcp, 0_ for rtu - until you pick one yourself">addr prefix<select id="sysPrefix" title="Prefix put in front of every device address. Follows the comm mode - 1_ for tcp, 0_ for rtu - until you pick one yourself"><option>0_</option><option>1_</option></select></label>
@@ -1243,7 +1243,7 @@ function showSystem(s) {
   s = s || {};
   $("sysUnits").checked = !!s.units;
   $("sysSettings").checked = !!s.settings;
-  $("sysOwner").value = s.owner || "";
+  $("sysOwner").value = ownerText(s.owner || "");
   // Normalised on the way in too: an imported list carrying "KAMSTRUP801" here
   // would otherwise keep a value the field is not allowed to hold.
   $("sysRegType").value = idText(s.reg_type || "");
@@ -1284,11 +1284,28 @@ const PREFIX_FOR_MODE = {tcp: "1_", rtu: "0_"};
 let prefixLinked = true;
 const ownerMirror = {sysRegType: true, sysOrderNo: true};
 
-/* reg.type and order no must be lowercase with no spaces, so every route into
-   them goes through this: the mirror, typing, and loading a project. Whitespace
-   becomes "_" rather than vanishing, matching the [a-z0-9_] shape `table` already
-   uses - "canes hyco" reads better as canes_hyco than caneshyco. */
-const idText = v => String(v ?? "").toLowerCase().replace(/\s+/g, "_");
+/* Three identifier fields, none of which may hold a space: the owner / driver
+   name is uppercase, and reg.type and order no are the same name lowercased.
+   Every route into them normalises - the mirror, typing, and loading a project.
+   Whitespace becomes "_" rather than vanishing, matching the [a-z0-9_] shape
+   `table` already uses: "canes hyco" reads better as CANES_HYCO / canes_hyco
+   than CANESHYCO / caneshyco. */
+const squash = v => String(v ?? "").replace(/\s+/g, "_");
+const ownerText = v => squash(v).toUpperCase();
+const idText = v => squash(v).toLowerCase();
+
+/* Rewrite a field in place, leaving the caret where the typist left it. A run of
+   whitespace collapses to one "_", so shift by the delta rather than assuming the
+   length held. */
+function normaliseField(el, fn) {
+  const before = el.value, after = fn(before);
+  if (after !== before) {
+    const pos = Math.max(0, (el.selectionStart ?? after.length) - (before.length - after.length));
+    el.value = after;
+    el.setSelectionRange(pos, pos);
+  }
+  return after;
+}
 
 function sysRelink() {
   const owner = idText($("sysOwner").value.trim());
@@ -1302,20 +1319,13 @@ $("commMode").addEventListener("change", () => {
   if (prefixLinked) $("sysPrefix").value = PREFIX_FOR_MODE[$("commMode").value];
 });
 $("sysPrefix").addEventListener("change", () => { prefixLinked = false; });
-$("sysOwner").addEventListener("input", () => {
-  const owner = idText($("sysOwner").value.trim());
+$("sysOwner").addEventListener("input", e => {
+  const owner = idText(normaliseField(e.target, ownerText).trim());
   for (const id of Object.keys(ownerMirror)) if (ownerMirror[id]) $(id).value = owner;
 });
 for (const id of Object.keys(ownerMirror))
   $(id).addEventListener("input", e => {
-    // Normalise in place, keeping the caret where the typist left it. Collapsing
-    // runs of whitespace can shorten the value, so shift by the actual delta.
-    const el = e.target, before = el.value, after = idText(before);
-    if (after !== before) {
-      const pos = Math.max(0, (el.selectionStart ?? after.length) - (before.length - after.length));
-      el.value = after;
-      el.setSelectionRange(pos, pos);
-    }
+    normaliseField(e.target, idText);
     ownerMirror[id] = false;
   });
 
