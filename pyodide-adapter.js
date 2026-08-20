@@ -7,7 +7,7 @@
 const PYODIDE_VERSION = "0.26.4";
 const PYODIDE_URL = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
 const STATIC_PROJECTS = ["example-belimo-ev.json"];
-const XLSM_TEMPLATE = "Modbustemplate.xlsm";     // copied in by build_web.py
+const XLSM_TEMPLATE = "Modbustemplate.xlsm?v=c69048c74c";     // copied in by build_web.py
 const XLSM_VFS_PATH = "/modbustemplate.xlsm";    // where it lands inside Pyodide
 
 let _py = null;              // the runtime itself, for FS access and micropip
@@ -38,7 +38,7 @@ window.PYODIDE_READY = (async () => {
   _overlay("Loading YAML support…");
   await py.loadPackage("pyyaml");
   _overlay("Loading modbusgen…");
-  const buf = await (await fetch("modbusgen-src.zip")).arrayBuffer();
+  const buf = await (await fetch("modbusgen-src.zip?v=0979fc978b")).arrayBuffer();
   py.unpackArchive(buf, "zip");
   py.runPython("import sys; sys.path.insert(0, 'src')");
   const glue = py.pyimport("modbusgen.webapi");
