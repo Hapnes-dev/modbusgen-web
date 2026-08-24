@@ -172,6 +172,10 @@
   /* display:flex above beats the UA rule for [hidden], so say it explicitly -
      without this the bar never hides and keeps showing a stale count */
   .bulkbar[hidden]{display:none}
+  .repbar{border-color:var(--line2)}
+  .repbar input[type=text],.repbar input:not([type]){font-size:12px}
+  .repbar #repPreview{color:var(--dim);font-family:Consolas,monospace}
+  .repbar #repPreview.bad{color:var(--red)}
   .bulkbar select,.bulkbar input{font-size:12px;padding:3px 6px}
   .bulkbar button{font-size:12px;padding:3px 10px}
   .bulkbar .lbl{font-size:11px;color:var(--dim)}
@@ -758,9 +762,36 @@
       <button id="bulkFill"
               title="Copy this column's value from the topmost selected row down into the rest - leaves the other columns alone">fill down</button>
       <span class="h2fill"></span>
+      <button id="bulkRepeat"
+              title="Copy the selected block once per instance, offsetting every address by the stride. This is how zone and section blocks are built - give it the instances that exist, not a count">replicate…</button>
       <button id="bulkDup" title="Duplicate every selected row, appended at the bottom with addr + 1">duplicate</button>
       <button id="bulkDel" class="danger" title="Delete every selected row">delete</button>
       <button id="bulkClear" class="ghost" title="Clear the selection (Esc)">✕</button>
+    </div>
+    <!-- Replicating a block is how an instance-templated device becomes a list: one
+         copy per installed zone, section or unit, every address moved by one stride.
+         It asks which instances exist rather than how many, because an installation
+         is routinely not numbered 1..n - the plant that motivated this has zones
+         1-4 and 9-38, and a count would have produced the wrong 34. -->
+    <div class="bulkbar repbar" id="repBar" hidden>
+      <span class="lbl">instances</span>
+      <input id="repInstances" size="12" placeholder="2-5"
+             title="Which instances to create, as numbers or ranges: 2-5, or 2-4,9-38. The selected block is the source and is not recreated">
+      <span class="lbl">addr stride</span>
+      <input id="repStride" type="number" size="6" style="width:74px" value="100"
+             title="Added to every address once per instance step, counted from the source block's own instance number">
+      <span class="lbl">group</span>
+      <input id="repGroup" size="12" placeholder="zone{n}"
+             title="Group key for each copy; {n} is the instance number. Missing groups are created with the key as a placeholder alias">
+      <label class="f" style="flex-direction:row;align-items:center;gap:5px"
+             title="Also rewrite system_no by pattern. Right for CU{n}; wrong wherever system numbers are per-instance plant facts, which is the usual case">
+        <input id="repSysOn" type="checkbox"><span class="lbl">system_no</span></label>
+      <input id="repSys" size="10" placeholder="CU{n}" disabled
+             title="system_no for each copy; {n} is the instance number">
+      <span class="h2fill"></span>
+      <span id="repPreview" class="lbl"></span>
+      <button id="repRun" class="primary" title="Create the copies">replicate</button>
+      <button id="repCancel" class="ghost" title="Close without replicating (Esc)">✕</button>
     </div>
     <div class="row" style="margin-top:8px">
       <button id="btnAddPoint" title="Append an empty point row at the bottom of the table">+ point</button>
@@ -1841,6 +1872,7 @@ function ptPaintSelection() {
   // A single click selects the row under the cursor, so the bar would otherwise
   // be on screen permanently while editing. It is for editing rows together.
   $("bulkBar").hidden = n < 2;
+  if (n < 2) repClose();       // the replicate bar belongs to a selection
   // set unconditionally: guarding on n > 1 left the previous count on screen
   $("bulkCount").textContent = n === 1 ? "1 row selected" : `${n} rows selected`;
 }
@@ -2342,6 +2374,167 @@ $("bulkCol").onchange = bulkRefreshValue;
 $("bulkApply").onclick = bulkApply;
 $("bulkFill").onclick = bulkFillDown;
 $("bulkClear").onclick = ptClearSelection;
+/* ---------- replicate a block across instances ----------
+   An instance-templated device documents one zone, section or unit and leaves the
+   count to the installation, so a list is built by copying one block once per
+   instance with every address moved by a fixed stride. The Ouman/Canes Hyco
+   delivery is 1598 of its 1619 points that way: 5 sections of 34 at stride 100 and
+   34 zones of 42 at the same stride, each copy identical but for its addresses.
+
+   It asks which instances exist, not how many. That plant's zones are numbered
+   1-4 and 9-38 - a repeat count would have produced zone1..zone34 and been wrong
+   about every one of them past the fourth. Which instances are installed is a fact
+   about the plant (docs/11 "Template checkpoint", docs/13 "Hyco installed-instance
+   expansion"), so it is asked for, never inferred.
+
+   What it will not do is invent per-instance facts. Group aliases are room names
+   and system numbers are plant system numbers - in the delivery above, zone1 and
+   zone2 are "HCWC" and "Fingarderobe", and their system_no values share no pattern
+   at all. New groups are therefore created with the key as a placeholder alias and
+   the result says so, rather than fabricating something plausible. */
+function repParseInstances(text) {
+  const out = [];
+  for (const part of String(text).split(",")) {
+    const s = part.trim();
+    if (!s) continue;
+    const m = s.match(/^(\d+)\s*(?:-\s*(\d+))?$/);
+    if (!m) return null;                          // one bad token invalidates the lot
+    const a = Number(m[1]), b = m[2] === undefined ? a : Number(m[2]);
+    if (b < a || b - a > 4096) return null;
+    for (let n = a; n <= b; n++) if (!out.includes(n)) out.push(n);
+  }
+  return out.length ? out : null;
+}
+function repBaseOf(group) {                       // "zone12" -> 12, "master" -> null
+  const m = String(group || "").match(/(\d+)\s*$/);
+  return m ? Number(m[1]) : null;
+}
+function repPattern(group) {                      // "zone12" -> "zone{n}"
+  return repBaseOf(group) === null ? "" : String(group).replace(/(\d+)\s*$/, "{n}");
+}
+/* The selection in project order, which is the order the copies inherit - a sorted
+   view must not decide what "the block" means or where it lands. */
+function repSourceRows() {
+  return ptDataOrder().filter(tr => ptSel.has(tr));
+}
+function repPlan() {
+  const rows = repSourceRows();
+  if (rows.length < 1) return {error: "select the rows to copy"};
+  const data = rows.map(rowData);
+  const instances = repParseInstances($("repInstances").value);
+  if (!instances) return {error: "instances: numbers or ranges, e.g. 2-5 or 2-4,9-38"};
+  const stride = Number($("repStride").value);
+  if (!Number.isFinite(stride)) return {error: "stride must be a number"};
+  const base = repBaseOf(data[0].group) ?? 1;
+  const groupPat = $("repGroup").value.trim();
+  const sysPat = $("repSysOn").checked ? $("repSys").value.trim() : "";
+  const wanted = instances.filter(n => n !== base);
+  if (!wanted.length) return {error: `nothing to do - ${base} is the source block`};
+
+  // What a copy must not land on is an existing identity, and identity is the
+  // driver_id: read function, address, bit (rules.driver_id). Address alone is not
+  // it - a holding and an input register share address 1 in every one of these
+  // lists and are two different points. Keying on the address would have called
+  // that a collision and refused a legitimate replicate.
+  const fn = new Map((BOOT?.datatypes || []).map(d => [d.name, d.read_func]));
+  const ident = d => `${fn.get(d.datatype) ?? d.datatype}#${d.addr}#${d.bit ?? ""}`;
+  const taken = new Set(ptRows().map(tr => rowData(tr))
+                        .filter(d => typeof d.addr === "number")
+                        .map(ident));
+  const made = [];
+  let collisions = 0, addrMin = Infinity, addrMax = -Infinity;
+  for (const n of wanted) {
+    for (const d of data) {
+      const p = Object.assign({}, d);
+      delete p.element_id;                        // a copy never inherits an explicit id
+      if (typeof p.addr === "number") {
+        p.addr += (n - base) * stride;
+        if (p.addr < 0) return {error: `instance ${n} would put an address below 0`};
+        addrMin = Math.min(addrMin, p.addr); addrMax = Math.max(addrMax, p.addr);
+        const key = ident(p);
+        if (taken.has(key)) collisions++; else taken.add(key);
+      }
+      if (groupPat) p.group = groupPat.replace(/\{n\}/g, n);
+      if (sysPat) p.system_no = sysPat.replace(/\{n\}/g, n);
+      made.push(p);
+    }
+  }
+  const have = new Set([...document.querySelectorAll("#groups .g-name")].map(i => i.value.trim()));
+  const newGroups = [...new Set(made.map(p => p.group).filter(g => g && !have.has(g)))];
+  return {rows, made, instances: wanted, base, collisions, newGroups,
+          addrMin, addrMax, stride};
+}
+function repRefresh() {
+  const out = $("repPreview");
+  const plan = repPlan();
+  const ok = !plan.error && !plan.collisions;
+  $("repRun").disabled = !ok;
+  out.classList.toggle("bad", !ok);
+  if (plan.error) { out.textContent = plan.error; return; }
+  if (plan.collisions) {
+    out.textContent = `${plan.collisions} address${plan.collisions === 1 ? "" : "es"} `
+      + `already in use - change the stride or the instances`;
+    return;
+  }
+  const g = plan.newGroups.length
+    ? ` · ${plan.newGroups.length} new group${plan.newGroups.length === 1 ? "" : "s"}`
+    : "";
+  out.textContent = `${plan.instances.length} cop${plan.instances.length === 1 ? "y" : "ies"} · `
+    + `${plan.made.length} rows · addr ${plan.addrMin}–${plan.addrMax}${g}`;
+}
+function repOpen() {
+  const rows = repSourceRows();
+  if (!rows.length) return;
+  const first = rowData(rows[0]);
+  $("repGroup").value = repPattern(first.group);
+  // only offer a system_no pattern when the value plainly is one. Zone system
+  // numbers look like "03.01. - 309" and share no pattern at all, and prefilling
+  // "03.01. - {n}" from one of them would invite a whole list of invented numbers.
+  $("repSys").value = /^[A-Za-z_]+\d+$/.test(first.system_no || "")
+    ? repPattern(first.system_no) : "";
+  const base = repBaseOf(first.group);
+  if (!$("repInstances").value && base !== null)
+    $("repInstances").value = `${base + 1}-${base + 4}`;
+  $("repBar").hidden = false;
+  repRefresh();
+  $("repInstances").focus();
+  $("repInstances").select();
+}
+function repClose() { $("repBar").hidden = true; }
+$("bulkRepeat").onclick = () => ($("repBar").hidden ? repOpen() : repClose());
+$("repCancel").onclick = repClose;
+$("repSysOn").onchange = () => { $("repSys").disabled = !$("repSysOn").checked; repRefresh(); };
+for (const id of ["repInstances","repStride","repGroup","repSys"])
+  $(id).addEventListener("input", repRefresh);
+$("repRun").onclick = () => {
+  const plan = repPlan();
+  if (plan.error || plan.collisions) { repRefresh(); return; }
+  ptPushState(null, `replicate ×${plan.instances.length}`);
+
+  // rebuild the project in order: everything up to the end of the source block, the
+  // copies in instance order, then the rest. Appending at the bottom would scatter
+  // the new instances away from the block they came from, and project order is what
+  // decides each group's view_order.
+  const order = ptDataOrder();
+  const lastSel = order.reduce((acc, tr, i) => plan.rows.includes(tr) ? i : acc, -1);
+  const before = order.slice(0, lastSel + 1).map(rowData);
+  const after = order.slice(lastSel + 1).map(rowData);
+  ptRestore([...before, ...plan.made, ...after]);
+
+  for (const name of plan.newGroups) addGroupRow(name, name);
+  if (plan.newGroups.length) refreshGroupList();
+  repClose();
+  ptClearSelection();
+  const note = `Replicated ${plan.rows.length} row(s) into instance(s) `
+    + `${plan.instances.join(", ")} - ${plan.made.length} rows added, addresses `
+    + `${plan.addrMin}–${plan.addrMax}.`;
+  outNote(plan.newGroups.length
+    ? note + ` ${plan.newGroups.length} group(s) created with the key as a placeholder `
+      + `alias: aliases and system numbers are per-instance plant facts, so fill them in `
+      + `from the installation rather than leaving them derived.`
+    : note);
+};
+
 $("bulkDup").onclick = () => {
   ptPushState(null, "duplicate rows");
   for (const tr of bulkTargets()) {
@@ -2470,7 +2663,9 @@ document.addEventListener("keydown", e => {
   }
   if (e.key === "/" && !typing) { e.preventDefault(); $("ptSearch").focus(); $("ptSearch").select(); }
   else if (e.key === "Escape") {
-    if (document.activeElement === $("ptSearch") && $("ptSearch").value) {
+    if (!$("repBar").hidden) {
+      repClose();
+    } else if (document.activeElement === $("ptSearch") && $("ptSearch").value) {
       $("ptSearch").value = ""; applyPointView();
     } else if (ptSel.size) {
       ptClearSelection();
