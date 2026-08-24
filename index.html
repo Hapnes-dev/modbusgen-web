@@ -336,112 +336,113 @@
     </div>
     <details class="help"><summary title="What the table name and plant number do, and every option checkbox">help</summary>
       <div class="helpbody">
-        <b>table name</b> names the three database tables the SQL script fills:
-        <code>iw_par_&lt;name&gt;_param</code>, <code>iw_par_&lt;name&gt;_groups</code>,
-        <code>iw_set_&lt;name&gt;</code>. Lowercase letters/digits, e.g.
-        <span class="ex">kjol</span>. <b>plant number</b> only appears in the SQL file name.
-        The badge after each name is the default. Every checkbox also carries the same
-        one-line summary as a hover tooltip.
+        <b>table name</b> decides what the three database tables are called —
+        <code>iw_par_&lt;name&gt;_param</code>, <code>iw_par_&lt;name&gt;_groups</code> and
+        <code>iw_set_&lt;name&gt;</code>. Lowercase letters and digits, e.g.
+        <span class="ex">kjol</span>. <b>plant number</b> is used only in the SQL file's
+        name; it is not written into the database.
+
+        <p>Below, the badge after each option is its default; hovering a checkbox shows
+        the same summary.</p>
 
         <h4>Addressing</h4>
         <ul>
-          <li><b>subtract_one</b><span class="dflt">on</span> — on when the device
-            documentation counts registers from 1 (most do, incl.
-            <code>4xxxx</code>-style lists:
-            <span class="ex">40101 → addr 101 → polled as 100</span>). Off when the doc
-            gives zero-based protocol addresses. Enter addresses exactly as documented —
-            this switch handles the offset for every point at once. Validation fails if
-            any address would go below 0.</li>
+          <li><b>subtract_one</b><span class="dflt">on</span> — type addresses exactly as
+            the device documentation prints them; this one switch converts them all.
+            Leave it <b>on</b> when the documentation counts from 1, which most do —
+            including <code>4xxxx</code> lists, where
+            <span class="ex">40101</span> is entered as
+            <span class="ex">101</span> and polled as <span class="ex">100</span>. Turn it
+            <b>off</b> only when the documentation already gives zero-based protocol
+            addresses. If any address would end up below 0, validation stops you.</li>
         </ul>
 
         <h4>Script shape</h4>
         <ul>
-          <li><b>truncate</b><span class="dflt">on</span> — emit
-            <code>TRUNCATE TABLE</code> before the inserts (normal for a re-import).
-            <b>create_tables</b><span class="dflt">off</span> — emit
-            <code>CREATE TABLE IF NOT EXISTS</code>, needed the first time a plant gets
+          <li><b>truncate</b><span class="dflt">on</span> — empty the table first with
+            <code>TRUNCATE TABLE</code>, which is what you want when re-importing.</li>
+          <li><b>create_tables</b><span class="dflt">off</span> — add
+            <code>CREATE TABLE IF NOT EXISTS</code>. Needed the first time a plant gets
             this table.</li>
-          <li><span class="note">Both are ignored by the <code>modern</code> SQL format,
-            which is the default.</span> Modern always writes
-            <code>CREATE TABLE IF NOT EXISTS</code> and uses <code>REPLACE INTO</code>
-            instead of truncate-then-insert, so neither checkbox changes its output.
-            They only take effect with <code>sql_format: legacy</code>.</li>
+          <li><span class="note">Neither does anything in the default format.</span>
+            <code>modern</code> always creates the table and uses
+            <code>REPLACE INTO</code> rather than empty-then-insert, so these two only
+            matter with <code>sql_format: legacy</code>.</li>
         </ul>
 
         <h4>Alias text</h4>
         <ul>
           <li><b>use_system_no</b><span class="dflt">on</span> ·
             <b>use_tag</b><span class="dflt">on</span> ·
-            <b>use_extra</b><span class="dflt">on</span> — which per-point fields join
-            into the alias. Order is fixed:
+            <b>use_extra</b><span class="dflt">on</span> — which of a point's fields go
+            into the alias the operator reads. The order is fixed:
             <code>system_no-tag-text-(extra)</code> →
-            <span class="ex">360.001-RT401-Romtemperatur-(1=Drift)</span>. A field that
-            is empty on the point contributes nothing either way; the point's
-            <i>text</i> is always included.</li>
-          <li><b>proper_case_states</b><span class="dflt">on</span> — Proper-case the
-            words of a state text (<span class="ex">drift på</span> →
-            <span class="ex">Drift På</span>), matching Excel's
-            <code>WorksheetFunction.Proper</code>. Applies to both the JSON and the
-            plain form. Turn off to keep Norwegian casing exactly as typed.</li>
+            <span class="ex">360.001-RT401-Romtemperatur-(1=Drift)</span>. A field left
+            empty on the point adds nothing either way, and the point's <i>text</i> is
+            always included.</li>
+          <li><b>proper_case_states</b><span class="dflt">on</span> — capitalise each word
+            of a state text: <span class="ex">drift på</span> →
+            <span class="ex">Drift På</span>, the same as Excel's
+            <code>WorksheetFunction.Proper</code>. Affects the JSON and the plain form
+            alike. Turn it off to keep Norwegian casing exactly as typed.</li>
         </ul>
 
         <h4>State texts</h4>
         <ul>
-          <li><b>use_json</b><span class="dflt">on</span> — the master switch the Excel
-            tool had (Prot!B54): off suppresses every state text at once — no
-            <code>format_extra</code> JSON and no list in the alias — while the state ids
-            stay in the project for turning back on.</li>
-          <li><b>statetext_only_rw</b><span class="dflt">off</span> — emit the state-text
-            JSON only for writable points (<code>rw</code>/<code>vrw</code>); read-only
+          <li><b>use_json</b><span class="dflt">on</span> — the master switch, as in the
+            Excel tool (Prot!B54). Off, every state text is silenced at once: no
+            <code>format_extra</code> JSON and no list in the alias. The state ids stay in
+            the project, so turning it back on restores them.</li>
+          <li><b>statetext_only_rw</b><span class="dflt">off</span> — on, only writable
+            points (<code>rw</code>/<code>vrw</code>) get the state-text JSON. Read-only
             points keep their state list in the project but ship an empty
             <code>format_extra</code>.</li>
-          <li><b>statetext_in_alias</b><span class="dflt">off</span> — also write the
-            flattened state list into the point's <i>extra</i>, so it shows in the alias
-            (<span class="ex">…-(0=Av, 1=På)</span>). <span class="note">Divergence:</span>
-            with this off Excel <i>cleared</i> the extra text of matched rows — here your
-            extra is left untouched (docs/07 §7.3).</li>
+          <li><b>statetext_in_alias</b><span class="dflt">off</span> — on, the flattened
+            state list is also written into the point's <i>extra</i>, so it shows up in
+            the alias: <span class="ex">…-(0=Av, 1=På)</span>.
+            <span class="note">Divergence:</span> with this off, Excel <i>cleared</i> the
+            extra text of matched rows; here your extra is left alone (docs/07 §7.3).</li>
         </ul>
 
         <h4>Points and groups</h4>
         <ul>
-          <li><b>force_active</b><span class="dflt">on</span> — every point gets
-            <code>active=1</code> regardless of its own active field. Rows whose text is
-            <span class="ex">Reserve.</span> stay inactive.
-            <span class="note">Divergence:</span> in Excel force_active overrode the
-            Reserve rule; here Reserve wins, so a spare row stays inactive (docs/08
-            item 11).</li>
-          <li><b>include_minmax</b><span class="dflt">off</span> — carry the point's
-            <i>range min</i>/<i>range max</i> into the param record. Off leaves both
-            columns blank even when the point has values, which is what the fleet does;
-            the scaling table already supplies the raw/eng limits.</li>
-          <li><b>override_decimal</b><span class="dflt">off</span> — fill <i>dec</i> from
-            the unit table: units with a decimals entry (<span class="ex">Pa</span>,
-            <span class="ex">ppm</span>, <span class="ex">m3/h</span> → 0) overwrite the
-            row's own value, as the Excel helper did; units without one leave it alone.</li>
-          <li><b>auto_groups</b><span class="dflt">off</span> — fill an empty group cell
-            from the datatype's default group, so points only need a group where you want
-            to override it.</li>
-          <li><b>alarms_to_alm</b><span class="dflt">off</span> — move every point with an
-            alarm letter (A/B/C/N) into the <code>alm</code> group.
-            <span class="note">Only runs when auto_groups is on</span> — ticking this
-            alone changes nothing.</li>
+          <li><b>force_active</b><span class="dflt">on</span> — write every point
+            <code>active=1</code>, whatever its own active field says. Rows whose text is
+            <span class="ex">Reserve.</span> stay inactive anyway.
+            <span class="note">Divergence:</span> in Excel force_active beat the Reserve
+            rule; here Reserve wins, so a spare row stays inactive (docs/08 item 11).</li>
+          <li><b>include_minmax</b><span class="dflt">off</span> — on, carry the point's
+            <i>range min</i> and <i>range max</i> into the param record. Off leaves both
+            blank even when the point has values, as the rest of the fleet does: the
+            scaling table already supplies the raw and engineering limits.</li>
+          <li><b>override_decimal</b><span class="dflt">off</span> — on, fill <i>dec</i>
+            from the unit table. A unit that has a decimals entry
+            (<span class="ex">Pa</span>, <span class="ex">ppm</span>,
+            <span class="ex">m3/h</span> → 0) overwrites the row's own value, as the Excel
+            helper did; a unit without one leaves it alone.</li>
+          <li><b>auto_groups</b><span class="dflt">off</span> — on, a point with an empty
+            group takes its datatype's default group. You then set a group only where you
+            want something different.</li>
+          <li><b>alarms_to_alm</b><span class="dflt">off</span> — on, every point carrying
+            an alarm letter (A/B/C/N) moves into the <code>alm</code> group.
+            <span class="note">Only runs when auto_groups is on too</span> — ticking this
+            by itself changes nothing.</li>
         </ul>
 
         <h4>Motherwords</h4>
         <p>A bit-addressed point needs its whole word polled once. Any row reading that
-        address without a bit satisfies it — the literal text "Motherword" is not
-        required.</p>
+        same address without a bit counts — no row has to be called "Motherword".</p>
         <ul>
-          <li><b>auto_motherwords</b><span class="dflt">on</span> — synthesize the missing
-            word row for you, read-only, in the same group as the bit that needed it.
-            Leave on unless you add motherword rows yourself.</li>
-          <li><b>require_motherwords</b><span class="dflt">off</span> — promote a missing
-            motherword from a soft warning to a hard error that blocks generation. Off,
-            you get a warning naming the addresses and the script still generates.</li>
+          <li><b>auto_motherwords</b><span class="dflt">on</span> — missing word rows are
+            created for you: read-only, in the same group as the bit that needed one.
+            Leave it on unless you write motherword rows yourself.</li>
+          <li><b>require_motherwords</b><span class="dflt">off</span> — on, a missing
+            motherword blocks generation instead of warning. Off, you get a warning naming
+            the addresses and the script is still produced.</li>
           <li><b>exclude_motherwords_from_groups</b><span class="dflt">on</span> — keep
             synthesized motherwords out of the display groups, so the operator sees the
-            named bits rather than the raw word. Turn off only if the word itself should
-            appear in the menu.</li>
+            named bits rather than the raw word. Turn it off only if the word itself
+            should appear in the menu.</li>
         </ul>
       </div>
     </details>
