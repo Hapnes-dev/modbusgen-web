@@ -34,22 +34,33 @@ window.PYODIDE_READY = (async () => {
   const s = document.createElement("script");
   s.src = PYODIDE_URL + "pyodide.js";
   document.head.append(s);
-  await new Promise((ok, bad) => { s.onload = ok; s.onerror = bad; });
+  // a script error event carries no message: rejecting with it raw reported the
+  // outage to the user as "[object Event]"
+  await new Promise((ok, bad) => {
+    s.onload = ok;
+    s.onerror = () => bad(new Error("could not fetch " + s.src));
+  });
   const py = _py = await loadPyodide({ indexURL: PYODIDE_URL });
   _overlay("Loading YAML support…");
   await py.loadPackage("pyyaml");
   _overlay("Loading modbusgen…");
-  const buf = await (await fetch("modbusgen-src.zip?v=b413cab848")).arrayBuffer();
+  const buf = await (await fetch("modbusgen-src.zip?v=8f2bbcd51e")).arrayBuffer();
   py.unpackArchive(buf, "zip");
   py.runPython("import sys; sys.path.insert(0, 'src')");
   const glue = py.pyimport("modbusgen.webapi");
   document.getElementById("pyodideOverlay")?.remove();
   return glue;
 })().catch(e => {
-  _overlay("Failed to load the Python runtime: " + (e.message || e) +
+  const err = e instanceof Error ? e : new Error(String(e && e.message || e));
+  _overlay("Failed to load the Python runtime: " + err.message +
            " - check your internet connection and reload.", true);
-  throw e;
+  throw err;      // every /api/* call from here on rejects, and the page says so
 });
+/* The page reports the failure itself (init() -> bootstrapFailed). This only stops
+   the browser logging "Uncaught (in promise)" in the window between the runtime
+   giving up and the first api() call awaiting it - it does not consume the
+   rejection, so window.PYODIDE_READY still rejects for everyone who awaits it. */
+window.PYODIDE_READY.catch(() => {});
 
 /* Excel support is ~1 MB nobody should pay for just to open the page, so it loads on
    first use and is cached for the session. Split in two because reading a workbook

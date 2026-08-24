@@ -939,7 +939,7 @@
 
 <script>
 "use strict";
-let BOOT = null;          // bootstrap payload
+let BOOT = null;          // bootstrap payload - null until init() has it; see the boot gate below
 const OPT_CORE = ["subtract_one","truncate","create_tables","force_active","auto_motherwords"];
 // clusters under "more options" - same grouping as the Project card help
 const OPT_MORE = [
@@ -1023,8 +1023,78 @@ async function api(path, body) {
   return data;
 }
 
+/* ---------- the boot gate ----------
+   Every control that opens, imports or collects a project is built out of the
+   bootstrap reply: the option checkboxes come from BOOT.defaults, the datatype
+   dropdown from BOOT.datatypes, the scaling picker from BOOT.scaling and the unit
+   datalist from BOOT.units. Touching any of them while BOOT is still null threw a
+   bare "Cannot read properties of null (reading 'defaults')" at the user - which is
+   what an import clicked during a slow bootstrap, or after a failed one, did.
+
+   So the invariant is: nothing may display or import a project until the bootstrap
+   payload is in hand. Two layers enforce it. The gate starts closed and only a
+   successful bootstrap opens it, so the buttons cannot be pressed too early; and
+   requireBoot() sits in front of every BOOT dereference, so any path that reaches
+   one anyway fails with a sentence instead of a TypeError. */
+const BOOT_GATED = ["fileSelect","btnLoad","btnNew","btnImportJson","btnImportSql",
+                    "btnImportXlsm","btnSave","btnExport","btnXlsm","btnValidate",
+                    "btnGenerate","btnSaveSql","btnAddPoint","btnOptReset","bulkCol"];
+const BOOT_WAIT_MSG =
+  "modbusgen is still loading its lookup tables (datatypes, units, scaling and the " +
+  "option defaults), so a project cannot be opened yet. Wait a moment and try again - " +
+  "if it never clears, reload the page.";
+const BOOT_FAILED_MSG =
+  "modbusgen never loaded its lookup tables (datatypes, units, scaling and the option " +
+  "defaults), so a project cannot be opened. Reload the page to try the startup " +
+  "request again.";
+let BOOT_ERROR = null;            // set once the startup request has definitively failed
+function bootstrapReady() {
+  return !!(BOOT && BOOT.defaults && BOOT.datatypes && BOOT.units && BOOT.scaling);
+}
+function requireBoot() {          // callers report it; every one of them has a catch
+  if (!bootstrapReady()) throw new Error(BOOT_ERROR ? BOOT_FAILED_MSG : BOOT_WAIT_MSG);
+}
+function setBootGate(ready) {
+  for (const id of BOOT_GATED) {
+    const n = $(id);
+    if (n) n.disabled = !ready;
+  }
+  // btnDelete and btnPtUndo own their own enabled state - let them re-decide
+  if (ready) { syncDeleteButton(); ptUpdateUndoButton(); }
+}
+setBootGate(false);
+outNote("Starting up - loading the datatype, unit and scaling tables. " +
+        "The project buttons stay disabled until they are in.");
+
+/* Nothing on this page works without the tables, so a failed bootstrap is not a
+   warning: say so in plain words where every other result appears, keep the gate
+   shut, and put the technical line underneath for a bug report. */
+function bootstrapFailed(e, replied) {
+  BOOT = null;
+  BOOT_ERROR = e;
+  setBootGate(false);
+  const cause = replied
+    ? "The startup reply came back incomplete, so the tables it carries cannot be used."
+    : window.PYODIDE_API
+    ? "The in-browser Python runtime could not be loaded - check the internet connection."
+    : "The modbusgen server behind this page did not answer - check the window it runs in.";
+  $("out").replaceChildren(
+    el("div",{class:"msg err"},
+      "modbusgen could not load its lookup tables, so no project can be opened or " +
+      "imported. " + cause),
+    el("div",{class:"msg fix"},
+      el("b",{},"What to do: "),
+      "reload the page - it usually succeeds on the second try. ",
+      el("button",{class:"ghost fixbtn",
+                   title:"Reload this page and try the startup request again",
+                   onclick:()=>location.reload()}, "reload the page")),
+    el("div",{class:"msg note"}, "Technical detail: " + (e && e.message || e)));
+  $("out").scrollIntoView({block:"center"});
+}
+
 /* ---------- options ---------- */
 function renderOptions(values) {
+  requireBoot();                       // the checkboxes are BOOT.defaults, one per key
   const box = (name) => {
     const cb = el("input", {type:"checkbox", id:"opt_"+name});
     cb.checked = values[name] !== undefined ? values[name] : BOOT.defaults[name];
@@ -1067,6 +1137,7 @@ function updateOptReset() {
   if (devs) btn.textContent = `reset to recommended (${devs})`;
 }
 function collectOptions() {
+  requireBoot();
   const out = {};
   for (const name of Object.keys(BOOT.defaults)) {
     const cb = $("opt_"+name);
@@ -1345,6 +1416,7 @@ const DT_COMMON = ["Bit_Hold","A_Hold_I16_N","Digital_X_N","A_Input_I16_N","Bit_
                    "A_Input_U16_N","I_Hold_I16_N","Coil_X_N","A_Hold_F_N","WORD"];
 const SCALE_ORDER = ["x0.1","x0.01","x1","x0.001","INV","x10","x100","x1000"];
 function dtSelect(value) {
+  requireBoot();                       // every point row needs the datatype list
   const s = el("select",{class:"p-datatype", title:COL_HELP.datatype},
                 el("option",{value:""},""));
   const names = BOOT.datatypes.map(d => d.name);
@@ -1371,6 +1443,7 @@ function pick(cls, value, items, title) {
   return s;
 }
 function scaleItems() {
+  requireBoot();
   const known = SCALE_ORDER.filter(k => BOOT.scaling.includes(k));
   return [""].concat(known, BOOT.scaling.filter(k => !known.includes(k)));
 }
@@ -1741,6 +1814,7 @@ function collectProject() {
   };
 }
 function showProject(data) {
+  requireBoot();          // no project may be rendered before the tables are in
   $("pTable").value = data.table || "";
   $("pPlant").value = data.plant != null ? String(data.plant) : "";
   showSystem(data.system);
@@ -1778,6 +1852,8 @@ const FIX_ADVICE = [
    "That datatype key does not exist. Pick one from the dropdown, or add the row to data/tables/datatypes.csv rather than inventing a spelling."],
   [/group missing/,
    "Give the row a group, or switch on auto_groups in the Project card to fill it from the datatype's default group."],
+  [/bit \d+ is outside the \d+-bit motherword/,
+   "The motherword the tool synthesizes is 16-bit, and it is never widened because a 32-bit one would have to guess the word order. Either author the word itself as an explicit 32-bit point at the same address — that choice of _N or _W is what makes the high bits addressable — or move the bit to the register actually holding the high word, once you know which one that is."],
   [/group '.*' has no alias in 'groups'/,
    "Define that group in the Groups card — '+ group', or '+ default groups' for the standard aio/dio/alm/misc/sch set.",
    {label:"define the missing groups",
@@ -2243,10 +2319,12 @@ for (const id of ["pTable","pPlant","optCore","optMore","groups","statetexts","p
     $(id).addEventListener(ev, markValStale);
 
 $("btnNew").onclick = () => {
-  localStorage.removeItem(AUTOSAVE_KEY);
-  $("fileName").value = "new-project.json";
-  showProject({points:[]});
-  $("out").replaceChildren(el("div",{class:"msg note"}, "New empty project."));
+  try {
+    localStorage.removeItem(AUTOSAVE_KEY);
+    $("fileName").value = "new-project.json";
+    showProject({points:[]});
+    $("out").replaceChildren(el("div",{class:"msg note"}, "New empty project."));
+  } catch (e) { showError(e); }
 };
 $("btnImportJson").onclick = () => $("jsonFile").click();
 $("jsonFile").onchange = async e => {
@@ -2539,7 +2617,23 @@ $("btnSaveSql").onclick = async () => {
 };
 
 async function init() {
-  BOOT = await api("/api/bootstrap");
+  /* The one request the page cannot do without. An unhandled rejection here used to
+     leave BOOT null with nothing on screen to say why, and the next import blamed
+     the file. A reply missing any of the four tables counts as a failure too - the
+     gate must not open on a half-answer. */
+  try {
+    BOOT = await api("/api/bootstrap");
+  } catch (e) {
+    bootstrapFailed(e);
+    return;
+  }
+  if (!bootstrapReady()) {
+    const missing = ["defaults","datatypes","units","scaling"].filter(k => !BOOT || !BOOT[k]);
+    bootstrapFailed(new Error("the startup reply was missing " + missing.join(", ")), true);
+    return;
+  }
+  setBootGate(true);            // from here on a project may be displayed
+  outNote("Validate or generate to see results.");
   $("dlUnits").replaceChildren(...BOOT.units.map(u => el("option",{value:u})));
   refreshFileSelect("");        // projects folder plus anything saved in this browser
   const hash = decodeURIComponent(location.hash.slice(1));
@@ -2574,6 +2668,6 @@ $("points").addEventListener("input", () => {
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=09eb31b91d"></script>
+<script src="pyodide-adapter.js?v=4c9e11905a"></script>
 </body>
 </html>
