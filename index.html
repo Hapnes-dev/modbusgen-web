@@ -857,10 +857,10 @@
     <div class="sub">
       <div class="subhead">driver identity</div>
       <div class="row">
-        <label class="f f-lg" title="Ties the whole block together: it is the settings owner, the driver_type and the process name. Uppercase, no spaces. Used by both blocks, e.g. EM270 or GRUNDFOS">owner / driver name<input id="sysOwner" placeholder="EM270" title="Ties the whole block together: it is the settings owner, the driver_type and the process name. Uppercase, no spaces. Used by both blocks, e.g. EM270 or GRUNDFOS"></label>
-        <label class="f f-sm" title="Registration type recorded against the units. Lowercase, no spaces. Mirrors the owner / driver name until you type your own value here - clear it if the delivery wants it blank">reg.type<input id="sysRegType" title="Registration type recorded against the units. Lowercase, no spaces. Mirrors the owner / driver name until you type your own value here - clear it if the delivery wants it blank"></label>
-        <label class="f f-sm" title="Order number linked to the units in iw_sys_order_no. Lowercase, no spaces. Mirrors the owner / driver name until you type your own value here">order no<input id="sysOrderNo" title="Order number linked to the units in iw_sys_order_no. Lowercase, no spaces. Mirrors the owner / driver name until you type your own value here"></label>
-        <label class="f f-xs" title="Prefix put in front of every device address. Follows the comm mode - 1_ for tcp, 0_ for rtu - until you pick one yourself">addr prefix<select id="sysPrefix" title="Prefix put in front of every device address. Follows the comm mode - 1_ for tcp, 0_ for rtu - until you pick one yourself"><option>0_</option><option>1_</option></select></label>
+        <label class="f f-lg" title="Ties the whole block together: it is the settings owner, the driver_type and the process name. Uppercase, no spaces. Used by both blocks, e.g. EM270 or GRUNDFOS Both boxes write it, so it never dims.">owner / driver name<input id="sysOwner" placeholder="EM270" title="Ties the whole block together: it is the settings owner, the driver_type and the process name. Uppercase, no spaces. Used by both blocks, e.g. EM270 or GRUNDFOS Both boxes write it, so it never dims."></label>
+        <label class="f f-sm gated sysUnitField" title="Registration type recorded against the units. Lowercase, no spaces. Mirrors the owner / driver name until you type your own value here - clear it if the delivery wants it blank Written by 'add the devices'.">reg.type<input id="sysRegType" title="Registration type recorded against the units. Lowercase, no spaces. Mirrors the owner / driver name until you type your own value here - clear it if the delivery wants it blank Written by 'add the devices'."></label>
+        <label class="f f-sm gated sysUnitField" title="Order number linked to the units in iw_sys_order_no. Lowercase, no spaces. Mirrors the owner / driver name until you type your own value here Written by 'add the devices'.">order no<input id="sysOrderNo" title="Order number linked to the units in iw_sys_order_no. Lowercase, no spaces. Mirrors the owner / driver name until you type your own value here Written by 'add the devices'."></label>
+        <label class="f f-xs gated sysUnitField" title="Prefix put in front of every device address. Follows the comm mode - 1_ for tcp, 0_ for rtu - until you pick one yourself Written by 'add the devices'.">addr prefix<select id="sysPrefix" title="Prefix put in front of every device address. Follows the comm mode - 1_ for tcp, 0_ for rtu - until you pick one yourself Written by 'add the devices'."><option>0_</option><option>1_</option></select></label>
       </div>
     </div>
 
@@ -1350,15 +1350,25 @@ function syncSysUi() {
   $("unitEmpty").style.display = n ? "none" : "";
   $("unitCount").textContent = n ? `${n} device${n === 1 ? "" : "s"}` : "";
   const units = $("sysUnits").checked, settings = $("sysSettings").checked;
+  /* Each control dims with the box that actually writes it (sqlout.py): the devices
+     table, reg.type, order no and the address prefix all land in
+     iw_sys_plant_units, while every communication setting lands in
+     iw_sys_plant_settings under the driver. owner / driver name is the one field
+     both blocks write - driver_type on the units, process_name on the driver - so
+     it never dims. */
   $("sysUnitsBox").classList.toggle("off", !units);
   $("sysCommBox").classList.toggle("off", !settings);
+  for (const e of document.querySelectorAll(".sysUnitField"))
+    e.classList.toggle("off", !units);
   /* Both bands stay editable while unticked so a device list can be prepared before
      it is switched on - which means a filled-in band that writes nothing is a normal
      state, and one nobody should have to deduce from the opacity alone. */
   const owner = $("sysOwner").value.trim();
+  const comm = $("commIp").value.trim() || $("commCom").value.trim();
   const pending = [];
   if (!units && n) pending.push(`${n} device${n === 1 ? "" : "s"} listed`);
-  if (!settings && owner) pending.push("a driver name filled in");
+  if (!settings && comm) pending.push("communication filled in");
+  if (!units && !settings && owner) pending.push("a driver name filled in");
   $("sysGateHint").textContent = pending.length
     ? `${pending.join(" and ")} — nothing here is written until the box beside it is ticked`
     : "";
@@ -1483,6 +1493,7 @@ $("btnAddUnit").onclick = () => { addUnitRow(); renumberUnits(); };
 for (const id of ["commMode","sysUnits","sysSettings"]) $(id).addEventListener("change", syncSysUi);
 // the hint counts a filled-in driver name as prepared work, so it follows the typing
 $("sysOwner").addEventListener("input", syncSysUi);
+for (const id of ["commIp","commCom"]) $(id).addEventListener("input", syncSysUi);
 syncSysUi();
 
 /* ---------- points ---------- */
