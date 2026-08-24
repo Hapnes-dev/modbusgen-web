@@ -253,12 +253,17 @@
   .grp-row{display:flex;gap:6px;align-items:center}
   .st-row{display:flex;gap:8px;align-items:flex-start}
   .st-row textarea{width:360px;height:74px;font-family:Consolas,monospace;font-size:12px}
+  /* the picker now carries a timestamp per entry - bound the closed control so a
+     long project name cannot stretch the header; the open popup is sized by the
+     browser from the options themselves and still shows each label in full */
+  #fileSelect{max-width:270px}
 </style>
 </head>
 <body>
 <header>
   <div class="title">modbus<span>gen</span><small>IWMAC Modbus lists</small></div>
-  <select id="fileSelect" title="Project files already in the projects folder"></select>
+  <select id="fileSelect"
+          title="Projects saved in this browser and files in the projects folder, each with when it was last written (24-hour, dd.mm.yyyy)"></select>
   <button id="btnLoad" title="Open the selected project - replaces everything on this page">Load</button>
   <button id="btnNew" class="ghost"
           title="Start an empty project - clears the page, so export first if the current work matters">New</button>
@@ -923,7 +928,10 @@
             <b>Import project</b>.</li>
           <li><b>Your work stays here:</b> the editor autosaves in this browser, and
             <b>Save</b> keeps named copies (picker: <i>saved in this browser</i>;
-            <b>Delete</b> asks once). <b>Export</b> is the real file
+            <b>Delete</b> asks once). Every picker entry shows when it was last
+            written — <code>24.08.2026 14:32</code>, hover for seconds — a Save for
+            browser copies, the file's own timestamp for the projects folder.
+            <b>Export</b> is the real file
             (<code>.json</code>/<code>.yaml</code> by the name you type) — use it for
             keeping, mailing, another machine.</li>
           <li><b>Old Excel workbooks:</b> <code>modbusgen import-xlsm old.xlsm</code>
@@ -2616,7 +2624,7 @@ $("btnLoad").onclick = async () => {
     }
     showProject(rec.project);
     $("fileName").value = name;
-    outNote(`Loaded "${name}" from this browser, saved ${new Date(rec.when).toLocaleString()}.`);
+    outNote(`Loaded "${name}" from this browser, saved ${fmtStamp(rec.when, true)}.`);
     return;
   }
   try {
@@ -2672,19 +2680,47 @@ function savedAll() {
 }
 function savedWrite(all) { localStorage.setItem(SAVED_KEY, JSON.stringify(all)); }
 
+/* ---------- timestamps ----------
+   Norwegian, 24-hour: 24.08.2026 14:32. Written out rather than left to
+   toLocaleString, which formats to whatever locale the browser happens to be set
+   to - the same project read 08/24/2026, 2:32 PM on one machine and 24.8.2026,
+   14.32 on the next. `ms` may be a JS epoch in milliseconds or a Unix time in
+   seconds (the projects folder sends seconds); anything unusable returns "". */
+function fmtStamp(ms, withSeconds) {
+  if (ms == null || ms === "") return "";
+  const d = new Date(ms < 1e11 ? ms * 1000 : ms);      // seconds or milliseconds
+  if (isNaN(d)) return "";
+  const p = n => String(n).padStart(2, "0");
+  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} `
+       + `${p(d.getHours())}:${p(d.getMinutes())}`
+       + (withSeconds ? `:${p(d.getSeconds())}` : "");
+}
+
 function refreshFileSelect(select) {
   const sel = $("fileSelect");
   const want = select ?? sel.value;
-  const cached = Object.keys(savedAll()).sort();
+  const saved = savedAll();
+  const cached = Object.keys(saved).sort();
   sel.replaceChildren(el("option",{value:""},"- project file -"));
+  // Saved-in-this-browser entries have carried `when` since they were introduced;
+  // the projects folder's times come from the server (BOOT.project_times, Unix
+  // seconds), which the browser build has no filesystem to answer for. Either can
+  // be absent, and an entry without one simply shows its name.
+  const stamped = (value, label, at, verb) => {
+    const short = fmtStamp(at);
+    const o = el("option",{value}, short ? `${label}  ·  ${short}` : label);
+    o.title = short ? `${label}\n${verb} ${fmtStamp(at, true)}` : label;
+    return o;
+  };
   if (cached.length) {
     const g = el("optgroup",{label:"saved in this browser"});
-    for (const n of cached) g.append(el("option",{value:LOCAL_PREFIX + n}, n));
+    for (const n of cached) g.append(stamped(LOCAL_PREFIX + n, n, saved[n]?.when, "saved"));
     sel.append(g);
   }
   if (BOOT?.projects?.length) {
     const g = el("optgroup",{label:"projects folder"});
-    for (const p of BOOT.projects) g.append(el("option",{value:p}, p));
+    const times = BOOT.project_times || {};
+    for (const p of BOOT.projects) g.append(stamped(p, p, times[p], "changed"));
     sel.append(g);
   }
   sel.value = want;
@@ -2721,7 +2757,7 @@ $("btnSave").onclick = () => {
     savedWrite(all);
     refreshFileSelect(LOCAL_PREFIX + name);
     btnFlash(btn, existed ? "updated ✓" : "saved ✓", "ok");
-    outNote(`${existed ? "Updated" : "Saved"} "${name}" in this browser. `
+    outNote(`${existed ? "Updated" : "Saved"} "${name}" in this browser at ${fmtStamp(all[name].when, true)}. `
           + "It stays on this machine and in this browser only - use Export for a file you can keep or send.");
   } catch (e) {
     btnFlash(btn, "save failed", "bad", 2600);
@@ -2799,7 +2835,7 @@ async function init() {
                             (restored.project.points || []).some(p => p.datatype || p.text))) {
     showProject(restored.project);
     $("fileName").value = restored.file || "";
-    const when = new Date(restored.when).toLocaleString();
+    const when = fmtStamp(restored.when, true);
     $("out").replaceChildren(el("div",{class:"msg note"},
       `Restored unsaved work from ${when}. "New" discards it; Save keeps it in this browser under a name, Export writes a file.`));
   } else {
@@ -2824,6 +2860,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=52fa7b1f09"></script>
+<script src="pyodide-adapter.js?v=8bc20a592c"></script>
 </body>
 </html>
