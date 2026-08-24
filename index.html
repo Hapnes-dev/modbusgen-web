@@ -863,7 +863,7 @@
     <div class="sub">
       <div class="subhead">driver identity</div>
       <div class="row">
-        <label class="f f-lg" title="Ties the whole block together: it is the settings owner, the driver_type and the process name. Uppercase, no spaces. Used by both blocks, e.g. EM270 or GRUNDFOS Both boxes write it - driver_type on the units, process_name on the driver - so either one keeps it live.">owner / driver name<input id="sysOwner" placeholder="EM270" title="Ties the whole block together: it is the settings owner, the driver_type and the process name. Uppercase, no spaces. Used by both blocks, e.g. EM270 or GRUNDFOS Both boxes write it - driver_type on the units, process_name on the driver - so either one keeps it live."></label>
+        <label class="f f-lg gated" title="Ties the whole block together: it is the settings owner, the driver_type and the process name. Uppercase, no spaces. Used by both blocks, e.g. EM270 or GRUNDFOS Both boxes write it - driver_type on the units, process_name on the driver - so either one keeps it live.">owner / driver name<input id="sysOwner" placeholder="EM270" title="Ties the whole block together: it is the settings owner, the driver_type and the process name. Uppercase, no spaces. Used by both blocks, e.g. EM270 or GRUNDFOS Both boxes write it - driver_type on the units, process_name on the driver - so either one keeps it live."></label>
         <label class="f f-sm gated sysUnitField" title="Registration type recorded against the units. Lowercase, no spaces. Mirrors the owner / driver name until you type your own value here - clear it if the delivery wants it blank Written by 'add the devices'.">reg.type<input id="sysRegType" title="Registration type recorded against the units. Lowercase, no spaces. Mirrors the owner / driver name until you type your own value here - clear it if the delivery wants it blank Written by 'add the devices'."></label>
         <label class="f f-sm gated sysUnitField" title="Order number linked to the units in iw_sys_order_no. Lowercase, no spaces. Mirrors the owner / driver name until you type your own value here Written by 'add the devices'.">order no<input id="sysOrderNo" title="Order number linked to the units in iw_sys_order_no. Lowercase, no spaces. Mirrors the owner / driver name until you type your own value here Written by 'add the devices'."></label>
         <label class="f f-xs gated sysUnitField" title="Prefix put in front of every device address. Follows the comm mode - 1_ for tcp, 0_ for rtu - until you pick one yourself Written by 'add the devices'.">addr prefix<select id="sysPrefix" title="Prefix put in front of every device address. Follows the comm mode - 1_ for tcp, 0_ for rtu - until you pick one yourself Written by 'add the devices'."><option>0_</option><option>1_</option></select></label>
@@ -1397,7 +1397,12 @@ function syncSysUi() {
   /* owner is the one field both blocks write - driver_type on every units row,
      process_name on the driver process - so either box on keeps it live, and only
      a card with both off has nothing that would carry it anywhere. */
-  $("sysOwner").disabled = !(units || settings);
+  const ownerLive = units || settings;
+  $("sysOwner").disabled = !ownerLive;
+  // and it has to look disabled too: the fading is the `gated` class, not the
+  // disabled attribute, so a field that only had the latter stayed bright while
+  // every control around it went faint
+  $("sysOwner").closest("label").classList.toggle("off", !ownerLive);
   /* Both bands stay editable while unticked so a device list can be prepared before
      it is switched on - which means a filled-in band that writes nothing is a normal
      state, and one nobody should have to deduce from the opacity alone. */
