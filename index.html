@@ -140,6 +140,9 @@
   th[data-sort="asc"]::after{content:"\25B2"}
   th[data-sort="desc"]::after{content:"\25BC"}
   tr.hidden{display:none}
+  /* out of layout but still in the project - the render window, ptApplyWindow */
+  .points tr.off{display:none}
+  .points tbody.pad td{padding:0;border:0;height:0}
   /* multi-select: click anywhere on a row. A faint wash, because it sits behind
      every input in the row and must not fight with them for attention. */
   .points tr.sel > td{background:rgba(77,163,255,.10)}
@@ -720,7 +723,13 @@
           <th data-col="no_group">no grp</th>
           <th title="Row actions: ⧉ duplicates with addr + 1, ✕ deletes"></th>
         </tr></thead>
+        <!-- stand-ins for the height of the rows the render window leaves out of
+             layout, so the scrollbar still measures the whole list. Separate
+             tbodies on purpose: everything that reads the project walks
+             #points.children, and a spacer row in there would be a phantom point. -->
+        <tbody class="pad" id="padTop" hidden><tr><td colspan="19"></td></tr></tbody>
         <tbody id="points"></tbody>
+        <tbody class="pad" id="padBot" hidden><tr><td colspan="19"></td></tr></tbody>
       </table>
     </div>
     <div class="bulkbar" id="bulkBar" hidden>
@@ -1415,24 +1424,64 @@ const DT_COMMON = ["Bit_Hold","A_Hold_I16_N","Digital_X_N","A_Input_I16_N","Bit_
                    "I_Hold_U16_N","A_Hold_U16_N","I_Input_U16_N","A_Hold_I32_N",
                    "A_Input_U16_N","I_Hold_I16_N","Coil_X_N","A_Hold_F_N","WORD"];
 const SCALE_ORDER = ["x0.1","x0.01","x1","x0.001","INV","x10","x100","x1000"];
-function dtSelect(value) {
-  requireBoot();                       // every point row needs the datatype list
-  const s = el("select",{class:"p-datatype", title:COL_HELP.datatype},
-                el("option",{value:""},""));
+/* ---------- lazily filled selects ----------
+   The datatype list is ~150 options and the scale list ~19. Built eagerly, a real
+   imported workbook of 1600 rows put a quarter of a million <option> nodes in the
+   document and the page became unusable - every keystroke, sort and filter paid
+   for a DOM nobody was looking at. Both are therefore born holding only their
+   current value and fill themselves the first time the control is touched, which
+   is the only moment the rest of the list has to exist.
+   Anything that writes to one of these programmatically must go through
+   setCellValue: assigning a value a <select> does not list is a silent no-op. */
+function lazySelect(cls, value, fill, title) {
+  const v = value == null ? "" : String(value);
+  const s = el("select",{class:cls, title}, el("option",{value:v}, v));
+  s.value = v;
+  s._fill = fill;
+  for (const ev of ["pointerdown","focus","keydown"])
+    s.addEventListener(ev, () => hydrateSelect(s));
+  return s;
+}
+function hydrateSelect(s) {
+  const fill = s._fill;
+  if (!fill) return s;                     // already filled, or never was lazy
+  s._fill = null;
+  const keep = s.value;
+  s.replaceChildren();
+  fill(s);
+  s.value = keep;
+  if (s.value !== keep) {                  // unknown spelling from an import - keep it
+    s.append(el("option",{value:keep}, keep));
+    s.value = keep;
+  }
+  return s;
+}
+/* The one safe way to write a cell from code: fills a lazy list first, and adds the
+   value when the list does not carry it, the way pick() does for imports. */
+function setCellValue(cell, value) {
+  if (cell.tagName === "SELECT") {
+    hydrateSelect(cell);
+    const v = String(value);
+    if (v !== "" && ![...cell.options].some(o => o.value === v))
+      cell.append(el("option",{value:v}, v));
+  }
+  cell.value = value;
+}
+function dtFill(s) {
+  requireBoot();                       // runs on first touch, long after boot - still gated
   const names = BOOT.datatypes.map(d => d.name);
   const common = DT_COMMON.filter(n => names.includes(n));
+  s.append(el("option",{value:""},""));
   const og1 = el("optgroup",{label:"common"});
   for (const n of common) og1.append(el("option",{value:n}, n));
   s.append(og1);
   const og2 = el("optgroup",{label:"all"});
   for (const n of names) if (!common.includes(n)) og2.append(el("option",{value:n}, n));
   s.append(og2);
-  s.value = value || "";
-  if (s.value === "" && value) {          // unknown spelling from an import - keep it
-    s.append(el("option",{value}, value));
-    s.value = value;
-  }
-  return s;
+}
+function dtSelect(value) {
+  requireBoot();                       // every point row needs the datatype list
+  return lazySelect("p-datatype", value || "", dtFill, COL_HELP.datatype);
 }
 function pick(cls, value, items, title) {
   const s = el("select",{class:cls, title});
@@ -1441,6 +1490,11 @@ function pick(cls, value, items, title) {
     s.append(el("option",{value}, String(value)));
   s.value = value ?? "";
   return s;
+}
+function lazyPick(cls, value, itemsFn, title) {     // pick(), filled on first touch
+  return lazySelect(cls, value, s => {
+    for (const it of itemsFn()) s.append(el("option",{value:it}, it===""?"":String(it)));
+  }, title);
 }
 function scaleItems() {
   requireBoot();
@@ -1467,7 +1521,7 @@ function addPointRow(p={}) {
     el("td",{}, el("input",{class:"p-extra", value:p.extra||"", style:"width:110px", title:h("extra")})),
     el("td",{}, pick("p-alarm", p.alarm, ["","A","N","B","C"], h("alarm"))),
     el("td",{}, el("input",{class:"p-unit", list:"dlUnits", value:p.unit||"", style:"width:78px", title:h("unit")})),
-    el("td",{}, pick("p-scale", p.scale, scaleItems(), h("scale"))),
+    el("td",{}, lazyPick("p-scale", p.scale, scaleItems, h("scale"))),
     el("td",{}, pick("p-rw", p.rw||"r", ["r","rw","vr","vrw"], h("rw"))),
     el("td",{}, pick("p-update_freq", p.update_freq, ["","fast","norm","slow","once","never"], h("update_freq"))),
     el("td",{}, el("input",{class:"p-online", type:"checkbox", checked:p.online?"":undefined, title:h("online")})),
@@ -1481,7 +1535,7 @@ function addPointRow(p={}) {
                                  if (typeof d.addr === "number") d.addr += 1;
                                  delete d.element_id;
                                  const nr = addPointRow(d); renumber();
-                                 nr.scrollIntoView({block:"nearest", behavior:"smooth"}); }},"⧉"),
+                                 ptRevealRow(nr); }},"⧉"),
       el("button",{class:"ghost rowbtn", title:"delete",
                    onclick:()=>{ ptPushState(null,"delete row"); tr.remove(); renumber(); }},"✕")));
   tb.append(tr);
@@ -1580,6 +1634,95 @@ function applyPointView() {
     info.title = "Filters and search only hide rows. Hidden rows are still part of the "
                + "project and are still validated and generated";
   }
+  ptApplyWindow(true);      // rows, order or filter may all have moved
+}
+
+/* ---------- the render window ----------
+   A <table> lays out every row it holds, and real deliveries run to 1600 rows: at
+   that size one keystroke cost about half a second, nearly all of it the browser
+   laying out rows nobody was looking at (measured: 1619 rows 483 ms, 61 rows 34 ms).
+   So rows far from the scroll position are taken out of layout, and the two pad
+   tbodies stand in for their height.
+
+   This is a VIEW mechanism, like sorting - it never touches the project. The `off`
+   class is deliberately not `hidden`: `hidden` means the search or a filter rejected
+   the row, ptVisible() keeps returning every row the filter kept, and collection,
+   validation, bulk edits and paste go on working on rows that are merely scrolled
+   out of sight. */
+const PT_WINDOW_MIN = 250;      // shorter lists lay out whole - windowing costs more
+const PT_OVERSCAN = 30;         // rows kept in layout above and below the viewport
+let ptWinRows = [];             // rows the filter kept, in view order
+let ptRowH = 0;                 // measured once from a real row; they are uniform
+let ptWinQueued = false;
+let ptWinAt = null;             // [first, last] currently in layout, or null
+
+function ptWrap() { return $("points").closest(".tblwrap"); }
+function ptPad(el, px) {
+  el.hidden = px <= 0;
+  el.firstElementChild.firstElementChild.style.height = px > 0 ? px + "px" : "";
+}
+/* Scrolling recomputes this every frame, so it walks the rows that changed state
+   rather than all of them; applyPointView invalidates the cache by passing true
+   when the set of rows or their order has moved. */
+function ptApplyWindow(rebuild) {
+  if (rebuild || !ptWinRows.length) { ptWinRows = ptVisible(); ptWinAt = null; }
+  const wrap = ptWrap(), n = ptWinRows.length;
+  // fractional: rounding 36.4 to 36 would drift the pad by hundreds of pixels
+  if (!ptRowH && n) ptRowH = ptWinRows[0].getBoundingClientRect().height || 0;
+  if (!wrap || !ptRowH || n < PT_WINDOW_MIN) {          // small list: lay it all out
+    if (ptWinAt || rebuild) for (const tr of ptWinRows) tr.classList.remove("off");
+    ptPad($("padTop"), 0); ptPad($("padBot"), 0);
+    ptWinAt = null;
+    return;
+  }
+  const head = wrap.querySelector("thead");
+  const y = Math.max(0, wrap.scrollTop - (head ? head.offsetHeight : 0));
+  let first = Math.max(0, Math.floor(y / ptRowH) - PT_OVERSCAN);
+  let last = Math.min(n - 1, Math.ceil((y + wrap.clientHeight) / ptRowH) + PT_OVERSCAN);
+  // never drop the row being edited out of layout - that would blur the field
+  const cell = document.activeElement?.closest?.("#points tr");
+  const at = cell ? ptWinRows.indexOf(cell) : -1;
+  if (at >= 0) { first = Math.min(first, at); last = Math.max(last, at); }
+  if (ptWinAt && ptWinAt[0] === first && ptWinAt[1] === last) return;
+  if (!ptWinAt) {
+    ptWinRows.forEach((tr, i) => tr.classList.toggle("off", i < first || i > last));
+  } else {
+    for (let i = ptWinAt[0]; i <= ptWinAt[1]; i++)                 // left the window
+      if (i < first || i > last) ptWinRows[i]?.classList.add("off");
+    for (let i = first; i <= last; i++)                            // entered it
+      if (i < ptWinAt[0] || i > ptWinAt[1]) ptWinRows[i]?.classList.remove("off");
+  }
+  ptWinAt = [first, last];
+  ptPad($("padTop"), first * ptRowH);
+  ptPad($("padBot"), (n - 1 - last) * ptRowH);
+}
+/* The first layout of a freshly loaded list is the expensive one: it happens with
+   every row still in it. Take the tail out before the browser is ever asked to
+   measure - ptApplyWindow replaces this with the real window immediately after. */
+function ptPrewindow() {
+  const rows = $("points").children, n = rows.length;
+  if (n < PT_WINDOW_MIN) return;
+  const keep = 2 * PT_OVERSCAN;
+  for (let i = keep; i < n; i++) rows[i].classList.add("off");
+  ptPad($("padTop"), 0);
+  ptPad($("padBot"), (n - keep) * (ptRowH || 36));
+  ptWinRows = []; ptWinAt = null;
+}
+function ptQueueWindow() {
+  if (ptWinQueued) return;
+  ptWinQueued = true;
+  requestAnimationFrame(() => { ptWinQueued = false; ptApplyWindow(); });
+}
+/* scrollIntoView cannot reach a row that is out of layout, so drive the scroll
+   from its index and let the window catch up. */
+function ptRevealRow(tr) {
+  const wrap = ptWrap(), i = ptWinRows.indexOf(tr);
+  if (wrap && ptRowH && i >= 0 && tr.classList.contains("off")) {
+    const head = wrap.querySelector("thead");
+    wrap.scrollTop = (head ? head.offsetHeight : 0) + i * ptRowH - wrap.clientHeight / 2;
+    ptApplyWindow();
+  }
+  tr.scrollIntoView({block:"nearest", behavior:"smooth"});
 }
 function ptToggleSort(col) {
   if (ptSort.col !== col) ptSort = {col, dir:"asc"};
@@ -1625,6 +1768,7 @@ function ptRestore(points) {
   PT_SEQ = 0;
   ptSel.clear(); ptSelAnchor = null;
   for (const p of points) addPointRow(p);
+  ptPrewindow();
   renumber();
   ptPaintSelection();
 }
@@ -1703,7 +1847,7 @@ function bulkWrite(tr, col, value) {
   const cell = bulkCell(tr, col);
   if (!cell) return;
   if (cell.type === "checkbox") cell.checked = (value === "on" || value === true);
-  else cell.value = value;
+  else setCellValue(cell, value);
 }
 function bulkRead(tr, col) {
   const cell = bulkCell(tr, col);
@@ -1737,6 +1881,7 @@ function ptSetMaximized(on) {
   document.body.classList.toggle("hasmax", on);
   $("btnPtFull").textContent = on ? "✕" : "⛶";
   $("btnPtFull").title = on ? "Close fullscreen (Esc)" : "Maximise this card (Esc to close)";
+  ptQueueWindow();                     // the viewport just changed height
 }
 
 function renumber() {
@@ -1837,6 +1982,7 @@ function showProject(data) {
   if ($("ptSearch")) $("ptSearch").value = "";
   for (const p of data.points || []) addPointRow(p);
   if (!(data.points || []).length) addPointRow();
+  ptPrewindow();          // before the browser ever lays the whole list out
   renumber();
 }
 
@@ -2012,7 +2158,7 @@ function markBadRows(errors, pointRows) {
   }
   applyPointView();
   const first = ptDataOrder().find(tr => tr.classList.contains("bad"));
-  if (first) first.scrollIntoView({block:"center"});
+  if (first) ptRevealRow(first);
   return {marked: ptBad.size, unmappable};
 }
 
@@ -2118,7 +2264,7 @@ $("btnDefaultGroups").onclick = () => {
 $("btnAddState").onclick = () => addStateRow();
 $("btnAddPoint").onclick = () => { ptPushState(null,"add point");
   const tr = addPointRow(); renumber();
-  tr.scrollIntoView({block:"nearest", behavior:"smooth"});
+  ptRevealRow(tr);
   // preventScroll: the focus jump would cancel the smooth scroll above
   tr.querySelector(".p-group").focus({preventScroll:true}); };
 
@@ -2224,6 +2370,7 @@ $("points").addEventListener("paste", e => {
       if (!f) return;
       v = v.trim();
       if (f.matches("select")) {
+        hydrateSelect(f);                  // a lazy list carries only its own value
         if ([...f.options].some(o => o.value === v)) f.value = v;
       } else if (f.type !== "checkbox") f.value = v;
     });
@@ -2232,7 +2379,7 @@ $("points").addEventListener("paste", e => {
   renumber();
   ptPreEdit = ptCapture();   // typing after the paste diffs against the pasted state
   e.target.dispatchEvent(new Event("input", {bubbles: true}));   // reach the autosave hook
-  lastRow.scrollIntoView({block: "nearest", behavior: "smooth"});
+  ptRevealRow(lastRow);
 });
 $("btnPtUndo").onclick = ptDoUndo;
 ptUpdateUndoButton();
@@ -2274,7 +2421,10 @@ $("points").addEventListener("focusin", updatePointTip);
 $("points").addEventListener("focusout", () => setTimeout(updatePointTip, 0));
 
 /* points view controls */
-$("ptSearch").addEventListener("input", applyPointView);
+$("ptSearch").addEventListener("input", ptQueueRefresh);   // same settle as the cells
+// the window follows the scroll position, and the viewport height decides its size
+ptWrap()?.addEventListener("scroll", ptQueueWindow, {passive:true});
+window.addEventListener("resize", ptQueueWindow);
 $("btnPtOrder").onclick = ptCommitOrder;
 $("btnPtFull").onclick = () => ptSetMaximized(!$("points").closest(".card").classList.contains("maximized"));
 document.querySelector("table.points thead").addEventListener("click", e => {
@@ -2656,13 +2806,19 @@ async function init() {
     showProject({points:[]});
   }
 }
-// live stat chips while editing (rAF-debounced, delegated)
-let statsQueued = false;
-$("points").addEventListener("input", () => {
-  if (statsQueued) return;
-  statsQueued = true;
-  requestAnimationFrame(() => { statsQueued = false; updateStats(); applyPointView(); });
-});
+/* live stat chips while editing (debounced, delegated).
+   Both calls read every row - two full passes of rowData plus a re-sort and a
+   visibility sweep - so on an imported 1600-row list they cost several times the
+   frame budget of a single keystroke, and running them per frame made typing in
+   the table stutter. Settling after the typing pauses keeps the chips and the
+   active filter honest without the field itself lagging behind the keyboard. */
+const PT_SETTLE_MS = 140;
+let statsTimer = null;
+function ptQueueRefresh() {
+  clearTimeout(statsTimer);
+  statsTimer = setTimeout(() => { updateStats(); applyPointView(); }, PT_SETTLE_MS);
+}
+$("points").addEventListener("input", ptQueueRefresh);
 
 // wait for the load event so an injected backend adapter (Pyodide build) is in place
 window.addEventListener("load", () => init().catch(
