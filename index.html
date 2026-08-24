@@ -154,6 +154,33 @@
                       line-height:1;pointer-events:none}
   th[data-sort="asc"]::after{content:"\25B2"}
   th[data-sort="desc"]::after{content:"\25BC"}
+  /* Per-column help. The header's title attribute stays the one-line meaning; this
+     opens the long form - what the column is, what it feeds and when to use it. A
+     button rather than a longer tooltip, because a tooltip cannot be read at length,
+     vanishes while you reach for it, and clicking the header sorts the table. */
+  .colinfo{width:13px;height:13px;padding:0;margin-left:5px;border-radius:50%;
+           border:1px solid var(--line2);background:transparent;color:var(--dim);
+           font:italic 700 9px/1 Georgia,"Times New Roman",serif;text-transform:none;
+           letter-spacing:0;display:inline-flex;align-items:center;
+           justify-content:center;vertical-align:1px;opacity:.6;cursor:pointer}
+  .colinfo:hover,.colinfo:focus-visible,.colinfo[aria-expanded="true"]{
+           opacity:1;color:var(--accent);border-color:var(--accent)}
+  /* Fixed, and parented to <body> rather than to the header: .tblwrap sets
+     contain:paint and th is position:sticky, and either one on its own turns a
+     fixed-position descendant into a clipped, wrongly-placed one. */
+  .coldoc{position:fixed;z-index:80;width:370px;max-width:calc(100vw - 16px);
+          background:var(--panel2);border:1px solid var(--line2);border-radius:6px;
+          padding:10px 13px;font-size:12.5px;line-height:1.55;color:#b9c0cc;
+          box-shadow:0 10px 30px rgba(0,0,0,.5)}
+  .coldoc[hidden]{display:none}
+  .coldoc h5{margin:0;font-size:11px;text-transform:uppercase;letter-spacing:.09em;
+             color:var(--text);font-weight:600}
+  .coldoc dl{margin:0}
+  .coldoc dt{margin-top:8px;font-size:10px;text-transform:uppercase;
+             letter-spacing:.08em;color:var(--dim)}
+  .coldoc dd{margin:2px 0 0}
+  .coldoc code{background:#12151b;border:1px solid var(--line);border-radius:4px;
+               padding:0 5px;font-size:12px;color:#a8d8ff}
   tr.hidden{display:none}
   /* out of layout but still in the project - the render window, ptApplyWindow */
   .points tr.off{display:none}
@@ -553,7 +580,9 @@
     <details class="help"><summary title="All seventeen columns explained in table order">help</summary>
       <div class="helpbody">
         One row per Modbus point. Minimum per row: <b>group</b>, <b>datatype</b>,
-        <b>addr</b>, <b>text</b>. Hover any column header for its meaning.
+        <b>addr</b>, <b>text</b>. Hover any column header for its meaning, or press
+        the <b>ⓘ</b> beside it for the long form — what the column is, what it feeds
+        in the generated SQL, and when to use it.
         Columns are described below in the order they appear.
 
         <h4>Identity — group, datatype, addr, bit</h4>
@@ -1068,8 +1097,122 @@ const UNIT_COL_HELP = {
   driver_addr:"Modbus slave address of this device on the bus. The 0_/1_ prefix is added for you",
   view_order:"Sort position of this device in the IWMAC device list",
 };
-for (const th of document.querySelectorAll("th[data-col]"))
-  th.title = COL_HELP[th.dataset.col] || UNIT_COL_HELP[th.dataset.col] || "";
+/* The long form behind each column's ⓘ. COL_HELP above answers "what is this
+   column"; this answers the question people actually stop on, which is whether they
+   should be filling it in at all. Three parts on purpose - what it is, what it feeds
+   in the generated SQL, and when to use it - because a column nobody can place in
+   the output is a column filled in by guesswork. Backticked spans become <code>.
+   Keep it in step with the Points card help, which says the same things in table
+   order for someone reading rather than editing. */
+const COL_DOC = {
+  group:{
+    what:"The display group this point belongs to - a short key defined in the Groups card, such as `aio`, `dio`, `alm`, `misc` or `sch`. The key is internal; the operator sees the group's alias.",
+    use:"It orders the operator's menu - each group's `view_order` follows the order its points are written in - and it builds the point's key: `element_id = <group>_<driver_id>`.",
+    when:"On every row. The key has to exist in the Groups card first or validation stops, and changing it later changes every element_id it built. Group by what the operator is looking for rather than by register type. Leave it empty only with `auto_groups` on, where the datatype's own default fills it - `aio` for analog, `dio` for digital.",
+  },
+  datatype:{
+    what:"The register's type, width and word order, chosen from the datatype table. The most consequential column on the row.",
+    use:"It supplies the read and write function codes, the raw type, the byte and word swap, the application class and the parameter type - so it decides how the register is read and how the bits are interpreted.",
+    when:"On every row, matched to what the vendor's register table says: `A_Hold_I16_N` analog holding register, `A_Input_I16_N` analog input register, `I_Hold_U16_N` plain integer or counter, `Digital_X_N` discrete input, `Coil_X_N` coil, `Bit_Hold` / `Bit_Input` for one bit inside a word, and the `_I32` / `_U32` / `_F` variants for 32-bit values. Reach for a `_W` variant only where the document states the low word comes first, as energy meters often do: a wrong word order still reads and still produces numbers, which is why it has to come from the document rather than from a trial.",
+  },
+  addr:{
+    what:"The register number, exactly as the vendor's document prints it.",
+    use:"With the datatype it forms `driver_id = 0_<readfunc>_<addr>`, the address the driver actually polls.",
+    when:"On every row. Strip a `4xxxx` or `3xxxxx` prefix - `40101` is address `101` - but never take off the 1-based offset by hand: the `subtract_one` option does that for the whole project, and doing both shifts every point by one. Use the ⧉ button or duplicate for a run of consecutive registers rather than retyping, since every driver_id has to stay unique.",
+  },
+  bit:{
+    what:"Which bit inside the word this row reads: `0`-`31`, or nibble syntax such as `5#4`.",
+    use:"It is appended to the driver id (`0_3_100.4`), so one polled word can carry many separate points.",
+    when:"Only on a `Bit_*` datatype, and only where the document packs several statuses or alarms into one register. The word row itself is synthesized for you while `auto_motherwords` is on, so do not add it by hand. An alarm bit is the common case: bit row, alarm letter `A`, group `alm`.",
+  },
+  system_no:{
+    what:"The plant's system number for this point, such as `360.001`. First part of the alias.",
+    use:"The four alias columns join in a fixed order - `system_no-tag-text-(extra)` - into the line the operator reads: `360.001-RT401-Romtemperatur-(1=Drift)`.",
+    when:"Where the plant numbers its systems and the number is known. It is usually one value for a whole block of rows, so set it once with a bulk edit rather than per row. It is an installation fact, not a device fact: on a template you expect to reuse, leave it empty rather than invent one, and let the copy for each plant fill it. `use_system_no` drops it from every alias at once.",
+  },
+  tag:{
+    what:"The short component tag, such as `RT401`. Second part of the alias.",
+    use:"Joins the alias between the system number and the text.",
+    when:"Where the plant's documentation names the component. It is what separates rows that would otherwise read alike - four identical room sensors become four distinct lines. Leave it empty for a standalone device with no plant tagging, and switch it off project-wide with `use_tag` rather than clearing the column.",
+  },
+  text:{
+    what:"The description the operator reads, in Norwegian and short.",
+    use:"The one alias part that is always included. `Reserve.` marks a spare row: it stays in the list but is written inactive even with `force_active` on.",
+    when:"On every row - a row with no alias part at all fails validation. This is the column the operator actually navigates by, so keep the wording consistent inside a list and prefer what the point measures to what the register is called; a vendor's `Register 4` carried through verbatim is worse than no list.",
+  },
+  extra:{
+    what:"The parenthesised suffix at the end of the alias.",
+    use:"Joins the alias last, in brackets.",
+    when:"For something that qualifies the reading and is not a unit - a range, a mode, a position. Do not type value lists such as `1=Drift` here: define them once in the State texts card, where they also reach the operator's display as words. With `statetext_in_alias` on, generate overwrites this column for any row that carries a state list.",
+  },
+  alarm:{
+    what:"The priority letter written to `plant_pri`: `A` alarm, `B` and `C` lower priorities, `N` note. Empty means the point is not an alarm.",
+    use:"It decides whether the point raises an alarm at all, and how hard.",
+    when:"Only on rows worth calling somebody out for. `A` is the fleet default and covers nearly every delivered alarm; use `B` or `C` where the site has agreed a priority scheme, and `N` for something to record but never chase. With `auto_groups` and `alarms_to_alm` both on, a lettered row moves itself into the `alm` group - leave the group empty and let it.",
+  },
+  unit:{
+    what:"The engineering unit, as a key in the unit table. The field autocompletes from it.",
+    use:"It becomes `eng_unit`, the unit shown after the number.",
+    when:"On every measured value; leave it empty on digital states and status words, where a unit makes the display say something untrue. If the unit is missing from the table, leave the cell empty and add the unit to `data/tables/units.csv` instead of inventing a spelling - an unknown key fails validation, and the table entry is also where `override_decimal` finds the decimals.",
+  },
+  scale:{
+    what:"A key in the scaling table. One key supplies the scale factor together with the raw and engineering minimum and maximum.",
+    use:"It converts the raw register value to the engineering value the operator sees.",
+    when:"Wherever the document says the register is a multiple: `value x 0.1` is the key `x0.1`, which dominates the real fleet. Leave it empty when the register already reads in engineering units, and use `INV` to invert a digital. Whatever you pick here, set `dec` to match it.",
+  },
+  rw:{
+    what:"`r` for read-only, `rw` where the operator may write the register. Bit rows are promoted to `vr` and `vrw` for you.",
+    use:"A writable point also emits the write half of the driver id, which is what turns the value into a control.",
+    when:"`rw` only where the vendor's document says the register is writable and the site should be writing it - setpoints, commands, mode selectors. Everything else `r`. This is the row's safety boundary, not a convenience: marked writable in error, a read-only register gives the operator a control that silently does nothing.",
+  },
+  update_freq:{
+    what:"How often the register is polled: `fast`, `norm`, `slow`, `once` or `never`. Empty means derived.",
+    use:"It sets the poll rate, and through it the logging: `norm` and `fast` log min/1; on `slow`, read-only analog and integral values still log min/1 while setpoints and digitals log on change; `once` and `never` log on change.",
+    when:"Leave it empty on almost every row. The derivation is already the right answer - analog and integral values poll `norm` read-only and `slow` writable, digital IO polls `slow`. Override with `slow` for values that barely move but still cost a poll, such as energy totals and run-hour counters, and with `fast` only for something genuinely fast-moving that is worth the bus load. A list where most rows carry an override is a list fighting its own defaults.",
+  },
+  online:{
+    what:"Marks this point as one the platform reads to decide the unit is alive.",
+    use:"It writes `onl_ind = 1` on the point.",
+    when:"On one to three points, and no more. Pick registers that are always readable and never go away - a temperature, a status word. Validation fails when no point is marked. Do not mark alarm bits or anything the device stops answering while faulted: an online indication has to be about the connection, not about the plant.",
+  },
+  decimals:{
+    what:"How many decimals the value is displayed with, `0`-`3`, written as `format = %.Nf`.",
+    use:"Only the display. It does not scale the value.",
+    when:"Pair it with the scale - `x0.1` goes with `1`, `x0.01` with `2` - and leave it empty where the value is a whole number, which leaves the format empty. If `override_decimal` is on, the unit table fills this column wherever the unit has a decimals entry and overwrites what you typed, so with that option on it is better left alone than fought.",
+  },
+  statetext:{
+    what:"The id of a value-to-word list defined in the State texts card.",
+    use:"It is serialized into `format_extra` as IWMAC JSON, so the operator reads `Drift` instead of `1`.",
+    when:"On any point whose numbers are codes rather than measurements - modes, statuses, alarm causes, on and off. Point every row with the same coding at the same list id instead of duplicating the list. It is suppressed on read-only rows while `statetext_only_rw` is on, and nothing is emitted at all while `use_json` is off.",
+  },
+  no_group:{
+    what:"Keeps this row out of the groups block.",
+    use:"The point is still written as a parameter and still polled - it simply does not appear in the operator's menu.",
+    when:"For rows that exist to serve something else rather than to be read: a word polled only so its bits can be decoded, a register kept for logging, a value another point is derived from. Synthesized motherwords already stay out on their own while `exclude_motherwords_from_groups` is on, so leave those alone. If the point should not exist at all, delete the row instead.",
+  },
+};
+
+/* One ⓘ per column, built from COL_DOC by the same loop that hangs the one-line
+   COL_HELP text off the header - so a column cannot end up with a tooltip and no
+   long form, or the reverse. Columns with no COL_DOC entry keep the tooltip alone. */
+for (const th of document.querySelectorAll("th[data-col]")) {
+  const col = th.dataset.col;
+  th.title = COL_HELP[col] || UNIT_COL_HELP[col] || "";
+  if (!COL_DOC[col]) continue;
+  const label = th.textContent.trim();
+  const btn = document.createElement("button");
+  btn.className = "colinfo";
+  btn.type = "button";
+  btn.textContent = "i";
+  btn.dataset.label = label;
+  btn.title = `What ${label} is, what it feeds and when to use it`;
+  btn.setAttribute("aria-label", `help for the ${label} column`);
+  btn.setAttribute("aria-expanded", "false");
+  // the header sorts on click, so without this, asking what a column is would
+  // re-sort the table under the row being edited
+  btn.addEventListener("click", e => { e.stopPropagation(); colDocToggle(btn, col); });
+  th.append(btn);
+}
 
 const $ = id => document.getElementById(id);
 const el = (tag, attrs={}, ...kids) => {
@@ -1082,6 +1225,70 @@ const el = (tag, attrs={}, ...kids) => {
   n.append(...kids);
   return n;
 };
+
+/* ---------- the per-column help panel ----------
+   Opened by the ⓘ in a column header. One panel, moved and refilled, parented to
+   <body>: .tblwrap sets contain:paint and th is position:sticky, and either one on
+   its own would clip a panel built inside the header and place it wrongly. */
+let colDocBox = null;      // the panel, created on first use
+let colDocFor = null;      // the button it is currently open for, or null
+
+/* Backticked spans become <code> nodes. Split rather than innerHTML, so nothing in
+   COL_DOC is ever parsed as markup. */
+const docText = s => s.split("`").map((part, i) => i % 2 ? el("code", {}, part) : part);
+
+function colDocToggle(btn, col) {
+  if (colDocFor === btn) colDocClose(); else colDocOpen(btn, col);
+}
+
+function colDocOpen(btn, col) {
+  const doc = COL_DOC[col];
+  if (!doc) return;
+  colDocClose();
+  if (!colDocBox) {
+    colDocBox = el("div", {class:"coldoc", role:"dialog"});
+    document.body.append(colDocBox);
+  }
+  colDocBox.replaceChildren(
+    el("h5", {}, btn.dataset.label),
+    el("dl", {},
+      el("dt", {}, "what it is"),     el("dd", {}, ...docText(doc.what)),
+      el("dt", {}, "what it feeds"),  el("dd", {}, ...docText(doc.use)),
+      el("dt", {}, "when to use it"), el("dd", {}, ...docText(doc.when))));
+  colDocBox.hidden = false;
+
+  // measure only once it is laid out, then keep it inside the window: the last
+  // columns of a seventeen-column table sit hard against the right edge
+  const r = btn.getBoundingClientRect();
+  const w = colDocBox.offsetWidth, h = colDocBox.offsetHeight;
+  const top = r.bottom + 6 + h > innerHeight - 8 ? Math.max(8, r.top - h - 6)
+                                                 : r.bottom + 6;
+  colDocBox.style.left = `${Math.min(Math.max(8, r.left - 12), innerWidth - w - 8)}px`;
+  colDocBox.style.top = `${top}px`;
+  btn.setAttribute("aria-expanded", "true");
+  colDocFor = btn;
+}
+
+function colDocClose() {
+  if (colDocFor) colDocFor.setAttribute("aria-expanded", "false");
+  colDocFor = null;
+  if (colDocBox) colDocBox.hidden = true;
+}
+
+document.addEventListener("click", e => {
+  // clicks on the ⓘ itself never reach this - the button stops them so the header
+  // does not sort - so anything that gets here is a click somewhere else
+  if (colDocFor && !e.target.closest?.(".coldoc")) colDocClose();
+});
+// capture, and consume the key, so Esc closes the panel without also dropping the
+// row selection or leaving the maximised card behind it
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && colDocFor) { e.stopPropagation(); colDocClose(); }
+}, true);
+// the panel is placed once and does not follow its button; scrolling the table
+// under a sticky header would leave it pointing at a different column
+addEventListener("scroll", colDocClose, true);
+addEventListener("resize", colDocClose);
 
 async function api(path, body) {
   if (window.PYODIDE_API) return window.PYODIDE_API(path, body);   // static web build
