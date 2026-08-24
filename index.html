@@ -1663,9 +1663,14 @@ let ptWinRows = [];             // rows the filter kept, in view order
 let ptRowH = 0;                 // measured once from a real row; they are uniform
 let ptWinQueued = false;
 let ptWinAt = null;             // [first, last] currently in layout, or null
+let ptWindowing = false;        // the list is long enough that scrolling must react
 
 function ptWrap() { return $("points").closest(".tblwrap"); }
+/* Writing a pad that already holds the wanted height still dirties style, and this
+   ran on every scroll frame - so it is guarded rather than trusted to be free. */
 function ptPad(el, px) {
+  if (el._px === px) return;
+  el._px = px;
   el.hidden = px <= 0;
   el.firstElementChild.firstElementChild.style.height = px > 0 ? px + "px" : "";
 }
@@ -1674,6 +1679,7 @@ function ptPad(el, px) {
    when the set of rows or their order has moved. */
 function ptApplyWindow(rebuild) {
   if (rebuild || !ptWinRows.length) { ptWinRows = ptVisible(); ptWinAt = null; }
+  if (rebuild) ptWindowing = false;      // re-decided below from the new row count
   const wrap = ptWrap(), n = ptWinRows.length;
   // fractional: rounding 36.4 to 36 would drift the pad by hundreds of pixels
   if (!ptRowH && n) ptRowH = ptWinRows[0].getBoundingClientRect().height || 0;
@@ -1683,6 +1689,7 @@ function ptApplyWindow(rebuild) {
     ptWinAt = null;
     return;
   }
+  ptWindowing = true;
   const head = wrap.querySelector("thead");
   const y = Math.max(0, wrap.scrollTop - (head ? head.offsetHeight : 0));
   let first = Math.max(0, Math.floor(y / ptRowH) - PT_OVERSCAN);
@@ -1716,7 +1723,11 @@ function ptPrewindow() {
   ptPad($("padBot"), (n - keep) * (ptRowH || 36));
   ptWinRows = []; ptWinAt = null;
 }
+/* Scroll is the hottest path in the page, and on a list too short to window there
+   is nothing for it to do - so it costs nothing at all rather than a frame of
+   bookkeeping per scroll event. Only a list that is actually windowed gets work. */
 function ptQueueWindow() {
+  if (!ptWindowing) return;
   if (ptWinQueued) return;
   ptWinQueued = true;
   requestAnimationFrame(() => { ptWinQueued = false; ptApplyWindow(); });
@@ -2847,12 +2858,34 @@ async function init() {
    visibility sweep - so on an imported 1600-row list they cost several times the
    frame budget of a single keystroke, and running them per frame made typing in
    the table stutter. Settling after the typing pauses keeps the chips and the
-   active filter honest without the field itself lagging behind the keyboard. */
+   active filter honest without the field itself lagging behind the keyboard.
+
+   Waiting is only worth it on a list long enough for the pair to cost more than a
+   frame. On an ordinary project they cost about a millisecond together, and there
+   the delay is the only thing anyone notices - a counting chip that lags a tick you
+   just made, a filter that lets an edited row sit visible for a sixth of a second.
+   So below PT_SETTLE_MIN rows they run on the next frame exactly as they always
+   did, and only a long list settles. */
 const PT_SETTLE_MS = 140;
-let statsTimer = null;
+const PT_SETTLE_MIN = 300;      // rows; below this, refresh on the next frame
+let statsTimer = null, statsQueued = false;
+function ptRefreshNow() {
+  statsQueued = false;
+  statsTimer = null;
+  updateStats();
+  applyPointView();
+}
 function ptQueueRefresh() {
   clearTimeout(statsTimer);
-  statsTimer = setTimeout(() => { updateStats(); applyPointView(); }, PT_SETTLE_MS);
+  statsTimer = null;
+  if ($("points").children.length < PT_SETTLE_MIN) {
+    if (statsQueued) return;                   // one refresh per frame, not per key
+    statsQueued = true;
+    requestAnimationFrame(ptRefreshNow);
+    return;
+  }
+  statsQueued = false;
+  statsTimer = setTimeout(ptRefreshNow, PT_SETTLE_MS);
 }
 $("points").addEventListener("input", ptQueueRefresh);
 
