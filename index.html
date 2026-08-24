@@ -823,7 +823,9 @@
         </ul>
         <p>A band whose checkbox is off is dimmed <b>and disabled</b> — tick the box
         that writes it before filling it in. Values already in a loaded project are
-        kept either way; they are simply not editable until the box is ticked.</p>
+        kept either way; they are simply not editable until the box is ticked.
+        <b>Communication needs both boxes</b>: the script writes it under the driver,
+        but the card will not author comm settings without a device list to reach.</p>
 
         <h4>Driver identity</h4>
         <p><b>owner / driver name</b> ties the whole card together — it is the settings
@@ -1369,8 +1371,14 @@ function syncSysUi() {
      iw_sys_plant_settings under the driver. owner / driver name is the one field
      both blocks write - driver_type on the units, process_name on the driver - so
      it never dims. */
+  /* Communication is editable only with BOTH boxes ticked - a deliberate house
+     choice, not what the SQL does. sqlout writes the comm values whenever settings
+     is on, devices or no devices, so a driver-only script still carries them; the
+     card simply declines to author them without a device list to reach. Do not
+     "correct" this to follow settings alone without asking. */
+  const commEditable = units && settings;
   $("sysUnitsBox").classList.toggle("off", !units);
-  $("sysCommBox").classList.toggle("off", !settings);
+  $("sysCommBox").classList.toggle("off", !commEditable);
   for (const e of document.querySelectorAll(".sysUnitField"))
     e.classList.toggle("off", !units);
   /* Dimming alone invited typing into fields whose box was off, which read as the
@@ -1381,7 +1389,7 @@ function syncSysUi() {
      the box is ticked. */
   sysSetEnabled($("sysUnitsBox"), units);
   for (const e of document.querySelectorAll(".sysUnitField")) sysSetEnabled(e, units);
-  sysSetEnabled($("sysCommBox"), settings);
+  sysSetEnabled($("sysCommBox"), commEditable);
   /* owner is the one field both blocks write - driver_type on every units row,
      process_name on the driver process - so either box on keeps it live, and only
      a card with both off has nothing that would carry it anywhere. */
@@ -1397,9 +1405,13 @@ function syncSysUi() {
   if (!units && !settings && owner) pending.push("a driver name filled in");
   const listed = pending.length < 2 ? pending.join("")
     : `${pending.slice(0, -1).join(", ")} and ${pending[pending.length - 1]}`;
-  $("sysGateHint").textContent = listed
-    ? `${listed} — nothing here is written until the box beside it is ticked`
-    : "";
+  let hint = listed
+    ? `${listed} — nothing here is written until the box beside it is ticked` : "";
+  /* Comm with the driver on but no devices is the one locked state that IS written,
+     so it gets its own line rather than being folded into the "not written" list. */
+  if (settings && !units)
+    hint += (hint ? " · " : "") + 'communication needs "add the devices" ticked to edit';
+  $("sysGateHint").textContent = hint;
 }
 function unitData(tr) {
   const v = c => tr.querySelector("."+c)?.value?.trim() ?? "";
