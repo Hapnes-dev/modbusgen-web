@@ -158,11 +158,19 @@
      opens the long form - what the column is, what it feeds and when to use it. A
      button rather than a longer tooltip, because a tooltip cannot be read at length,
      vanishes while you reach for it, and clicking the header sorts the table. */
-  .colinfo{width:13px;height:13px;padding:0;margin-left:5px;border-radius:50%;
+  /* The button is an inline box after the label, so a header too narrow for both
+     broke between them and stacked the ⓘ under its own column name - three lines
+     deep on "no grp", and a 26px header row grown to 56px. The label and its button
+     are one thing; let the column be as wide as it needs to be instead. Points only:
+     the units table headers wrap on purpose and carry no button. */
+  .points th[data-col]{white-space:nowrap}
+  /* vertical-align is measured, not guessed: at 1.5px the button's centre sits on
+     the centre of the 8px cap height, which is what the eye reads as level. */
+  .colinfo{width:13px;height:13px;padding:0;margin-left:4px;border-radius:50%;
            border:1px solid var(--line2);background:transparent;color:var(--dim);
            font:italic 700 9px/1 Georgia,"Times New Roman",serif;text-transform:none;
            letter-spacing:0;display:inline-flex;align-items:center;
-           justify-content:center;vertical-align:1px;opacity:.6;cursor:pointer}
+           justify-content:center;vertical-align:1.5px;opacity:.6;cursor:pointer}
   .colinfo:hover,.colinfo:focus-visible,.colinfo[aria-expanded="true"]{
            opacity:1;color:var(--accent);border-color:var(--accent)}
   /* Fixed, and parented to <body> rather than to the header: .tblwrap sets
