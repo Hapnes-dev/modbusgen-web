@@ -118,7 +118,17 @@
   td input:hover,td select:hover{border-color:var(--line2);background:var(--panel2)}
   td input:focus,td select:focus{background:var(--panel2)}
   td.num{color:var(--dim);font-size:11px;text-align:right;padding-right:6px}
+  /* `contain: paint` is what makes this scroll. Without it Chrome scrolls the box
+     on the main thread and repaints its whole visible area every frame - and a
+     points table's visible area is a thousand-odd form controls, which is slow to
+     paint. Measured on a 66-row project, wheeling over the table: 54 ms per frame
+     and 30 of 33 frames over budget, against 4 ms and none once contained. The
+     same rows scrolled at 4 ms all along when the *page* moved them, which is what
+     gave the cause away - the page scroller is composited and this one was not.
+     Containment costs nothing here: overflow already clips to this box, and
+     nothing inside needs to escape it. */
   .tblwrap{overflow-x:auto;max-height:56vh;overflow-y:auto;
+           contain:paint;
            border:1px solid var(--line);border-radius:6px}
   /* points card: search, sort, filter chips, maximise */
   .h2fill{flex:1}
