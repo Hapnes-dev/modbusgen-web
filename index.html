@@ -1378,25 +1378,39 @@ function unitData(tr) {
   return {unit_id:v("u-id"), unit_name:v("u-name"), driver_addr:v("u-addr"),
           view_order:Number(v("u-vo")||0)};
 }
+/* The comm defaults the card starts on. Anything still equal to these is a field
+   nobody has touched, which is what lets an untouched card collapse to no `system`
+   block at all - omitting it is the supported way to say "this plant already has
+   its devices and driver" (schema, docs/10). */
+const COMM_DEFAULTS = {mode:"tcp", ip:"", port:502, com_port:"",
+                       baudrate:19200, parity:"even", stop_bits:1};
 function collectSystem() {
   const units = $("sysUnits").checked, settings = $("sysSettings").checked;
   const rows = [...$("unitRows").children].map(unitData)
     .filter(u => u.unit_id || u.unit_name || u.driver_addr);
   const owner = $("sysOwner").value.trim();
-  if (!units && !settings && !rows.length && !owner) return null;
+  const comm = {
+    mode: $("commMode").value, ip: $("commIp").value.trim(),
+    port: Number($("commPort").value || 502),
+    com_port: $("commCom").value.trim(),
+    baudrate: Number($("commBaud").value),
+    parity: $("commParity").value, stop_bits: Number($("commStop").value),
+  };
+  /* Communication counts as filled-in work too. It was left out of this test, so a
+     card holding nothing but an IP address collapsed to `system: null` and
+     showSystem() cleared every comm field on the next load - the address, the COM
+     port, the mode, all of it, with no error. That is exactly the state the card
+     invites: both boxes stay unticked while a driver is prepared. */
+  const commTouched = Object.keys(COMM_DEFAULTS)
+    .some(k => comm[k] !== COMM_DEFAULTS[k]);
+  if (!units && !settings && !rows.length && !owner && !commTouched) return null;
   return {
     units, settings, owner,
     reg_type: $("sysRegType").value.trim(),
     order_no: $("sysOrderNo").value.trim(),
     driver_addr_prefix: $("sysPrefix").value,
     unit_list: rows,
-    comm: {
-      mode: $("commMode").value, ip: $("commIp").value.trim(),
-      port: Number($("commPort").value || 502),
-      com_port: $("commCom").value.trim(),
-      baudrate: Number($("commBaud").value),
-      parity: $("commParity").value, stop_bits: Number($("commStop").value),
-    },
+    comm,
   };
 }
 function showSystem(s) {
