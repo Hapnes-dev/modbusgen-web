@@ -93,9 +93,11 @@
   .subhead::after{content:"";flex:1;height:1px;background:var(--line)}
   .subhead .n{text-transform:none;letter-spacing:0;color:var(--line2)}
   .gated{transition:opacity .12s}
-  /* a dimmed band stays editable on purpose - a device list can be prepared before
-     the box is ticked - so it says what its state means rather than only looking faint */
+  /* a dimmed band is also disabled, so the hint explains the state rather than
+     leaving it to opacity - and it still reports values a loaded project brought in */
   .gatehint{color:var(--amber);font-size:11.5px;align-self:center}
+  #cardSys input:disabled,#cardSys select:disabled,#cardSys button:disabled{
+    cursor:not-allowed}
   .gated.off{opacity:.55}
   .empty{font-size:12px;color:var(--dim);padding:7px 2px 1px}
   /* opt-in uniform field widths - only labels carrying one of these classes,
@@ -819,8 +821,9 @@
           <li><b>add the driver</b> — the <code>iw_mb.exe</code> process registration and
             every driver communication setting.</li>
         </ul>
-        <p>A band whose checkbox is off dims but <b>stays editable</b>, so a device list
-        can be prepared before the block is switched on.</p>
+        <p>A band whose checkbox is off is dimmed <b>and disabled</b> — tick the box
+        that writes it before filling it in. Values already in a loaded project are
+        kept either way; they are simply not editable until the box is ticked.</p>
 
         <h4>Driver identity</h4>
         <p><b>owner / driver name</b> ties the whole card together — it is the settings
@@ -1339,8 +1342,17 @@ function renumberUnits() {
   syncSysUi();
 }
 /* Show only the comm fields the selected mode uses, hide the empty device table
-   behind a one-line empty state, and dim a block whose checkbox is off. Dimming
-   only — the fields stay editable so a list can be prepared before enabling. */
+   behind a one-line empty state, and turn off every control whose checkbox is off -
+   dimmed and disabled together, because a field that dims but still accepts typing
+   reads as a value that will not stick rather than as a box that is not ticked.
+   Values already in the project are untouched: collectSystem reads .value from a
+   disabled control, so a list loaded with its box off survives the round trip and
+   simply waits for the box to be ticked before it can be edited. */
+/* owner / driver name is never touched: both blocks write it, so it is always live. */
+function sysSetEnabled(root, on) {
+  for (const el of root.querySelectorAll("input, select, button"))
+    el.disabled = !on;
+}
 function syncSysUi() {
   const rtu = $("commMode").value === "rtu";
   for (const e of document.querySelectorAll("#cardSys .cm-tcp")) e.style.display = rtu ? "none" : "";
@@ -1360,6 +1372,15 @@ function syncSysUi() {
   $("sysCommBox").classList.toggle("off", !settings);
   for (const e of document.querySelectorAll(".sysUnitField"))
     e.classList.toggle("off", !units);
+  /* Dimming alone invited typing into fields whose box was off, which read as the
+     value not sticking rather than as the box being off. A control its box will not
+     write now refuses input outright. Reading is unaffected: collectSystem still
+     takes .value from a disabled field, so a project loaded with units: false keeps
+     its device rows and comm settings in the JSON and simply cannot be edited until
+     the box is ticked. */
+  sysSetEnabled($("sysUnitsBox"), units);
+  for (const e of document.querySelectorAll(".sysUnitField")) sysSetEnabled(e, units);
+  sysSetEnabled($("sysCommBox"), settings);
   /* Both bands stay editable while unticked so a device list can be prepared before
      it is switched on - which means a filled-in band that writes nothing is a normal
      state, and one nobody should have to deduce from the opacity alone. */
