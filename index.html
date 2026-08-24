@@ -824,8 +824,9 @@
         <p>A band whose checkbox is off is dimmed <b>and disabled</b> — tick the box
         that writes it before filling it in. Values already in a loaded project are
         kept either way; they are simply not editable until the box is ticked.
-        <b>Communication needs both boxes</b>: the script writes it under the driver,
-        but the card will not author comm settings without a device list to reach.</p>
+        <b>Communication opens with <i>add the devices</i></b> — you configure how to
+        reach a bus while listing what is on it — but it is <b>written</b> under
+        <i>add the driver</i>. The line beside the boxes names either mismatch.</p>
 
         <h4>Driver identity</h4>
         <p><b>owner / driver name</b> ties the whole card together — it is the settings
@@ -1371,12 +1372,15 @@ function syncSysUi() {
      iw_sys_plant_settings under the driver. owner / driver name is the one field
      both blocks write - driver_type on the units, process_name on the driver - so
      it never dims. */
-  /* Communication is editable only with BOTH boxes ticked - a deliberate house
-     choice, not what the SQL does. sqlout writes the comm values whenever settings
-     is on, devices or no devices, so a driver-only script still carries them; the
-     card simply declines to author them without a device list to reach. Do not
-     "correct" this to follow settings alone without asking. */
-  const commEditable = units && settings;
+  /* Editing communication follows the devices, writing it follows the driver, and
+     those are deliberately not the same box. You configure how to reach a bus while
+     you are listing what is on it, so the fields open with "add the devices"; sqlout
+     only emits them as iw_sys_plant_settings rows when "add the driver" is on. Both
+     mismatched states are called out in the hint below rather than hidden: filled in
+     but unwritten with the devices box alone, written but not editable with the
+     driver box alone. A house choice - do not "correct" it to follow settings
+     because that is what the SQL does. */
+  const commEditable = units;
   $("sysUnitsBox").classList.toggle("off", !units);
   $("sysCommBox").classList.toggle("off", !commEditable);
   for (const e of document.querySelectorAll(".sysUnitField"))
