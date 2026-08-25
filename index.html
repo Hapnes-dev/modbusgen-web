@@ -590,8 +590,8 @@
   <div class="card">
     <h2>Points <span class="chips" id="pointStats"></span>
       <span class="h2fill"></span>
-      <input id="ptSearch" class="search tool" placeholder="search rows   /"
-             title="Filter rows on any column - group, text, datatype, address, unit. Press / anywhere to jump here, Esc to clear">
+      <input id="ptSearch" class="search tool" placeholder="search rows   Ctrl+F"
+             title="Filter rows on any column - group, text, datatype, address, unit. Ctrl+F or / anywhere on the page jumps here, Esc clears. Use this rather than the browser's find: only the rows on screen exist in the page, so the browser's find cannot see the rest of the list">
       <span class="chip tool" id="ptFilterInfo" hidden></span>
       <button id="btnPtOrder" class="ghost tool" hidden
               title="Write the order you are looking at into the project. Until you press this, sorting only changes the view - the saved order, and the group view_order derived from it, are untouched">keep this order</button>
@@ -708,9 +708,16 @@
         <h4>Finding your way around a long list</h4>
         <ul>
           <li><b>Search</b> filters on every column at once - group, text, datatype,
-            address, unit. Press <code>/</code> anywhere on the page to jump into it and
-            <code>Esc</code> to clear. The chip beside it reads
+            address, unit. <code>Ctrl+F</code> or <code>/</code> anywhere on the page
+            jumps into it, <code>Esc</code> clears it. The chip beside it reads
             <span class="ex">12 of 200 shown</span> whenever anything is hidden.</li>
+          <li><b>Use it instead of the browser's find.</b> The table keeps about fifty
+            rows on screen however long the list is, so <code>Ctrl+F</code> is taken
+            over deliberately: the browser's own find can only see the rows currently
+            rendered, and on a long list it will report nothing for a tag that is
+            there, or stop at the first of several matches. This box filters the whole
+            list. <span class="note">Shift+Ctrl+F</span> still opens the browser's own,
+            for searching the page's text rather than the points.</li>
           <li><b>The counting chips filter.</b> Click <i>bits</i>, <i>writable</i>,
             <i>alarms</i> or <i>online</i> to show only those rows; click again to
             release. They combine, so <i>writable</i> + <i>alarms</i> is both.</li>
@@ -3202,6 +3209,18 @@ document.addEventListener("keydown", e => {
        card has history of its own to step back through. */
     const inPoints = $("points").contains(document.activeElement);
     if (inPoints || ptUndo.length || ptPreEdit) { e.preventDefault(); ptDoUndo(); }
+    return;
+  }
+  /* Ctrl+F belongs to this search box, not to the browser's. The table renders a
+     pool of about fifty rows whatever the list holds, so the browser's own find can
+     only see what is on screen: on a 1619-point list it reports "no results" for a
+     tag that is certainly there, and - worse - it finds the first of three matches
+     and hides the other two. That is a wrong answer delivered confidently. This box
+     filters the model, so it sees every point. Shift+Ctrl+F is left alone for anyone
+     who really does want to search the page's own text. */
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f" && !e.shiftKey && !e.altKey) {
+    e.preventDefault();
+    $("ptSearch").focus(); $("ptSearch").select();
     return;
   }
   if (e.key === "/" && !typing) { e.preventDefault(); $("ptSearch").focus(); $("ptSearch").select(); }
