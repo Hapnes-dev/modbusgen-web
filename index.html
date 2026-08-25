@@ -625,7 +625,7 @@
             <code>Digital_X_N</code> discrete input · <code>Coil_X_N</code> coil ·
             <code>Bit_Hold</code>/<code>Bit_Input</code> one bit inside a word ·
             <code>…_I32/U32/F</code> for 32-bit values. If the doc says the word order is
-            reversed (LSW first — energy meters often do), use the <code>_W</code>
+            reversed (LSW first — energy meters often do), use the <code>_W</code> or <code>_R</code>
             variants.</li>
           <li><b>addr</b> — the register number exactly as the device documentation
             prints it (strip a <code>4xxxx</code>/<code>3xxxxx</code> prefix:
@@ -947,7 +947,7 @@
     <div class="sub">
       <div class="subhead">driver identity</div>
       <div class="row">
-        <label class="f f-lg gated" title="Ties the whole block together: it is the settings owner, the driver_type and the process name. Uppercase, no spaces. Used by both blocks, e.g. EM270 or GRUNDFOS Both boxes write it - driver_type on the units, process_name on the driver - so either one keeps it live.">owner / driver name<input id="sysOwner" placeholder="EM270" title="Ties the whole block together: it is the settings owner, the driver_type and the process name. Uppercase, no spaces. Used by both blocks, e.g. EM270 or GRUNDFOS Both boxes write it - driver_type on the units, process_name on the driver - so either one keeps it live."></label>
+        <label class="f f-lg gated" title="Ties the whole block together: it is the settings owner, the driver_type and the process name. Uppercase, no spaces, and IWMAC documents a maximum of 10 characters, capitals and digits only - Validate warns rather than blocks, because the fleet carries an 11-character owner. e.g. EM270 or GRUNDFOS Both boxes write it - driver_type on the units, process_name on the driver - so either one keeps it live.">owner / driver name<input id="sysOwner" placeholder="EM270" title="Ties the whole block together: it is the settings owner, the driver_type and the process name. Uppercase, no spaces, and IWMAC documents a maximum of 10 characters, capitals and digits only - Validate warns rather than blocks, because the fleet carries an 11-character owner. e.g. EM270 or GRUNDFOS Both boxes write it - driver_type on the units, process_name on the driver - so either one keeps it live."></label>
         <label class="f f-sm gated sysUnitField" title="Registration type recorded against the units. Lowercase, no spaces. Mirrors the owner / driver name until you type your own value here - clear it if the delivery wants it blank Written by 'add the devices'.">reg.type<input id="sysRegType" title="Registration type recorded against the units. Lowercase, no spaces. Mirrors the owner / driver name until you type your own value here - clear it if the delivery wants it blank Written by 'add the devices'."></label>
         <label class="f f-sm gated sysUnitField" title="Order number linked to the units in iw_sys_order_no. Lowercase, no spaces. Mirrors the owner / driver name until you type your own value here Written by 'add the devices'.">order no<input id="sysOrderNo" title="Order number linked to the units in iw_sys_order_no. Lowercase, no spaces. Mirrors the owner / driver name until you type your own value here Written by 'add the devices'."></label>
         <label class="f f-xs gated sysUnitField" title="Prefix put in front of every device address. Follows the comm mode - 1_ for tcp, 0_ for rtu - until you pick one yourself Written by 'add the devices'.">addr prefix<select id="sysPrefix" title="Prefix put in front of every device address. Follows the comm mode - 1_ for tcp, 0_ for rtu - until you pick one yourself Written by 'add the devices'."><option>0_</option><option>1_</option></select></label>
@@ -994,6 +994,17 @@
           <li><b>Generate + save file</b> — the same, and writes the
             <code>…SQL File.txt</code> (browser build: downloads it). Import that file
             into the plant database as before.</li>
+        </ul>
+
+        <h4>Then, on the IWMAC side</h4>
+        <ul>
+          <li>The script is not the end of the job. In the IWMAC tooling:
+            <b>Setup Statetext → JSON Setup → Generate Param/Grp/Set</b>, which must
+            report <span class="ex">Done</span>, then <b>Generate SQL</b>. Same
+            sequence for a first import and for a later update.</li>
+          <li><span class="note">If that step reports errors, fix them there before
+            continuing.</span> Carrying on and hoping is how a half-imported list
+            happens.</li>
         </ul>
 
         <h4>Reading the outcome</h4>
@@ -1059,6 +1070,12 @@
       <div class="sub">
         <div class="subhead">tips</div>
         <ul>
+          <li><b>Before the list exists, prove the device answers.</b> A list built
+            against a register map the device does not implement is legal, complete
+            and wrong, and you find out on site. <code>ping</code>, then
+            <code>modpoll</code> on one register you already know the right answer to.
+            The unit ID and the serial settings are what to suspect first when nothing
+            comes back.</li>
           <li><b>Start a project:</b> <b>New</b> for an empty one, pick a saved one
             from the list, or bring one in — <b>Import project</b> for a
             <code>.json</code>/<code>.yaml</code>, <b>Import SQL</b> for a generated
@@ -1167,12 +1184,12 @@ const COL_DOC = {
   datatype:{
     what:"The register's type, width and word order, chosen from the datatype table. The most consequential column on the row.",
     use:"It supplies the read and write function codes, the raw type, the byte and word swap, the application class and the parameter type - so it decides how the register is read and how the bits are interpreted.",
-    when:"On every row, matched to what the vendor's register table says: `A_Hold_I16_N` analog holding register, `A_Input_I16_N` analog input register, `I_Hold_U16_N` plain integer or counter, `Digital_X_N` discrete input, `Coil_X_N` coil, `Bit_Hold` / `Bit_Input` for one bit inside a word, and the `_I32` / `_U32` / `_F` variants for 32-bit values. Reach for a `_W` variant only where the document states the low word comes first, as energy meters often do: a wrong word order still reads and still produces numbers, which is why it has to come from the document rather than from a trial.",
+    when:"On every row, matched to what the vendor's register table says: `A_Hold_I16_N` analog holding register, `A_Input_I16_N` analog input register, `I_Hold_U16_N` plain integer or counter, `Digital_X_N` discrete input, `Coil_X_N` coil, `Bit_Hold` / `Bit_Input` for one bit inside a word, and the `_I32` / `_U32` / `_F` variants for 32-bit values. Word order has three forms - `_N` normal, `_W` word-swapped, `_R` reversed - and all three are in the table. Reach for one other than `_N` only where the document states it, as energy meters often do: a wrong word order still reads and still produces numbers, which is why it has to come from the document or from a live read rather than from a trial. A useful tell that a block is 32-bit at all: its register numbers step 0, 2, 4, 6 rather than by one.",
   },
   addr:{
     what:"The register number, exactly as the vendor's document prints it.",
     use:"With the datatype it forms `driver_id = 0_<readfunc>_<addr>`, the address the driver actually polls.",
-    when:"On every row. Strip a `4xxxx` or `3xxxxx` prefix - `40101` is address `101` - but never take off the 1-based offset by hand: the `subtract_one` option does that for the whole project, and doing both shifts every point by one. Use the ⧉ button or duplicate for a run of consecutive registers rather than retyping, since every driver_id has to stay unique.",
+    when:"On every row. Strip a `4xxxx` or `3xxxxx` prefix - `40101` is address `101` - but never take off the 1-based offset by hand: the `subtract_one` option does that for the whole project, and doing both shifts every point by one. A table that starts at 1 is a hint that the option is needed, not proof; a live read settles it. Use the ⧉ button or duplicate for a run of consecutive registers rather than retyping, since every driver_id has to stay unique.",
   },
   bit:{
     what:"Which bit inside the word this row reads: `0`-`31`, or nibble syntax such as `5#4`.",
@@ -1227,7 +1244,7 @@ const COL_DOC = {
   online:{
     what:"Marks this point as one the platform reads to decide the unit is alive.",
     use:"It writes `onl_ind = 1` on the point.",
-    when:"On one to three points, and no more. Pick registers that are always readable and never go away - a temperature, a status word. Validation fails when no point is marked. Do not mark alarm bits or anything the device stops answering while faulted: an online indication has to be about the connection, not about the plant.",
+    when:"On three or four points (docs/16). Pick registers that are always readable and change often - an outdoor temperature, an energy counter. Validation fails when no point is marked. Do not mark alarm bits or anything the device stops answering while faulted: an online indication has to be about the connection, not about the plant.",
   },
   decimals:{
     what:"How many decimals the value is displayed with, `0`-`3`, written as `format = %.Nf`.",
@@ -2750,7 +2767,7 @@ const FIX_ADVICE = [
     title:"Checks auto_motherwords in the Project card so the missing word rows are synthesized, and validates again",
     run:(ctx)=>ctx.setOption("auto_motherwords", true)}],
   [/no point has online: true/,
-   "Tick onl on one to three reliable, always-readable points — a temperature or a status register. IWMAC uses them to tell that the unit is alive."],
+   "Tick onl on three or four reliable, frequently changing points — an outdoor temperature or an energy counter. IWMAC uses them to tell that the unit is alive."],
   [/share view order/,
    "Give each group its own view order in the Groups card; two groups cannot sit at the same position."],
 ];
