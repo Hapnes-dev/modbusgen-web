@@ -1052,7 +1052,9 @@
       <div class="sub">
         <div class="subhead">keyboard</div>
         <ul>
-          <li><code>/</code> search the points · <code>Ctrl+Z</code> undo (10 steps) ·
+          <li><code>Ctrl+F</code> or <code>/</code> search the points ·
+            <code>++</code> in the search adds the next word that narrows it ·
+            <code>Ctrl+Z</code> undo (10 steps) ·
             <code>Esc</code> clears search, then selection, then fullscreen</li>
           <li><b>Click a row and drag</b> to select many; <code>Shift</code>-click extends,
             <code>Ctrl</code>-click toggles one</li>
@@ -1063,31 +1065,26 @@
       <div class="sub">
         <div class="subhead">tips</div>
         <ul>
-          <li><b>Let Copilot do the typing:</b> give the
-            <a href="https://m365.cloud.microsoft/chat/?titleId=T_579a0384-1b7f-c331-433d-505a5c37425a&amp;source=embedded-builder"
-               target="_blank" rel="noopener">Modbus List Helper</a> agent the register
-            PDF and answer its questions; the JSON it returns loads via
-            <b>Import project</b>.</li>
-          <li><b>Your work stays here:</b> the editor autosaves in this browser, and
-            <b>Save</b> keeps named copies (picker: <i>saved in this browser</i>;
-            <b>Delete</b> asks once). Every picker entry shows when it was last
-            written — <code>24.08.2026 14:32</code>, hover for seconds — a Save for
-            browser copies, the file's own timestamp for the projects folder.
-            <b>Export</b> is the real file
-            (<code>.json</code>/<code>.yaml</code> by the name you type) — use it for
-            keeping, mailing, another machine.</li>
-          <li><b>Old Excel workbooks:</b> <code>modbusgen import-xlsm old.xlsm</code>
-            (CLI), then open the result here.</li>
-          <li><b>Existing SQL scripts:</b> <b>Import SQL</b> rebuilds an editable
-            project from a generated script — modern <code>REPLACE</code> or legacy
-            <code>INSERT</code> format, no workbook needed. The plant number is not in
-            the SQL: set it before generating. <b>Export</b> then gives the
-            <code>.json</code>. CLI: <code>modbusgen import-sql "…SQL File.txt"</code>.</li>
+          <li><b>Start a project:</b> <b>New</b> for an empty one, pick a saved one
+            from the list, or bring one in — <b>Import project</b> for a
+            <code>.json</code>/<code>.yaml</code>, <b>Import SQL</b> for a generated
+            script, <b>Insert Excel</b> for a filled Modbustemplate workbook.</li>
+          <li><b>Then work down the page:</b> Project for the table name, plant number
+            and options · Groups and State texts for what the operator sees · Points
+            for the register list · Units &amp; driver only when this plant's devices
+            are not registered yet.</li>
+          <li><b>Editing points:</b> <code>Ctrl+F</code> finds rows, click and drag
+            selects several, and the bar under the table changes them together.
+            <b>⤓ points</b> saves the list as its own file, <b>⤒ points</b> appends
+            one from somewhere else.</li>
+          <li><b>Finish with Validate, then Generate SQL.</b> Validate lists what would
+            stop the import; warnings do not block. A project built from an imported
+            SQL script has no plant number in it — set one before generating.</li>
+          <li><b>Save keeps a copy in this browser. Export writes the real file</b>
+            (<code>.json</code> or <code>.yaml</code>, by the name you type) — that is
+            the one to keep, mail, or move to another machine.</li>
           <li><b>Direct link:</b> add <code>#file-name</code> to the URL, e.g.
             <code>…/#example-belimo-ev.json</code>.</li>
-          <li><b>Missing datatype, unit or scale key?</b> Do not improvise — extend
-            <code>data/tables/*.csv</code> in the repository so every future list can
-            use it too.</li>
         </ul>
       </div>
     </div>
