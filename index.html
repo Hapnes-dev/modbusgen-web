@@ -151,9 +151,6 @@
   .h2fill{flex:1}
   .card h2 .tool{font-weight:400;text-transform:none;letter-spacing:0}
   input.search{font-size:12px;padding:3px 8px;width:200px}
-  /* `++` found no word left to narrow by. A typed shortcut that silently deletes what
-     you typed reads as a bug, so the box says no rather than nothing. */
-  input.search.nohit{border-color:var(--amber);color:var(--amber)}
   .chip.toggle{cursor:pointer;user-select:none}
   .chip.toggle:hover{border-color:var(--line2);color:#fff}
   .chip.toggle.on{border-color:var(--accent);color:var(--accent);
@@ -594,7 +591,7 @@
     <h2>Points <span class="chips" id="pointStats"></span>
       <span class="h2fill"></span>
       <input id="ptSearch" class="search tool" placeholder="search rows   Ctrl+F"
-             title="Filter rows on any column - group, text, datatype, address, unit. Several words all have to match, in any order and any column: 'tilluft temp' finds Temperaturgiver tilluft. æ ø å can be typed as ae o a. Type ++ to have it add the next word that narrows the result - RT601++ becomes RT601 temp - and ++ again to try the next one. If nothing matches exactly you get close matches instead, marked ≈ - but never for numbers, so an address is always found exactly or not at all. Ctrl+F or / jumps here, Esc clears. Use this rather than the browser's find: only the rows on screen exist in the page">
+             title="Filter rows on any column - group, text, datatype, address, unit. Several words all have to match, in any order and any column: 'tilluft temp' finds Temperaturgiver tilluft. æ ø å can be typed as ae o a. ++ starts the next word, so RT601++temp is the same search as RT601 temp. If nothing matches exactly you get close matches instead, marked ≈ - but never for numbers, so an address is always found exactly or not at all. Ctrl+F or / jumps here, Esc clears. Use this rather than the browser's find: only the rows on screen exist in the page">
       <span class="chip tool" id="ptFilterInfo" hidden></span>
       <button id="btnPtOrder" class="ghost tool" hidden
               title="Write the order you are looking at into the project. Until you press this, sorting only changes the view - the saved order, and the group view_order derived from it, are untouched">keep this order</button>
@@ -729,14 +726,11 @@
             identity, not a description, so <span class="ex">101</span> will not offer
             you <span class="ex">1010</span>. A term containing a digit always has to
             match exactly.</li>
-          <li><b>Type <code>++</code> to finish the query for you.</b>
-            <span class="ex">RT601++</span> becomes
-            <span class="ex">RT601 temp</span> — the commonest word among the rows
-            <span class="ex">RT601</span> already matches, leaving out words every one
-            of them shares, since those narrow nothing. Press <code>++</code> again to
-            swap it for the next candidate rather than stacking a second word; type a
-            space first if you do want to add one. Bare numbers are never suggested,
-            for the same reason they are never approximated.</li>
+          <li><b><code>++</code> starts the next word,</b> so
+            <span class="ex">RT601++temp</span> is the same search as
+            <span class="ex">RT601 temp</span> — both terms have to match. Useful when
+            you are typing a tag and then the thing you want off it without stopping
+            for the space bar. You type the word; nothing is filled in for you.</li>
           <li><b>Use it instead of the browser's find.</b> The table keeps about fifty
             rows on screen however long the list is, so <code>Ctrl+F</code> is taken
             over deliberately: the browser's own find can only see the rows currently
@@ -1053,7 +1047,7 @@
         <div class="subhead">keyboard</div>
         <ul>
           <li><code>Ctrl+F</code> or <code>/</code> search the points ·
-            <code>++</code> in the search adds the next word that narrows it ·
+            <code>++</code> in the search starts the next word ·
             <code>Ctrl+Z</code> undo (10 steps) ·
             <code>Esc</code> clears search, then selection, then fullscreen</li>
           <li><b>Click a row and drag</b> to select many; <code>Shift</code>-click extends,
@@ -2079,76 +2073,20 @@ function ptEditsWithin(a, b, max) {
   }
   return prev[b.length] <= max;
 }
+/* `++` separates terms exactly as a space does, so `RT601++temp` and `RT601 temp` are
+   the same search. It exists because the terms are usually typed as one continuous
+   run - a tag, then the thing you want off that tag - and `++` says "and now this as
+   well" without breaking the rhythm to reach for the space bar or leaving a trailing
+   space that looks like an unfinished query. Nothing is inserted for you: the word
+   after `++` is the one you type. */
 function ptParseSearch(raw) {
-  const terms = ptFold(raw).split(/\s+/).filter(Boolean).map(t => ({
+  const terms = ptFold(raw).split(/(?:\s|\+\+)+/).filter(Boolean).map(t => ({
     t,
     numeric: /\d/.test(t),
     // an edit on a short word turns it into a different word; 4 is where it stops
     slack: /\d/.test(t) ? 0 : t.length >= 8 ? 2 : t.length >= 4 ? 1 : 0,
   }));
   return {terms, fuzzable: terms.some(t => t.slack > 0)};
-}
-/* ---------- `++` : finish the query for me ----------
-   Typing `RT601++` turns into `RT601 temp`. The candidates are the words that appear
-   on the rows RT601 already matches, ranked by how many of them carry the word - the
-   commonest word that is not on *every* matching row, since a word they all share
-   narrows nothing and one only a single row has is a guess rather than a suggestion.
-
-   Pressing `++` again swaps the word for the next candidate rather than stacking a
-   second one, so the key cycles through the ways to narrow instead of committing to
-   the first. Adding a space first and then `++` appends, because at that point the
-   query is a new base and the last completion no longer sits at the end of it.
-
-   Bare numbers are never offered. The search refuses to approximate an address and
-   this would be the same mistake by another route - proposing 1010 to someone who
-   typed 101 is not less wrong for having been a suggestion. */
-let ptComplete = null;             // {base, list, i} while a completion sits at the end
-let ptNoHitTimer = null;           // one timer, or a second miss loses its own marker
-function ptCandidates(base) {
-  const {terms} = ptParseSearch(base);
-  const have = new Set(terms.map(t => t.t));
-  const rows = ptOrder.filter(p =>
-    ptStrictMatch(p, terms) && ptPassesFilters(p) && ptPassesBadFilter(p));
-  if (!rows.length) return [];
-  const count = new Map();
-  for (const p of rows) {
-    for (const w of new Set(ptHay(p).split(/[^a-z0-9]+/))) {
-      if (w.length < 3 || /^\d+$/.test(w) || have.has(w)) continue;
-      count.set(w, (count.get(w) || 0) + 1);
-    }
-  }
-  return [...count.entries()]
-    .filter(([, n]) => n < rows.length)          // a word every row has narrows nothing
-    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
-    .slice(0, 12)
-    .map(([w]) => w);
-}
-/* Returns true when it rewrote the box, so the caller knows to re-run the search. */
-function ptApplyCompletion(box) {
-  const raw = box.value;
-  if (!/\+\+\s*$/.test(raw)) return false;
-  const typed = raw.replace(/\+\+\s*$/, "");
-  let base = typed.trimEnd(), list, i;
-  // still sitting on the word we just inserted? cycle it rather than stack another
-  if (ptComplete && typed === `${ptComplete.base} ${ptComplete.list[ptComplete.i]}`) {
-    base = ptComplete.base;
-    list = ptComplete.list;
-    i = (ptComplete.i + 1) % list.length;
-  } else {
-    list = ptCandidates(base);
-    i = 0;
-  }
-  if (!base || !list.length) {
-    box.value = base;                            // drop the ++, say nothing was found
-    ptComplete = null;
-    box.classList.add("nohit");
-    clearTimeout(ptNoHitTimer);
-    ptNoHitTimer = setTimeout(() => box.classList.remove("nohit"), 700);
-    return true;
-  }
-  box.value = `${base} ${list[i]}`;
-  ptComplete = {base, list, i};
-  return true;
 }
 function ptStrictMatch(p, terms) {
   if (!terms.length) return true;
@@ -2721,7 +2659,7 @@ function showProject(data) {
   ptFilters.clear();
   $("valStatus").hidden = true;
   ptUndo.length = 0; ptPreEdit = null; ptUpdateUndoButton();
-  if ($("ptSearch")) { $("ptSearch").value = ""; ptComplete = null; }
+  if ($("ptSearch")) $("ptSearch").value = "";
   ptSetModel(data.points || []);
   if (!ptModel.length) ptAdd();          // an empty project still offers a row to type in
   const wrap = ptWrap();
@@ -3365,13 +3303,7 @@ $("points").addEventListener("focusin", updatePointTip);
 $("points").addEventListener("focusout", () => setTimeout(updatePointTip, 0));
 
 /* points view controls */
-/* `++` is resolved before the debounce, not inside it: the box has to show the
-   finished query on the keystroke that asked for it, or the user types on top of a
-   `++` that is still there. Everything else about searching keeps its settle. */
-$("ptSearch").addEventListener("input", () => {
-  if (ptApplyCompletion($("ptSearch"))) ptRefreshNow();
-  else ptQueueRefresh();
-});
+$("ptSearch").addEventListener("input", ptQueueRefresh);   // same settle as the cells
 // the pool follows the scroll position, and the viewport height decides its size
 ptWrap()?.addEventListener("scroll", ptOnScroll, {passive:true});
 window.addEventListener("resize", () => ptRender(true));
@@ -3414,7 +3346,7 @@ document.addEventListener("keydown", e => {
     if (!$("repBar").hidden) {
       repClose();
     } else if (document.activeElement === $("ptSearch") && $("ptSearch").value) {
-      $("ptSearch").value = ""; ptComplete = null; applyPointView();
+      $("ptSearch").value = ""; applyPointView();
     } else if (ptSel.size) {
       ptClearSelection();
     } else if ($("points").closest(".card").classList.contains("maximized")) {
