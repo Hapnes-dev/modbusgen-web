@@ -596,6 +596,8 @@
       <button id="btnPtOrder" class="ghost tool" hidden
               title="Write the order you are looking at into the project. Until you press this, sorting only changes the view - the saved order, and the group view_order derived from it, are untouched">keep this order</button>
       <button id="btnPtUndo" class="ghost tool" disabled>↶ undo</button>
+      <button id="btnPtExport" class="ghost tool"
+              title="Download every point as its own project .json, carrying only the groups and state texts these points use. Project order, and a search or filter does not narrow it - select rows and use the bar below for that">⤓ points</button>
       <button id="btnPtFull" class="ghost tool" title="Maximise this card (Esc to close)">⛶</button>
     </h2>
     <details class="help"><summary title="All seventeen columns explained in table order">help</summary>
@@ -822,6 +824,8 @@
       <span class="h2fill"></span>
       <button id="bulkRepeat"
               title="Copy the selected block once per instance, offsetting every address by the stride. This is how zone and section blocks are built - give it the instances that exist, not a count">replicate…</button>
+      <button id="bulkExport"
+              title="Download just the selected points as a project .json, carrying only the groups and state texts they use">export</button>
       <button id="bulkDup" title="Duplicate every selected row, appended at the bottom with addr + 1">duplicate</button>
       <button id="bulkDel" class="danger" title="Delete every selected row">delete</button>
       <button id="bulkClear" class="ghost" title="Clear the selection (Esc)">✕</button>
@@ -1343,7 +1347,9 @@ async function api(path, body) {
    one anyway fails with a sentence instead of a TypeError. */
 const BOOT_GATED = ["fileSelect","btnLoad","btnNew","btnImportJson","btnImportSql",
                     "btnImportXlsm","btnSave","btnExport","btnXlsm","btnValidate",
-                    "btnGenerate","btnSaveSql","btnAddPoint","btnOptReset","bulkCol"];
+                    "btnGenerate","btnSaveSql","btnAddPoint","btnOptReset","bulkCol",
+                    // both collect a project, so both need the tables Export needs
+                    "btnPtExport","bulkExport"];
 const BOOT_WAIT_MSG =
   "modbusgen is still loading its lookup tables (datatypes, units, scaling and the " +
   "option defaults), so a project cannot be opened yet. Wait a moment and try again - " +
@@ -3344,6 +3350,56 @@ $("btnExport").onclick = async () => {
     btnFlash(btn, "exported ✓", "ok");
   } catch (e) { btnFlash(btn, "export failed", "bad", 2600); showError(e); }
 };
+/* ---------- exporting some or all of the points ----------
+   A project carrying a handful of points is still a whole project, so it goes out
+   with the same envelope the Export button writes: table, plant, options and the
+   iw_sys block. What it must NOT carry is the groups and state texts the rest of the
+   list used. Every point's group has to exist in `groups` or validation stops
+   (docs/06), so a subset that kept all forty groups would load and validate while
+   describing a plant that is not there, and one that kept none would fail on the
+   first row. Narrow both to what these points actually reference and the file is
+   self-describing: load it back, validate it, generate from it.
+
+   Selection is taken in project order, not view order, for the reason replicate
+   takes it that way - a sorted view must not decide what a block of points means. */
+function ptSubsetProject(points) {
+  const proj = collectProject();
+  const out = points.map(ptOut);
+  const groups = new Set(out.map(p => p.group).filter(Boolean));
+  const states = new Set(out.map(p => p.statetext).filter(v => v != null && v !== ""));
+  proj.points = out;
+  proj.groups = Object.fromEntries(
+    Object.entries(proj.groups).filter(([name]) => groups.has(name)));
+  proj.statetexts = Object.fromEntries(
+    Object.entries(proj.statetexts).filter(([id]) => states.has(Number(id)) || states.has(id)));
+  return proj;
+}
+function ptExportPoints(points, suffix) {
+  if (!points.length) { showError(new Error("no points to export")); return; }
+  const base = ($("fileName").value.trim() || "project")
+    .replace(/\.(json|ya?ml)$/i, "") || "project";
+  const name = `${base}-${suffix}.json`;
+  const proj = ptSubsetProject(points);
+  downloadTextFile(name, JSON.stringify(proj, null, 2) + "\n");
+  const nG = Object.keys(proj.groups).length, nS = Object.keys(proj.statetexts).length;
+  const out = [el("div",{class:"msg ok"},
+    `✓ Exported ${name} — ${proj.points.length} point(s), ${nG} group(s), ` +
+    `${nS} state-text list(s), carrying only what these points reference.`)];
+  /* Online indication is a whole-project requirement, not a per-point one: validation
+     fails unless some point is marked. A subset that happens to miss the one or three
+     marked points is therefore legal JSON that will not validate on its own - say so
+     here rather than let it be discovered after the file has been handed on. */
+  if (!proj.points.some(p => p.online))
+    out.push(el("div",{class:"msg warn"},
+      "None of these points is marked online, so this file will not validate on its " +
+      "own - at least one online-indication point is required. Tick onl on a reliable, " +
+      "always-readable point, or treat this export as a fragment to merge into a list " +
+      "that already has one."));
+  $("out").replaceChildren(...out);
+}
+$("btnPtExport").onclick = () => ptExportPoints(ptModel, "points");
+$("bulkExport").onclick = () => ptExportPoints(repSourceRows(), "selected");
+
 /* Back into the old Excel tool, in both backends. The browser build has further to
    go - openpyxl and the template are fetched on the first click - so the button can
    sit busy for a while the first time. */
