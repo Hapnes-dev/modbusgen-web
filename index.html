@@ -2926,7 +2926,12 @@ function showResult(res, sqlWanted) {
     el("button",{class:"ghost",
                  title:"Download exactly this script as a file, encoded cp1252 the way the IWMAC tables expect. Does not regenerate - use Generate + save file for that",
                  onclick:e=>{
-      const name = res.filename || "modbusgen-SQL File.txt";
+      /* Named here rather than taken from res.filename, so every download this page
+         makes matches. `sql` is spelled out because .txt does not say what it holds,
+         where .xlsm and .json do. The server's own name still applies to
+         "Generate + save file", which writes into the projects folder rather than
+         downloading, and to the CLI. */
+      const name = exportName("sql", ".txt");
       if (res.b64) downloadBytes(name, res.b64);
       else downloadTextFile(name, res.sql || "");     // no b64 from this build
       e.target.textContent = "exported ✓";
@@ -3694,11 +3699,12 @@ $("btnXlsm").onclick = async () => {
   try {
     const res = await api("/api/xlsm", {project: collectProject()});
     if (res.error) throw new Error(res.error);
-    downloadBytes(res.filename, res.b64,
+    const name = exportName("", ".xlsm");     // .xlsm says what it is; no kind needed
+    downloadBytes(name, res.b64,
                   "application/vnd.ms-excel.sheet.macroEnabled.12");
     $("out").replaceChildren(
       el("div",{class:"msg ok"},
-        `✓ Exported ${res.filename} - open it and run the workbook's macro to fill `
+        `✓ Exported ${name} - open it and run the workbook's macro to fill `
         + `its generated columns.`),
       ...(res.notes || []).map(n => el("div",{class:"msg note"}, n)));
     btnFlash(btn, "exported ✓", "ok");
