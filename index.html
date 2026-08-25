@@ -691,7 +691,7 @@
             integral values still log <code>min</code>/<code>1</code> (house rule
             2026-08-18) while setpoints and digitals log on change;
             <code>once</code>/<code>never</code> log on change.</li>
-          <li><b>onl</b> — tick on 1–3 reliable, always-readable points (a temperature or
+          <li><b>onl</b> — tick on 3–4 reliable, always-readable points (a temperature or
             status register). IWMAC uses them to detect that the unit is online, and
             validation fails when no point is marked.</li>
         </ul>
@@ -1140,7 +1140,7 @@ const COL_HELP = {
   scale:"Scaling key - supplies the scale factor plus raw and engineering min/max in one block. x0.1 dominates the real fleet",
   rw:"r read-only, rw writable (setpoints, commands). Bit rows are promoted to vr/vrw automatically; rw also emits the write half of the driver id",
   update_freq:"Polling override. Blank derives it: analog and integral values norm read-only / slow writable, digital IO slow. Use slow for energy totals",
-  online:"Online indication - IWMAC uses these to see the unit is alive. Mark 1-3 reliable, always-readable points; at least one is required",
+  online:"Online indication - IWMAC uses these to see the unit is alive. Mark 3-4 frequently changing, always-readable points; at least one is required",
   decimals:"Display decimals, written as format %.Nf. Pair it with the scale: x0.1 goes with 1",
   statetext:"Id of a list from the State texts card - serialized to IWMAC JSON so the operator sees words instead of numbers",
   no_group:"Keep this row out of the groups block: it still exists as a parameter, but not in the operator's menu",
@@ -3982,6 +3982,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=8bc20a592c"></script>
+<script src="pyodide-adapter.js?v=6779a90113"></script>
 </body>
 </html>
