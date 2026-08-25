@@ -346,7 +346,7 @@
   <input id="fileName" size="24" placeholder="project-name.yaml" title="Name for Save, which keeps a copy in this browser under it. Export does not use it as the name - it builds one from the plant number, table, date, 24-hour time and an export number - but a .yaml here makes Export write YAML instead of JSON">
   <button id="btnSave" title="Keep the project in this browser under the name beside this button. Nothing is written to disk and nothing is downloaded - use Export for a file. The button reports the outcome">Save</button>
   <button id="btnExport" class="ghost"
-          title="Download the project as a file to continue later. Named plant_table_dd.mm.yyyy_HH.MM_vN - e.g. 10225_spar_hansnes_vent_25.08.2026_14.32_v3.json. Put a .yaml in the name box to get YAML instead">Export</button>
+          title="Download the project as a file to continue later. Named plant_table_dd.mm.yyyy_HH.MM - e.g. 10225_spar_hansnes_vent_25.08.2026_14.32.json. Put a .yaml in the name box to get YAML instead">Export</button>
   <button id="btnXlsm" class="ghost"
           title="Download this project as a filled Modbustemplate workbook (.xlsm), for anyone still working in the old Excel tool. Open it and run the workbook's macro to regenerate its output columns">Export Excel</button>
   <button id="btnDelete" class="ghost" disabled
@@ -1093,10 +1093,10 @@
             SQL script has no plant number in it — set one before generating.</li>
           <li><b>Save keeps a copy in this browser. Export writes the real file</b> —
             that is the one to keep, mail, or move to another machine. It names itself
-            from the project: <span class="ex">10225_spar_hansnes_vent_25.08.2026_14.32_v3.json</span>
-            — plant, table, date, 24-hour time, and how many times you have exported
-            this list from this browser. Put a <code>.yaml</code> in the name box for
-            YAML instead of JSON.</li>
+            from the project: <span class="ex">10225_spar_hansnes_vent_25.08.2026_14.32.json</span>
+            — plant, table, date and 24-hour time. Two exports in the same minute get
+            the same name, so the browser numbers the second one. Put a
+            <code>.yaml</code> in the name box for YAML instead of JSON.</li>
           <li><b>Direct link:</b> add <code>#file-name</code> to the URL, e.g.
             <code>…/#example-belimo-ev.json</code>.</li>
         </ul>
@@ -3538,29 +3538,21 @@ function ptSubsetProject(points) {
   return proj;
 }
 /* ---------- what an exported file is called ----------
-   plant, table, Norwegian date, 24-hour clock, version:
+   plant, table, Norwegian date, 24-hour clock:
 
-       10225_spar_hansnes_vent_25.08.2026_14.32_v3.json
+       10225_spar_hansnes_vent_25.08.2026_14.32.json
 
    The clock separator is a dot rather than a colon because Windows will not accept a
    colon in a filename and silently refuses the download; `dd.mm.yyyy` is what the
    people receiving these files read, sorting badly being the price of that.
 
-   The version counts exports of *this* list from *this* browser, kept in
-   localStorage under plant+table. It is deliberately not a property of the project:
-   two machines exporting the same list both produce v1, and that is what the
-   timestamp is for. What it does answer is "which of these four files I made this
-   afternoon is the newest", which the timestamp alone answers only if you are
-   confident about the minute. */
-const EXPORT_VERSIONS = "modbusgen_export_versions";
-function exportVersion(key) {
-  let all = {};
-  try { all = JSON.parse(localStorage.getItem(EXPORT_VERSIONS) || "{}") || {}; } catch {}
-  const next = (Number(all[key]) || 0) + 1;
-  all[key] = next;
-  try { localStorage.setItem(EXPORT_VERSIONS, JSON.stringify(all)); } catch {}
-  return next;
-}
+   There is no version counter, and the removal was deliberate. It ran per plant+table
+   in localStorage, so it counted exports from *this* browser and nothing else - two
+   machines exporting the same list both wrote v1, and the number read like a property
+   of the project when it was a property of one machine. The cost of dropping it: two
+   exports inside the same minute now produce the same name and the browser appends its
+   own `(1)`. The name says when the file was written, and claims nothing it cannot
+   know. */
 /* A plant number and a table name are free text on this page and land in a filename
    unedited, so everything outside letters, digits, dot and dash goes. Norwegian
    letters are folded rather than stripped first - `\w` is ASCII-only, so a table
@@ -3575,8 +3567,7 @@ function exportName(kind, ext) {
   const n = new Date(), p2 = x => String(x).padStart(2, "0");
   const date = `${p2(n.getDate())}.${p2(n.getMonth() + 1)}.${n.getFullYear()}`;
   const time = `${p2(n.getHours())}.${p2(n.getMinutes())}`;
-  const v = exportVersion(`${plant}|${table}`);
-  return [plant, table, kind, date, time, `v${v}`].filter(Boolean).join("_") + ext;
+  return [plant, table, kind, date, time].filter(Boolean).join("_") + ext;
 }
 function ptExportPoints(points, suffix) {
   if (!points.length) { showError(new Error("no points to export")); return; }
