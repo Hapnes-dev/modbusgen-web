@@ -123,6 +123,12 @@
   td input:hover,td select:hover{border-color:var(--line2);background:var(--panel2)}
   td input:focus,td select:focus{background:var(--panel2)}
   td.num{color:var(--dim);font-size:11px;text-align:right;padding-right:6px}
+  /* The points rows are a recycled pool (ptRender), so the row a slot shows changes
+     as you scroll and :nth-child would stripe by slot - the banding then crawls over
+     the text instead of staying with the rows. Stripe by the view index: ptRender
+     puts `alt` on the odd ones, which is a class toggle and costs no layout. */
+  #points tr:nth-child(even){background:none}
+  #points tr.alt{background:rgba(255,255,255,.015)}
   /* `contain: paint` is what makes this scroll. Without it Chrome scrolls the box
      on the main thread and repaints its whole visible area every frame - and a
      points table's visible area is a thousand-odd form controls, which is slow to
@@ -132,8 +138,14 @@
      gave the cause away - the page scroller is composited and this one was not.
      Containment costs nothing here: overflow already clips to this box, and
      nothing inside needs to escape it. */
+  /* overflow-anchor:none because the points rows are a pool: the node Chrome would
+     anchor on keeps its DOM position while different points scroll through it, so
+     scroll anchoring reads the pad heights moving under a stationary anchor as
+     content shifting and nudges scrollTop back - which is a fight with the scroll
+     the user is making. Nothing in this box needs anchoring; its height is fixed
+     by the pads whatever the window shows. */
   .tblwrap{overflow-x:auto;max-height:56vh;overflow-y:auto;
-           contain:paint;
+           contain:paint;overflow-anchor:none;
            border:1px solid var(--line);border-radius:6px}
   /* points card: search, sort, filter chips, maximise */
   .h2fill{flex:1}
@@ -189,9 +201,10 @@
   .coldoc dd{margin:2px 0 0}
   .coldoc code{background:#12151b;border:1px solid var(--line);border-radius:4px;
                padding:0 5px;font-size:12px;color:#a8d8ff}
-  tr.hidden{display:none}
-  /* out of layout but still in the project - the render window, ptApplyWindow */
-  .points tr.off{display:none}
+  /* A pool row with no point to show. Only ever the tail of the pool, and only
+     while the view is shorter than the pool - a filter that matches four rows, or a
+     short project. Never touched by scrolling; see ptRender. */
+  .points tr.spare{display:none}
   .points tbody.pad td{padding:0;border:0;height:0}
   /* multi-select: click anywhere on a row. A faint wash, because it sits behind
      every input in the row and must not fight with them for attention. */
@@ -785,10 +798,12 @@
           <th data-col="no_group">no grp</th>
           <th title="Row actions: ⧉ duplicates with addr + 1, ✕ deletes"></th>
         </tr></thead>
-        <!-- stand-ins for the height of the rows the render window leaves out of
-             layout, so the scrollbar still measures the whole list. Separate
-             tbodies on purpose: everything that reads the project walks
-             #points.children, and a spacer row in there would be a phantom point. -->
+        <!-- #points holds a fixed pool of rows - a screenful, not the project - and
+             the pads stand in for the height of everything above and below it, so
+             the scrollbar still measures the whole list. Separate tbodies on
+             purpose: a spacer row inside #points would be a pool slot that is not a
+             row. Writing the pad heights is free; see the pool comment in the
+             script for what is not. -->
         <tbody class="pad" id="padTop" hidden><tr><td colspan="19"></td></tr></tbody>
         <tbody id="points"></tbody>
         <tbody class="pad" id="padBot" hidden><tr><td colspan="19"></td></tr></tbody>
@@ -1078,7 +1093,7 @@ const OPT_HELP = {
 };
 
 /* Column hover text. Single source for the points table: the header cells get it
-   from data-col at load, every row input gets it in addPointRow, so a header and
+   from data-col at load, every row input gets it in ptMakeRow, so a header and
    its cells can never drift apart. */
 const COL_HELP = {
   group:"Display group key - must exist in the Groups card. Also builds the key: element_id = <group>_<driver_id>",
@@ -1792,9 +1807,11 @@ const SCALE_ORDER = ["x0.1","x0.01","x1","x0.001","INV","x10","x100","x1000"];
    document and the page became unusable - every keystroke, sort and filter paid
    for a DOM nobody was looking at. Both are therefore born holding only their
    current value and fill themselves the first time the control is touched, which
-   is the only moment the rest of the list has to exist.
+   is the only moment the rest of the list has to exist. The pool keeps that true
+   for a whole project: only the selects the user has actually opened are ever
+   filled, however many points scroll through them.
    Anything that writes to one of these programmatically must go through
-   setCellValue: assigning a value a <select> does not list is a silent no-op. */
+   ptSetSel: assigning a value a <select> does not list is a silent no-op. */
 function lazySelect(cls, value, fill, title) {
   const v = value == null ? "" : String(value);
   const s = el("select",{class:cls, title}, el("option",{value:v}, v));
@@ -1817,17 +1834,6 @@ function hydrateSelect(s) {
     s.value = keep;
   }
   return s;
-}
-/* The one safe way to write a cell from code: fills a lazy list first, and adds the
-   value when the list does not carry it, the way pick() does for imports. */
-function setCellValue(cell, value) {
-  if (cell.tagName === "SELECT") {
-    hydrateSelect(cell);
-    const v = String(value);
-    if (v !== "" && ![...cell.options].some(o => o.value === v))
-      cell.append(el("option",{value:v}, v));
-  }
-  cell.value = value;
 }
 function dtFill(s) {
   requireBoot();                       // runs on first touch, long after boot - still gated
@@ -1863,59 +1869,105 @@ function scaleItems() {
   const known = SCALE_ORDER.filter(k => BOOT.scaling.includes(k));
   return [""].concat(known, BOOT.scaling.filter(k => !known.includes(k)));
 }
-function addPointRow(p={}) {
-  const tb = $("points");
-  const tr = el("tr",{});
-  tr._seq = PT_SEQ++;   // position in the project, independent of the sorted view
-  tr._orig = p;   // fields the GUI does not edit (element_id, menu, active, ranges) survive
-  const h = k => COL_HELP[k];   // same string the column header shows
-  tr.append(
-    el("td",{class:"num", title:"Row number - not written to the database"},
-       String(tb.children.length+1)),
-    el("td",{}, el("input",{class:"p-group", list:"dlGroups", value:p.group||"", title:h("group")})),
-    el("td",{}, dtSelect(p.datatype)),
-    el("td",{}, el("input",{class:"p-addr", type:"number", value:p.addr ?? "", style:"width:78px", title:h("addr")})),
-    el("td",{}, el("input",{class:"p-bit", inputmode:"numeric", value:p.bit ?? "", style:"width:54px",
-                            placeholder:"", title:h("bit")})),
-    el("td",{}, el("input",{class:"p-system_no", value:p.system_no||"", style:"width:80px", title:h("system_no")})),
-    el("td",{}, el("input",{class:"p-tag", value:p.tag||"", style:"width:76px", title:h("tag")})),
-    el("td",{}, el("input",{class:"p-text", value:p.text||"", title:h("text")})),
-    el("td",{}, el("input",{class:"p-extra", value:p.extra||"", style:"width:110px", title:h("extra")})),
-    el("td",{}, pick("p-alarm", p.alarm, ["","A","N","B","C"], h("alarm"))),
-    el("td",{}, el("input",{class:"p-unit", list:"dlUnits", value:p.unit||"", style:"width:78px", title:h("unit")})),
-    el("td",{}, lazyPick("p-scale", p.scale, scaleItems, h("scale"))),
-    el("td",{}, pick("p-rw", p.rw||"r", ["r","rw","vr","vrw"], h("rw"))),
-    el("td",{}, pick("p-update_freq", p.update_freq, ["","fast","norm","slow","once","never"], h("update_freq"))),
-    el("td",{}, el("input",{class:"p-online", type:"checkbox", checked:p.online?"":undefined, title:h("online")})),
-    el("td",{}, pick("p-decimals", p.decimals ?? "", ["",0,1,2,3], h("decimals"))),
-    el("td",{}, el("input",{class:"p-statetext", type:"number", value:p.statetext ?? "", style:"width:52px", title:h("statetext")})),
-    el("td",{}, el("input",{class:"p-no_group", type:"checkbox", checked:p.no_group?"":undefined, title:h("no_group")})),
-    el("td",{class:"acts"},
-      el("button",{class:"ghost rowbtn", title:"duplicate (addr + 1)",
-                   onclick:()=>{ ptPushState(null,"duplicate row");
-                                 const d = rowData(tr);
-                                 if (typeof d.addr === "number") d.addr += 1;
-                                 delete d.element_id;
-                                 const nr = addPointRow(d); renumber();
-                                 ptRevealRow(nr); }},"⧉"),
-      el("button",{class:"ghost rowbtn", title:"delete",
-                   onclick:()=>{ ptPushState(null,"delete row"); tr.remove(); renumber(); }},"✕")));
-  tb.append(tr);
-  return tr;
+/* ---------- points: the model ----------
+   An array of plain objects is the project; the rows in #points are a recycled
+   view of it (ptRender). One object per point, holding the seventeen fields this
+   table edits plus three things the row used to carry out of band:
+
+     _seq   position in the project. rules.generate derives each group's
+            view_order from the order it walks the points, so the project's order
+            is not the view's order and sorting must not touch it. It is kept
+            equal to the index in ptModel, which IS project order, so a stale
+            copy of it cannot outlive a reorder.
+     _orig  the point exactly as the project file gave it. The GUI does not edit
+            element_id, menu, active or range_min/range_max, and they have to be
+            written back untouched, so collection assigns the edited fields over
+            this rather than rebuilding the point.
+
+   Selection and the validation marks are two Sets of these objects, not of rows:
+   they are properties of the point and must survive the row scrolling away. */
+let ptModel = [];                     // every point, in project order
+let ptOrder = [];                     // every point, in view order (sorted or not)
+let ptView = [];                      // ptOrder minus what the filter rejected
+const PT_FIELDS = ["group","datatype","addr","bit","system_no","tag","text","extra",
+                   "alarm","unit","scale","rw","update_freq","online","decimals",
+                   "statetext","no_group"];
+/* Column order in the rendered row, for paste - index 0 is the row number and the
+   last is the action buttons, neither of which is a field. */
+const PT_COLS = [null,"group","datatype","addr","bit","system_no","tag","text","extra",
+                 "alarm","unit","scale","rw","update_freq","online","decimals",
+                 "statetext","no_group",null];
+
+const ptStr = v => String(v ?? "").trim();
+const ptNum = v => { const s = ptStr(v); return s === "" ? null : Number(s); };
+// a nibble reference ("5#4") is not a number and stays the text it was typed as
+const ptBit = v => { const s = ptStr(v);
+                     return s === "" ? null : (/^\d+$/.test(s) ? Number(s) : s); };
+
+/* One field, written straight into the point. Every route into the model goes
+   through here - the delegated input listener, bulk edit, paste, the advice fixes -
+   so a column can only be normalised one way. */
+function ptWriteField(p, col, raw) {
+  switch (col) {
+    case "addr": case "decimals": case "statetext": p[col] = ptNum(raw); break;
+    case "bit":                                     p.bit = ptBit(raw); break;
+    case "online": case "no_group":                 p[col] = !!raw; break;
+    case "group": case "datatype": case "text":     p[col] = ptStr(raw); break;
+    case "rw":                                      p.rw = ptStr(raw) || "r"; break;
+    default:                                        p[col] = ptStr(raw) || null;
+  }
 }
+/* A project point becomes a model point. The normalisation is what the form
+   controls used to do on the way in and rowData() undid on the way out - blank is
+   null for the optional text fields, "" for the ones that are always written. */
+function ptNew(src = {}) {
+  const p = {_orig: src, _seq: 0};
+  for (const col of PT_FIELDS) ptWriteField(p, col, src[col]);
+  return p;
+}
+/* ...and back out, with everything the GUI does not edit riding along underneath.
+   The assign order is the contract: _orig first, the edited fields over it. */
+function ptOut(p) {
+  return Object.assign({}, p._orig || {}, {
+    group:p.group, datatype:p.datatype, addr:p.addr, bit:p.bit,
+    system_no:p.system_no, tag:p.tag, text:p.text,
+    extra:p.extra, alarm:p.alarm, unit:p.unit,
+    scale:p.scale, rw:p.rw,
+    update_freq:p.update_freq, online:p.online,
+    decimals:p.decimals, statetext:p.statetext, no_group:p.no_group,
+  });
+}
+function ptReseq() { ptModel.forEach((p,i) => { p._seq = i; }); }
+function ptAdd(src = {}) {            // appended at the bottom, as the table shows
+  const p = ptNew(src);
+  ptModel.push(p);
+  p._seq = ptModel.length - 1;
+  return p;
+}
+function ptSetModel(points) {
+  ptModel = (points || []).map(ptNew);
+  // the old points are gone; leaving them in the view lists would let a scroll
+  // event between here and the caller's applyPointView() render a dead project
+  ptOrder = ptModel; ptView = ptModel;
+  ptSel.clear(); ptSelAnchor = null;
+  ptBad.clear();
+  ptFilters.delete("failing");        // nothing is marked, so the filter has no rows
+  ptReseq();
+  ptEnsurePool();
+  ptFirst = -1; ptShown = -1;         // the pool holds someone else's points
+}
+
 /* ---------- points: view state (sort / search / filters) ----------
-   Sorting is a VIEW operation. rules.generate derives each group's view_order
-   from the order it walks the points, so reordering rows silently reorders the
-   operator's menu. Every row therefore carries _seq - its position in the
-   project - and collection reads _seq order, not DOM order. "keep this order"
-   is the one place a sort becomes real. */
-let PT_SEQ = 0;                       // next sequence number to hand out
+   Sorting and filtering are VIEW operations and reorder ptOrder / ptView only.
+   Two different things are deliberately kept apart, as the two row classes used
+   to keep them apart: a point the filter rejected is missing from ptView, and a
+   point merely scrolled out of sight is in ptView but has no pool row at the
+   moment. Neither is missing from ptModel, which is what collection, validation,
+   undo and the counting chips read - so a hidden row still generates, and a
+   scrolled-away row is still bulk-editable and still takes a paste. */
 let ptSort = {col:null, dir:null};    // dir: "asc" | "desc" | null
 const ptFilters = new Set();          // bits | writable | alarms | online | failing
-const ptBad = new Set();              // rows the last validation rejected
-
-function ptRows() { return [...$("points").children]; }
-function ptDataOrder() { return ptRows().sort((a,b) => a._seq - b._seq); }
+const ptBad = new Set();              // points the last validation rejected
 
 const PT_NUMERIC = new Set(["addr","bit","statetext","decimals"]);
 function ptSortKey(d, col) {
@@ -1927,10 +1979,14 @@ function ptSortKey(d, col) {
   }
   return String(v ?? "").toLowerCase();
 }
-function ptMatches(d, needle) {
+/* Search reads the same values collection writes, _orig included - a project field
+   this table has no column for is still part of the point and still findable. */
+function ptMatches(p, needle) {
   if (!needle) return true;
-  return Object.values(d).some(v => v != null && v !== false &&
-    String(v).toLowerCase().includes(needle));
+  const hit = v => v != null && v !== false && String(v).toLowerCase().includes(needle);
+  for (const col of PT_FIELDS) if (hit(p[col])) return true;
+  for (const k in p._orig) if (!PT_FIELDS.includes(k) && hit(p._orig[k])) return true;
+  return false;
 }
 function ptPassesFilters(d) {
   for (const f of ptFilters) {
@@ -1941,38 +1997,27 @@ function ptPassesFilters(d) {
   }
   return true;
 }
-function ptPassesBadFilter(tr) {
-  return !ptFilters.has("failing") || tr.classList.contains("bad");
+function ptPassesBadFilter(p) {
+  return !ptFilters.has("failing") || ptBad.has(p);
 }
 function applyPointView() {
   const needle = ($("ptSearch").value || "").trim().toLowerCase();
-  const rows = ptDataOrder();
-  const data = new Map(rows.map(tr => [tr, rowData(tr)]));
 
-  let shown = 0;
-  for (const tr of rows) {
-    const d = data.get(tr);
-    const ok = ptMatches(d, needle) && ptPassesFilters(d) && ptPassesBadFilter(tr);
-    tr.classList.toggle("hidden", !ok);
-    if (ok) shown++;
-  }
-
-  let view = rows;
+  // sorted order first, filtered order out of it: "keep this order" commits the
+  // whole sorted list, rows the filter is hiding included, so the two cannot be
+  // collapsed into one pass
+  ptOrder = ptModel;
   if (ptSort.col && ptSort.dir) {
     const sign = ptSort.dir === "asc" ? 1 : -1;
-    view = rows.slice().sort((a,b) => {
-      const ka = ptSortKey(data.get(a), ptSort.col), kb = ptSortKey(data.get(b), ptSort.col);
+    ptOrder = ptModel.slice().sort((a,b) => {
+      const ka = ptSortKey(a, ptSort.col), kb = ptSortKey(b, ptSort.col);
       if (ka < kb) return -sign;
       if (ka > kb) return sign;
       return a._seq - b._seq;                            // stable within ties
     });
   }
-  // Re-appending moves nodes, which blurs whatever the user is typing in, and this
-  // runs on every keystroke. Only touch the DOM when the order actually differs.
-  const cur = $("points").children;
-  let same = view.length === cur.length;
-  for (let i = 0; same && i < view.length; i++) if (view[i] !== cur[i]) same = false;
-  if (!same) $("points").append(...view);
+  ptView = ptOrder.filter(p =>
+    ptMatches(p, needle) && ptPassesFilters(p) && ptPassesBadFilter(p));
 
   for (const th of document.querySelectorAll('.points th[data-col]')) {
     if (th.dataset.col === ptSort.col && ptSort.dir) th.dataset.sort = ptSort.dir;
@@ -1981,10 +2026,13 @@ function applyPointView() {
   $("btnPtOrder").hidden = !(ptSort.col && ptSort.dir);
   updatePointTip();
 
-  // A hidden row must not stay selected: a bulk edit would then change rows the
-  // user cannot see. Selection follows what is on screen.
+  // A hidden point must not stay selected: a bulk edit would then change rows the
+  // user cannot see. Selection follows what is on screen - and only that, so
+  // scrolling a selected row out of the pool leaves it selected.
   if (ptSel.size) {
-    for (const tr of [...ptSel]) if (tr.classList.contains("hidden") || !tr.parentElement) ptSel.delete(tr);
+    const shown = new Set(ptView);
+    for (const p of [...ptSel]) if (!shown.has(p)) ptSel.delete(p);
+    if (ptSelAnchor && !shown.has(ptSelAnchor)) ptSelAnchor = null;
     ptPaintSelection();
   }
 
@@ -1992,110 +2040,261 @@ function applyPointView() {
   const filtered = needle || ptFilters.size;
   info.hidden = !filtered;
   if (filtered) {
-    info.textContent = `${shown} of ${rows.length} shown`;
+    info.textContent = `${ptView.length} of ${ptModel.length} shown`;
     info.title = "Filters and search only hide rows. Hidden rows are still part of the "
                + "project and are still validated and generated";
   }
-  ptApplyWindow(true);      // rows, order or filter may all have moved
+  ptRender(true);           // points, order or filter may all have moved
 }
 
-/* ---------- the render window ----------
-   A <table> lays out every row it holds, and real deliveries run to 1600 rows: at
-   that size one keystroke cost about half a second, nearly all of it the browser
-   laying out rows nobody was looking at (measured: 1619 rows 483 ms, 61 rows 34 ms).
-   So rows far from the scroll position are taken out of layout, and the two pad
-   tbodies stand in for their height.
+/* ---------- the row pool ----------
+   #points holds a screenful of rows and never more, whatever the project's size.
+   They are created once, are never added to or removed from while scrolling, and
+   ptRender rewrites their field values in place: pool slot k shows ptView[first+k],
+   and the two pad tbodies stand in for the height of everything outside that.
 
-   This is a VIEW mechanism, like sorting - it never touches the project. The `off`
-   class is deliberately not `hidden`: `hidden` means the search or a filter rejected
-   the row, ptVisible() keeps returning every row the filter kept, and collection,
-   validation, bulk edits and paste go on working on rows that are merely scrolled
-   out of sight. */
-const PT_WINDOW_MIN = 250;      // shorter lists lay out whole - windowing costs more
-const PT_OVERSCAN = 30;         // rows kept in layout above and below the viewport
-let ptWinRows = [];             // rows the filter kept, in view order
+   The reason is measured, on the 1619-point Canes Hyco delivery in Chrome. An idle
+   frame costs 17 ms; a frame that scrolled the old windowed table cost 62 ms, about
+   15 fps. None of that was this file's JavaScript - ptApplyWindow itself ran in
+   0.06 ms. It was the layout the browser did in answer: about 37 ms fixed for ANY
+   mutation of a tbody holding 1619 rows, plus ~2.4 ms per row toggled in or out, so
+   even taking one row out of layout cost the whole 37. The fixed part scales with
+   how many rows the tbody HOLDS, not how many are laid out - 1619 rows 64 ms, 800
+   49, 400 43, 200 39, 100 18.5 - which is why a pool of one screenful is the fix
+   and a cleverer window is not. Style and selector invalidation are free; it is the
+   `display` change that forces the layout.
+
+   What the pool costs, measured against the old page on the same machine minutes
+   apart, both driven the same way (scroll three rows, then force the layout with
+   void wrap.offsetHeight and time it): a window update was 51 ms median, 55 mean,
+   91 worst; a pool render is 11 ms median, 16 worst, of which 1.2 ms is this file's
+   JavaScript. Loading the list went from 860-990 ms to 21-46 ms. The residue is
+   Chrome laying the table out again in answer to the value writes, and it does not
+   scale with the pool: 16, 30 and 54 slots all cost 10.6-11.0 ms, which is why
+   PT_OVERSCAN can be generous. table-layout:fixed and border-collapse:separate were
+   both tried against it and are worth about a millisecond each - not worth pinning
+   nineteen column widths for.
+
+   Three other fixes were measured and are dead. Do not re-try them:
+     - content-visibility:auto with contain-intrinsic-size reproduces the scroll
+       height exactly and then makes scrolling far worse.
+     - Detaching the out-of-window rows: 35 ms per update parking them in a
+       DocumentFragment, 52 ms in a display:none tbody in the same table. Putting a
+       row back costs about what toggling it did, because its 62-node subtree needs
+       style recalc and layout either way.
+     - Dropping the window and laying every row out: 1.9 s of one-off layout, and
+       scrolling still forced 47.9 ms a frame, because the sticky th makes per-scroll
+       layout scale with the number of rows laid out. */
+const PT_OVERSCAN = 20;         // pool rows above and below the viewport
+let ptPool = [];                // the <tr> elements, created once, never removed
 let ptRowH = 0;                 // measured once from a real row; they are uniform
-let ptWinQueued = false;
-let ptWinAt = null;             // [first, last] currently in layout, or null
-let ptWindowing = false;        // the list is long enough that scrolling must react
+let ptFirst = -1;               // view index in pool slot 0, or -1 for "unknown"
+let ptShown = -1;               // pool slots currently showing a point
 
 function ptWrap() { return $("points").closest(".tblwrap"); }
 /* Writing a pad that already holds the wanted height still dirties style, and this
-   ran on every scroll frame - so it is guarded rather than trusted to be free. */
+   runs on every scroll event - so it is guarded rather than trusted to be free. */
 function ptPad(el, px) {
   if (el._px === px) return;
   el._px = px;
   el.hidden = px <= 0;
   el.firstElementChild.firstElementChild.style.height = px > 0 ? px + "px" : "";
 }
-/* Scrolling recomputes this every frame, so it walks the rows that changed state
-   rather than all of them; applyPointView invalidates the cache by passing true
-   when the set of rows or their order has moved. */
-function ptApplyWindow(rebuild) {
-  if (rebuild || !ptWinRows.length) { ptWinRows = ptVisible(); ptWinAt = null; }
-  if (rebuild) ptWindowing = false;      // re-decided below from the new row count
-  const wrap = ptWrap(), n = ptWinRows.length;
-  // fractional: rounding 36.4 to 36 would drift the pad by hundreds of pixels
-  if (!ptRowH && n) ptRowH = ptWinRows[0].getBoundingClientRect().height || 0;
-  if (!wrap || !ptRowH || n < PT_WINDOW_MIN) {          // small list: lay it all out
-    if (ptWinAt || rebuild) for (const tr of ptWinRows) tr.classList.remove("off");
-    ptPad($("padTop"), 0); ptPad($("padBot"), 0);
-    ptWinAt = null;
-    return;
+/* One pool row. It belongs to no point in particular - ptFill hands it whichever
+   one is under it now - so nothing here reads a value, and the action buttons go
+   through tr._pt rather than closing over a row's data. */
+function ptMakeRow() {
+  const h = k => COL_HELP[k];   // same string the column header shows
+  const tr = el("tr",{},
+    el("td",{class:"num", title:"Row number - not written to the database"}),
+    el("td",{}, el("input",{class:"p-group", list:"dlGroups", title:h("group")})),
+    el("td",{}, dtSelect("")),
+    el("td",{}, el("input",{class:"p-addr", type:"number", style:"width:78px", title:h("addr")})),
+    el("td",{}, el("input",{class:"p-bit", inputmode:"numeric", style:"width:54px", title:h("bit")})),
+    el("td",{}, el("input",{class:"p-system_no", style:"width:80px", title:h("system_no")})),
+    el("td",{}, el("input",{class:"p-tag", style:"width:76px", title:h("tag")})),
+    el("td",{}, el("input",{class:"p-text", title:h("text")})),
+    el("td",{}, el("input",{class:"p-extra", style:"width:110px", title:h("extra")})),
+    el("td",{}, pick("p-alarm", "", ["","A","N","B","C"], h("alarm"))),
+    el("td",{}, el("input",{class:"p-unit", list:"dlUnits", style:"width:78px", title:h("unit")})),
+    el("td",{}, lazyPick("p-scale", "", scaleItems, h("scale"))),
+    el("td",{}, pick("p-rw", "r", ["r","rw","vr","vrw"], h("rw"))),
+    el("td",{}, pick("p-update_freq", "", ["","fast","norm","slow","once","never"], h("update_freq"))),
+    el("td",{}, el("input",{class:"p-online", type:"checkbox", title:h("online")})),
+    el("td",{}, pick("p-decimals", "", ["",0,1,2,3], h("decimals"))),
+    el("td",{}, el("input",{class:"p-statetext", type:"number", style:"width:52px", title:h("statetext")})),
+    el("td",{}, el("input",{class:"p-no_group", type:"checkbox", title:h("no_group")})),
+    el("td",{class:"acts"},
+      el("button",{class:"ghost rowbtn", title:"duplicate (addr + 1)",
+                   onclick:()=>ptDuplicate(tr._pt)},"⧉"),
+      el("button",{class:"ghost rowbtn", title:"delete",
+                   onclick:()=>ptDelete(tr._pt)},"✕")));
+  const q = c => tr.querySelector("." + c);
+  tr._pt = null;                          // the point this slot is showing
+  tr._f = {num: tr.firstChild};           // the controls, so ptFill never queries
+  for (const col of PT_FIELDS) tr._f[col] = q("p-" + col);
+  return tr;
+}
+/* Assigning a value a <select> does not list is a silent no-op, and a pool row
+   would then go on showing the previous point's value - the one silent-corruption
+   route this design has, so every select goes through here. The lazy ones
+   (datatype, scale) still carry a single option until they are touched: rewrite
+   that option rather than appending, or a pool row would collect one dead option
+   per distinct value scrolled through it. */
+function ptSetSel(n, v) {
+  const s = v == null ? "" : String(v);
+  if (n.value === s) return;
+  if (n._fill) { n.options[0].value = s; n.options[0].textContent = s; }
+  else if (s !== "" && ![...n.options].some(o => o.value === s))
+    n.append(el("option",{value:s}, s));
+  n.value = s;
+}
+/* Only assign what differs. It saves work, and assigning .value to a focused input
+   moves its caret to the end - which is what a render triggered by the keystroke
+   being typed would do on every key. */
+function ptSetV(n, v) { const s = v == null ? "" : String(v); if (n.value !== s) n.value = s; }
+function ptSetChk(n, b) { if (n.checked !== b) n.checked = b; }
+
+function ptFill(tr, p, vi) {
+  const f = tr._f;
+  tr._pt = p;
+  const num = String(p._seq + 1);         // project position, not the view's
+  if (f.num.textContent !== num) f.num.textContent = num;
+  ptSetV(f.group, p.group);
+  ptSetSel(f.datatype, p.datatype);
+  ptSetV(f.addr, p.addr);
+  ptSetV(f.bit, p.bit);
+  ptSetV(f.system_no, p.system_no);
+  ptSetV(f.tag, p.tag);
+  ptSetV(f.text, p.text);
+  ptSetV(f.extra, p.extra);
+  ptSetSel(f.alarm, p.alarm);
+  ptSetV(f.unit, p.unit);
+  ptSetSel(f.scale, p.scale);
+  ptSetSel(f.rw, p.rw);
+  ptSetSel(f.update_freq, p.update_freq);
+  ptSetChk(f.online, !!p.online);
+  ptSetSel(f.decimals, p.decimals);
+  ptSetV(f.statetext, p.statetext);
+  ptSetChk(f.no_group, !!p.no_group);
+  tr.classList.toggle("sel", ptSel.has(p));
+  tr.classList.toggle("bad", ptBad.has(p));
+  tr.classList.toggle("alt", (vi & 1) === 1);
+}
+/* Grows the pool to the viewport, and only ever grows it: shrinking it after the
+   card is un-maximised would be a structural mutation to save work that is already
+   measured in single milliseconds. Returns whether it grew. */
+function ptEnsurePool() {
+  const wrap = ptWrap();
+  if (!wrap) return false;
+  if (!ptPool.length) {                   // one row first, to measure a real one
+    const tr = ptMakeRow();
+    $("points").append(tr);
+    ptPool.push(tr);
   }
-  ptWindowing = true;
+  // fractional: rounding 36.4 to 36 would drift the pads by hundreds of pixels
+  if (!ptRowH) ptRowH = ptPool[0].getBoundingClientRect().height || 36;
   const head = wrap.querySelector("thead");
-  const y = Math.max(0, wrap.scrollTop - (head ? head.offsetHeight : 0));
-  let first = Math.max(0, Math.floor(y / ptRowH) - PT_OVERSCAN);
-  let last = Math.min(n - 1, Math.ceil((y + wrap.clientHeight) / ptRowH) + PT_OVERSCAN);
-  // never drop the row being edited out of layout - that would blur the field
-  const cell = document.activeElement?.closest?.("#points tr");
-  const at = cell ? ptWinRows.indexOf(cell) : -1;
-  if (at >= 0) { first = Math.min(first, at); last = Math.max(last, at); }
-  if (ptWinAt && ptWinAt[0] === first && ptWinAt[1] === last) return;
-  if (!ptWinAt) {
-    ptWinRows.forEach((tr, i) => tr.classList.toggle("off", i < first || i > last));
-  } else {
-    for (let i = ptWinAt[0]; i <= ptWinAt[1]; i++)                 // left the window
-      if (i < first || i > last) ptWinRows[i]?.classList.add("off");
-    for (let i = first; i <= last; i++)                            // entered it
-      if (i < ptWinAt[0] || i > ptWinAt[1]) ptWinRows[i]?.classList.remove("off");
-  }
-  ptWinAt = [first, last];
+  const room = Math.max(0, wrap.clientHeight - (head ? head.offsetHeight : 0));
+  const want = Math.ceil(room / ptRowH) + 2 * PT_OVERSCAN + 1;
+  if (want <= ptPool.length) return false;
+  const add = [];
+  for (let i = ptPool.length; i < want; i++) add.push(ptMakeRow());
+  ptPool.push(...add);
+  $("points").append(...add);
+  ptFirst = -1; ptShown = -1;             // the pool changed shape; redraw it whole
+  return true;
+}
+/* `force` is for everything that changed the points themselves - an edit, a sort,
+   a filter - where the slots may hold the same view indexes and still be wrong.
+   The pool is only re-measured on a forced render: the box's height is what sizes
+   it, and scrolling cannot change that. It has to be measured twice there because
+   the pads a draw writes are what gives the box its height, so the first draw
+   after a load is measuring a box one row tall. */
+function ptRender(force) {
+  if (!ptPool.length || !ptRowH) return;
+  if (force) ptEnsurePool();
+  ptDraw(force);
+  if (force && ptEnsurePool()) ptDraw(true);
+}
+function ptDraw(force) {
+  const wrap = ptWrap();
+  if (!wrap || !ptPool.length || !ptRowH) return;
+  const n = ptView.length, shown = Math.min(ptPool.length, n);
+  // Clamped so the last slot always has a point while the view is longer than the
+  // pool: scrolling then never adds or removes a row, it only rewrites values.
+  const first = Math.min(Math.max(0, Math.floor(wrap.scrollTop / ptRowH) - PT_OVERSCAN),
+                         Math.max(0, n - shown));
+  if (!force && first === ptFirst && shown === ptShown) return;
+
+  /* Keep the caret with the point rather than with the slot. Without this, a
+     wheel notch during typing leaves the focus in a field that has just been
+     handed a different point - the next keystroke would edit that one. Moving the
+     focus inside #points also means focusout sees a relatedTarget in the table, so
+     scrolling neither takes nor loses an undo step. */
+  const act = document.activeElement;
+  const from = act && act.closest ? act.closest("#points tr") : null;
+  const keepCls = from ? [...act.classList].find(c => c.startsWith("p-")) : null;
+  const keep = keepCls ? from._pt : null;      // a focused row button follows the slot
+  let caret = null;
+  if (keep) { try { caret = [act.selectionStart, act.selectionEnd]; } catch { caret = null; } }
+
+  if (shown !== ptShown)                  // only when the view got shorter than the pool
+    for (let k = 0; k < ptPool.length; k++) ptPool[k].classList.toggle("spare", k >= shown);
+  for (let k = 0; k < shown; k++) ptFill(ptPool[k], ptView[first + k], first + k);
+  for (let k = shown; k < ptPool.length; k++) ptPool[k]._pt = null;
+  ptFirst = first; ptShown = shown;
   ptPad($("padTop"), first * ptRowH);
-  ptPad($("padBot"), (n - 1 - last) * ptRowH);
-}
-/* The first layout of a freshly loaded list is the expensive one: it happens with
-   every row still in it. Take the tail out before the browser is ever asked to
-   measure - ptApplyWindow replaces this with the real window immediately after. */
-function ptPrewindow() {
-  const rows = $("points").children, n = rows.length;
-  if (n < PT_WINDOW_MIN) return;
-  const keep = 2 * PT_OVERSCAN;
-  for (let i = keep; i < n; i++) rows[i].classList.add("off");
-  ptPad($("padTop"), 0);
-  ptPad($("padBot"), (n - keep) * (ptRowH || 36));
-  ptWinRows = []; ptWinAt = null;
-}
-/* Scroll is the hottest path in the page, and on a list too short to window there
-   is nothing for it to do - so it costs nothing at all rather than a frame of
-   bookkeeping per scroll event. Only a list that is actually windowed gets work. */
-function ptQueueWindow() {
-  if (!ptWindowing) return;
-  if (ptWinQueued) return;
-  ptWinQueued = true;
-  requestAnimationFrame(() => { ptWinQueued = false; ptApplyWindow(); });
-}
-/* scrollIntoView cannot reach a row that is out of layout, so drive the scroll
-   from its index and let the window catch up. */
-function ptRevealRow(tr) {
-  const wrap = ptWrap(), i = ptWinRows.indexOf(tr);
-  if (wrap && ptRowH && i >= 0 && tr.classList.contains("off")) {
-    const head = wrap.querySelector("thead");
-    wrap.scrollTop = (head ? head.offsetHeight : 0) + i * ptRowH - wrap.clientHeight / 2;
-    ptApplyWindow();
+  ptPad($("padBot"), (n - first - shown) * ptRowH);
+
+  if (keep) {
+    const to = ptPool.find(tr => tr._pt === keep);
+    const field = to ? to._f[keepCls.slice(2)] : null;
+    if (field && field !== act) {
+      field.focus({preventScroll:true});
+      if (caret) try { field.setSelectionRange(caret[0], caret[1]); } catch {}
+    } else if (!field && act.isConnected) {
+      act.blur();     // its point left the pool entirely; the edit is already in the model
+    }
   }
-  tr.scrollIntoView({block:"nearest", behavior:"smooth"});
+}
+/* The pool is a screenful, so scrolling past it must move the scroller, not the
+   rows. Deliberately not requestAnimationFrame: a rewrite deferred to the next
+   frame paints one frame of the previous rows' values, which is visible tearing,
+   and 2 ms inside the scroll listener is well inside the budget the deferral was
+   protecting. */
+function ptOnScroll() { ptRender(false); }
+/* scrollIntoView cannot reach a point that has no row, so drive the scroll from
+   its view index and let ptRender put a row under it. Returns that row. */
+function ptReveal(p) {
+  const wrap = ptWrap(), i = ptView.indexOf(p);
+  if (!wrap || !ptRowH || i < 0) return null;
+  const head = wrap.querySelector("thead");
+  const room = wrap.clientHeight - (head ? head.offsetHeight : 0);
+  const y = i * ptRowH;                   // same coordinates ptRender scrolls in
+  if (y < wrap.scrollTop || y + ptRowH > wrap.scrollTop + room)
+    wrap.scrollTop = Math.max(0, y - Math.max(0, (room - ptRowH) / 2));
+  ptRender(true);
+  return ptPool.find(tr => tr._pt === p) || null;
+}
+function ptDuplicate(p) {
+  if (!p) return;
+  ptPushState(null, "duplicate row");
+  const d = ptOut(p);
+  if (typeof d.addr === "number") d.addr += 1;
+  delete d.element_id;                    // a copy must not inherit an explicit id
+  const np = ptAdd(d);
+  renumber();
+  ptReveal(np);
+}
+function ptDelete(p) {
+  if (!p) return;
+  ptPushState(null, "delete row");
+  const i = ptModel.indexOf(p);
+  if (i >= 0) ptModel.splice(i, 1);
+  ptSel.delete(p); ptBad.delete(p);
+  if (ptSelAnchor === p) ptSelAnchor = null;
+  renumber();
 }
 function ptToggleSort(col) {
   if (ptSort.col !== col) ptSort = {col, dir:"asc"};
@@ -2105,23 +2304,25 @@ function ptToggleSort(col) {
 }
 function ptCommitOrder() {
   ptPushState(null, "keep this order");
-  ptRows().forEach((tr,i) => tr._seq = i);               // visual order becomes the real one
+  // the sorted order of EVERY point, rows a filter is hiding included - they sort
+  // with the rest and would otherwise be shuffled to the end of the project
+  ptModel = ptOrder.slice();                             // the view becomes the project
   ptSort = {col:null, dir:null};
-  PT_SEQ = ptRows().length;
+  ptReseq();
   applyPointView();
   renumber();
 }
 /* ---------- points: undo ----------
    Snapshots of the whole point list rather than per-action inverse operations:
    one mechanism then covers typing, add, delete, duplicate, the bulk edits and
-   a committed reorder, and cannot drift out of step with any of them. rowData
+   a committed reorder, and cannot drift out of step with any of them. ptOut
    carries the fields the table does not show (element_id, menu, active, ranges)
-   through tr._orig, so those survive an undo too. */
+   through p._orig, so those survive an undo too. */
 const PT_UNDO_MAX = 10;
 const ptUndo = [];
 let ptPreEdit = null;          // state captured when a cell took focus
 
-function ptCapture() { return ptDataOrder().map(rowData); }
+function ptCapture() { return ptModel.map(ptOut); }
 function ptPushState(state, label) {
   ptUndo.push({points: state || ptCapture(), label});
   while (ptUndo.length > PT_UNDO_MAX) ptUndo.shift();
@@ -2137,11 +2338,7 @@ function ptUpdateUndoButton() {
     : `Nothing to undo yet. Point edits, adds, deletes and bulk changes are kept, the last ${PT_UNDO_MAX} of them (Ctrl+Z)`;
 }
 function ptRestore(points) {
-  $("points").replaceChildren();
-  PT_SEQ = 0;
-  ptSel.clear(); ptSelAnchor = null;
-  for (const p of points) addPointRow(p);
-  ptPrewindow();
+  ptSetModel(points);
   renumber();
   ptPaintSelection();
 }
@@ -2165,21 +2362,21 @@ function ptCommitPendingEdit() {
    The drag handle is the row-number cell only. Starting a drag anywhere else
    would fight with selecting text inside a cell, and every other cell in this
    table is an input. Selection works on the visible rows in the order you see
-   them, so it behaves the same in a sorted or filtered view. */
+   them, so it behaves the same in a sorted or filtered view - and it holds the
+   POINTS rather than the pool rows showing them, so scrolling a selected row out
+   of the pool and back leaves it selected. */
 const ptSel = new Set();
 let ptSelAnchor = null, ptDragging = false;
 
-function ptVisible() { return [...$("points").children].filter(t => !t.classList.contains("hidden")); }
 function ptSelectRange(a, b) {
-  const rows = ptVisible();
-  const i = rows.indexOf(a), j = rows.indexOf(b);
+  const i = ptView.indexOf(a), j = ptView.indexOf(b);
   if (i < 0 || j < 0) return;
   ptSel.clear();
-  for (let k = Math.min(i,j); k <= Math.max(i,j); k++) ptSel.add(rows[k]);
+  for (let k = Math.min(i,j); k <= Math.max(i,j); k++) ptSel.add(ptView[k]);
   ptPaintSelection();
 }
 function ptPaintSelection() {
-  for (const tr of $("points").children) tr.classList.toggle("sel", ptSel.has(tr));
+  for (const tr of ptPool) if (tr._pt) tr.classList.toggle("sel", ptSel.has(tr._pt));
   updatePointTip();
   const n = ptSel.size;
   // A single click selects the row under the cursor, so the bar would otherwise
@@ -2216,27 +2413,25 @@ function bulkValueControl(col) {
 function bulkRefreshValue() {
   $("bulkValueSlot").replaceChildren(bulkValueControl($("bulkCol").value));
 }
-function bulkCell(tr, col) { return tr.querySelector(".p-" + col); }
-function bulkWrite(tr, col, value) {
-  const cell = bulkCell(tr, col);
-  if (!cell) return;
-  if (cell.type === "checkbox") cell.checked = (value === "on" || value === true);
-  else setCellValue(cell, value);
+/* The bulk bar's "on"/"off" is its own vocabulary for the two checkbox columns;
+   everything else is the value as typed, normalised by ptWriteField like any edit. */
+function bulkWrite(p, col, value) {
+  if (col === "online" || col === "no_group") p[col] = (value === "on" || value === true);
+  else ptWriteField(p, col, value);
 }
-function bulkRead(tr, col) {
-  const cell = bulkCell(tr, col);
-  if (!cell) return "";
-  return cell.type === "checkbox" ? (cell.checked ? "on" : "off") : cell.value;
+function bulkRead(p, col) {
+  if (col === "online" || col === "no_group") return p[col] ? "on" : "off";
+  return p[col] == null ? "" : String(p[col]);
 }
-function bulkTargets() {                       // visible order, so "topmost" means what you see
-  return ptVisible().filter(tr => ptSel.has(tr));
+function bulkTargets() {                       // view order, so "topmost" means what you see
+  return ptView.filter(p => ptSel.has(p));
 }
 function bulkApply() {
   const col = $("bulkCol").value, ctrl = document.querySelector(".bulk-val");
   if (!ctrl) return;
   ptPushState(null, "apply " + col);
   markValStale();
-  for (const tr of bulkTargets()) bulkWrite(tr, col, ctrl.value);
+  for (const p of bulkTargets()) bulkWrite(p, col, ctrl.value);
   updateStats(); applyPointView(); ptPaintSelection();
 }
 function bulkFillDown() {
@@ -2245,7 +2440,7 @@ function bulkFillDown() {
   ptPushState(null, "fill down " + col);
   markValStale();
   const source = bulkRead(rows[0], col);
-  for (const tr of rows.slice(1)) bulkWrite(tr, col, source);
+  for (const p of rows.slice(1)) bulkWrite(p, col, source);
   updateStats(); applyPointView(); ptPaintSelection();
 }
 
@@ -2255,17 +2450,17 @@ function ptSetMaximized(on) {
   document.body.classList.toggle("hasmax", on);
   $("btnPtFull").textContent = on ? "✕" : "⛶";
   $("btnPtFull").title = on ? "Close fullscreen (Esc)" : "Maximise this card (Esc to close)";
-  ptQueueWindow();                     // the viewport just changed height
+  ptRender(true);                      // the viewport just changed height; regrow the pool
 }
 
 function renumber() {
-  ptDataOrder().forEach((tr,i)=>tr.firstChild.textContent=String(i+1));
+  ptReseq();                           // the row number is the point's project position
   updateStats();
   applyPointView();
   markValStale();
 }
 function updateStats() {
-  const rows = ptDataOrder().map(rowData);
+  const rows = ptModel;
   const real = rows.filter(r => r.datatype || r.addr != null || r.text);
   const bits = real.filter(r => r.bit != null && r.bit !== "").length;
   const rw = real.filter(r => (r.rw||"").includes("w")).length;
@@ -2303,22 +2498,6 @@ function updateStats() {
                     updateStats(); applyPointView(); }},
       `${ptBad.size} failing`));
 }
-function rowData(tr) {
-  const v = cls => tr.querySelector("."+cls)?.value?.trim() ?? "";
-  const num = cls => { const x = v(cls); return x === "" ? null : Number(x); };
-  const chk = cls => !!tr.querySelector("."+cls)?.checked;
-  const rawBit = v("p-bit");
-  const bit = rawBit === "" ? null :
-              (/^\d+$/.test(rawBit) ? Number(rawBit) : rawBit);   // nibble "5#4" stays text
-  return Object.assign({}, tr._orig || {}, {
-    group:v("p-group"), datatype:v("p-datatype"), addr:num("p-addr"), bit,
-    system_no:v("p-system_no")||null, tag:v("p-tag")||null, text:v("p-text"),
-    extra:v("p-extra")||null, alarm:v("p-alarm")||null, unit:v("p-unit")||null,
-    scale:v("p-scale")||null, rw:v("p-rw")||"r",
-    update_freq:v("p-update_freq")||null, online:chk("p-online"),
-    decimals:num("p-decimals"), statetext:num("p-statetext"), no_group:chk("p-no_group"),
-  });
-}
 
 /* ---------- project assemble / load ---------- */
 function collectProject() {
@@ -2329,7 +2508,7 @@ function collectProject() {
     system: collectSystem(),
     groups: collectGroups(),
     statetexts: collectStates(),
-    points: ptDataOrder().map(rowData),   // project order, never the sorted view
+    points: ptModel.map(ptOut),   // project order, never the sorted view
   };
 }
 function showProject(data) {
@@ -2345,18 +2524,15 @@ function showProject(data) {
   $("statetexts").replaceChildren();
   for (const [id, states] of Object.entries(data.statetexts || {}))
     addStateRow(id, states);
-  $("points").replaceChildren();
-  PT_SEQ = 0;
   ptSort = {col:null, dir:null};
   ptFilters.clear();
-  ptSel.clear(); ptSelAnchor = null;
-  ptBad.clear();
   $("valStatus").hidden = true;
   ptUndo.length = 0; ptPreEdit = null; ptUpdateUndoButton();
   if ($("ptSearch")) $("ptSearch").value = "";
-  for (const p of data.points || []) addPointRow(p);
-  if (!(data.points || []).length) addPointRow();
-  ptPrewindow();          // before the browser ever lays the whole list out
+  ptSetModel(data.points || []);
+  if (!ptModel.length) ptAdd();          // an empty project still offers a row to type in
+  const wrap = ptWrap();
+  if (wrap) wrap.scrollTop = 0;          // a new project starts at its first point
   renumber();
 }
 
@@ -2400,9 +2576,9 @@ const FIX_ADVICE = [
    "The datatype table marks that register read-only. Set rw back to r, or choose a datatype that has a write function.",
    {label:"set rw to r on these points",
     title:"Sets rw back to r on each affected row (undoable). Choose a writable datatype instead if the register really is writable",
-    run:(ctx)=>{if(!ctx.rows.length) return;
+    run:(ctx)=>{if(!ctx.points.length) return;
       ptPushState(null, "fix rw");
-      for(const tr of ctx.rows){const c=tr.querySelector('.p-rw'); if(c) c.value='r';}
+      for(const p of ctx.points) p.rw = "r";
       updateStats(); applyPointView();}}],
   [/alarm must be one of/,
    "The alarm letter must be A, B, C or N. Leave it blank for a point that raises no alarm."],
@@ -2418,9 +2594,9 @@ const FIX_ADVICE = [
    "Leave freq blank to let it be derived, or choose fast, norm, slow, once or never.",
    {label:"clear freq on these points",
     title:"Clears the invalid polling override on each affected row so the frequency is derived automatically (undoable)",
-    run:(ctx)=>{if(!ctx.rows.length) return;
+    run:(ctx)=>{if(!ctx.points.length) return;
       ptPushState(null, "clear freq");
-      for(const tr of ctx.rows){const c=tr.querySelector('.p-update_freq'); if(c) c.value='';}
+      for(const p of ctx.points) p.update_freq = null;
       updateStats(); applyPointView();}}],
   [/duplicate driver_id/,
    "Two rows poll the same register and bit. Change one of the addresses, or delete the copy. Applying one address across several rows in a bulk edit causes this — use duplicate, which steps the address."],
@@ -2430,9 +2606,9 @@ const FIX_ADVICE = [
    "Set that row's rw to r. A motherword exists to poll the word its bits live in; it is never written.",
    {label:"set rw to r on these points",
     title:"Sets rw back to r on each affected motherword row (undoable)",
-    run:(ctx)=>{if(!ctx.rows.length) return;
+    run:(ctx)=>{if(!ctx.points.length) return;
       ptPushState(null, "fix motherword rw");
-      for(const tr of ctx.rows){const c=tr.querySelector('.p-rw'); if(c) c.value='r';}
+      for(const p of ctx.points) p.rw = "r";
       updateStats(); applyPointView();}}],
   [/has no motherword row/,
    "Switch on auto_motherwords in the Project card to have it created, or add a row at the same address with the bit column left empty.",
@@ -2462,15 +2638,15 @@ function adviseOn(errors) {
    carries, then validate again so the outcome is visible immediately. Fixes
    that edit points push an undo step; option fixes show as amber deviations. */
 function applyAdviceFix(fix, group, pointRows) {
-  const rows = [];
+  const points = [];
   for (const n of [...group.points]) {
     const src = Array.isArray(pointRows) ? pointRows[n - 1] : n;
     if (!src) continue;                        // a synthesized row - nothing to edit
-    const tr = ptDataOrder()[src - 1];
-    if (tr) rows.push(tr);
+    const p = ptModel[src - 1];                // point_rows counts the project order
+    if (p) points.push(p);
   }
   fix.run({
-    rows,
+    points,
     errors: group.errors,
     setOption: (name, value) => {
       const cb = $("opt_" + name);
@@ -2506,20 +2682,21 @@ function renderAdvice(errors, pointRows) {
   return box;
 }
 
-/* ---------- mark the rows validation rejected ----------
+/* ---------- mark the points validation rejected ----------
    Errors count points after motherword synthesis, which inserts rows the table
    never had. point_rows from the backend maps each validated point back to the
-   row that was sent, so nothing here has to guess. */
+   point that was sent - the Nth of collectProject().points, which is ptModel in
+   project order - so nothing here has to guess, and a sorted view cannot move the
+   mark onto a different point. The mark is on the point, so ptFill paints it on
+   whichever pool row is showing it. */
 function clearBadRows() {
-  for (const tr of $("points").children) tr.classList.remove("bad");
   ptBad.clear();
-  // with no marked rows an armed "failing" filter would hide the whole table
+  // with no marked points an armed "failing" filter would hide the whole table
   ptFilters.delete("failing");
   applyPointView();
 }
 function markBadRows(errors, pointRows) {
   clearBadRows();
-  const rows = ptDataOrder();
   let unmappable = 0;
   for (const e of errors) {
     const m = e.match(/^point (\d+)/);
@@ -2527,12 +2704,12 @@ function markBadRows(errors, pointRows) {
     const validated = Number(m[1]);
     const src = Array.isArray(pointRows) ? pointRows[validated - 1] : validated;
     if (!src) { unmappable++; continue; }               // a synthesized motherword
-    const tr = rows[src - 1];
-    if (tr) { tr.classList.add("bad"); ptBad.add(tr); }
+    const p = ptModel[src - 1];
+    if (p) ptBad.add(p);
   }
   applyPointView();
-  const first = ptDataOrder().find(tr => tr.classList.contains("bad"));
-  if (first) ptRevealRow(first);
+  const first = ptModel.find(p => ptBad.has(p));
+  if (first) ptReveal(first);
   return {marked: ptBad.size, unmappable};
 }
 
@@ -2637,39 +2814,44 @@ $("btnDefaultGroups").onclick = () => {
 };
 $("btnAddState").onclick = () => addStateRow();
 $("btnAddPoint").onclick = () => { ptPushState(null,"add point");
-  const tr = addPointRow(); renumber();
-  ptRevealRow(tr);
-  // preventScroll: the focus jump would cancel the smooth scroll above
-  tr.querySelector(".p-group").focus({preventScroll:true}); };
+  const p = ptAdd(); renumber();
+  // preventScroll: the focus jump would fight the scroll ptReveal just made
+  ptReveal(p)?._f.group.focus({preventScroll:true}); };
 
+/* Which point a mouse event is on. The row is a pool slot, so the answer is the
+   point it happens to be showing, never the row itself. */
+function ptEventPoint(e) {
+  const tr = e.target.closest?.("tr");
+  return tr && tr.parentElement === $("points") ? tr._pt : null;
+}
 /* points multi-select: press anywhere on a row and drag across rows.
    Deliberately no preventDefault - the cell under the cursor must still take
    focus so the row stays editable by clicking straight into it. */
 $("points").addEventListener("mousedown", e => {
   if (e.button !== 0) return;
-  const tr = e.target.closest("tr");
-  if (!tr || tr.parentElement !== $("points")) return;
+  const p = ptEventPoint(e);
+  if (!p) return;
   if (e.shiftKey && ptSelAnchor) {
-    ptSelectRange(ptSelAnchor, tr);
+    ptSelectRange(ptSelAnchor, p);
   } else if (e.ctrlKey || e.metaKey) {
-    ptSel.has(tr) ? ptSel.delete(tr) : ptSel.add(tr);
-    ptSelAnchor = tr;
+    ptSel.has(p) ? ptSel.delete(p) : ptSel.add(p);
+    ptSelAnchor = p;
     ptPaintSelection();
   } else {
-    ptSel.clear(); ptSel.add(tr); ptSelAnchor = tr;
+    ptSel.clear(); ptSel.add(p); ptSelAnchor = p;
     ptPaintSelection();
   }
   ptDragging = true;
 });
 $("points").addEventListener("mouseover", e => {
   if (!ptDragging || !ptSelAnchor) return;
-  const tr = e.target.closest("tr");
-  if (!tr || tr.parentElement !== $("points") || tr === ptSelAnchor) return;
+  const p = ptEventPoint(e);
+  if (!p || p === ptSelAnchor) return;
   // the drag has left its starting row, so this is a row selection, not a text
   // selection inside one input - suppress the text drag from here on
   document.body.classList.add("rowdrag");
   document.getSelection()?.removeAllRanges();
-  ptSelectRange(ptSelAnchor, tr);
+  ptSelectRange(ptSelAnchor, p);
 });
 document.addEventListener("mouseup", () => {
   ptDragging = false;
@@ -2728,12 +2910,12 @@ function repPattern(group) {                      // "zone12" -> "zone{n}"
 /* The selection in project order, which is the order the copies inherit - a sorted
    view must not decide what "the block" means or where it lands. */
 function repSourceRows() {
-  return ptDataOrder().filter(tr => ptSel.has(tr));
+  return ptModel.filter(p => ptSel.has(p));
 }
 function repPlan() {
   const rows = repSourceRows();
   if (rows.length < 1) return {error: "select the rows to copy"};
-  const data = rows.map(rowData);
+  const data = rows.map(ptOut);
   const instances = repParseInstances($("repInstances").value);
   if (!instances) return {error: "instances: numbers or ranges, e.g. 2-5 or 2-4,9-38"};
   const stride = Number($("repStride").value);
@@ -2751,9 +2933,7 @@ function repPlan() {
   // that a collision and refused a legitimate replicate.
   const fn = new Map((BOOT?.datatypes || []).map(d => [d.name, d.read_func]));
   const ident = d => `${fn.get(d.datatype) ?? d.datatype}#${d.addr}#${d.bit ?? ""}`;
-  const taken = new Set(ptRows().map(tr => rowData(tr))
-                        .filter(d => typeof d.addr === "number")
-                        .map(ident));
+  const taken = new Set(ptModel.filter(d => typeof d.addr === "number").map(ident));
   const made = [];
   let collisions = 0, addrMin = Infinity, addrMax = -Infinity;
   for (const n of wanted) {
@@ -2798,7 +2978,7 @@ function repRefresh() {
 function repOpen() {
   const rows = repSourceRows();
   if (!rows.length) return;
-  const first = rowData(rows[0]);
+  const first = rows[0];
   $("repGroup").value = repPattern(first.group);
   // only offer a system_no pattern when the value plainly is one. Zone system
   // numbers look like "03.01. - 309" and share no pattern at all, and prefilling
@@ -2828,10 +3008,10 @@ $("repRun").onclick = () => {
   // copies in instance order, then the rest. Appending at the bottom would scatter
   // the new instances away from the block they came from, and project order is what
   // decides each group's view_order.
-  const order = ptDataOrder();
-  const lastSel = order.reduce((acc, tr, i) => plan.rows.includes(tr) ? i : acc, -1);
-  const before = order.slice(0, lastSel + 1).map(rowData);
-  const after = order.slice(lastSel + 1).map(rowData);
+  const order = ptModel;
+  const lastSel = order.reduce((acc, p, i) => plan.rows.includes(p) ? i : acc, -1);
+  const before = order.slice(0, lastSel + 1).map(ptOut);
+  const after = order.slice(lastSel + 1).map(ptOut);
   ptRestore([...before, ...plan.made, ...after]);
 
   for (const name of plan.newGroups) addGroupRow(name, name);
@@ -2850,11 +3030,11 @@ $("repRun").onclick = () => {
 
 $("bulkDup").onclick = () => {
   ptPushState(null, "duplicate rows");
-  for (const tr of bulkTargets()) {
-    const d = rowData(tr);
+  for (const p of bulkTargets()) {
+    const d = ptOut(p);
     if (typeof d.addr === "number") d.addr += 1;
     delete d.element_id;                 // a copy must not inherit an explicit id
-    addPointRow(d);
+    ptAdd(d);
   }
   ptClearSelection(); renumber();
 };
@@ -2862,24 +3042,61 @@ $("bulkDel").onclick = () => {
   const rows = bulkTargets();
   if (!rows.length) return;
   ptPushState(null, "delete rows");
-  for (const tr of rows) tr.remove();
+  const gone = new Set(rows);
+  ptModel = ptModel.filter(p => !gone.has(p));
+  for (const p of rows) ptBad.delete(p);
   ptClearSelection(); renumber();
 };
 
+/* ---------- every edit in the table lands here ----------
+   The rows are a pool, so the field being typed in belongs to whichever point the
+   slot is showing at that moment and to nothing else. One delegated listener
+   therefore writes the keystroke straight into that point, on `input` rather than
+   `change`: a value still sitting unread in a control when the row is recycled is
+   the one way this design can lose an edit, and `input` fires before the user can
+   scroll. `change` is caught too, for the paths that only fire that. */
+function ptOnFieldEdit(e) {
+  const f = e.target;
+  const tr = f.closest?.("tr");
+  const p = tr && tr.parentElement === $("points") ? tr._pt : null;
+  if (!p) return;
+  const cls = [...f.classList].find(c => c.startsWith("p-"));
+  if (!cls) return;
+  ptWriteField(p, cls.slice(2), f.type === "checkbox" ? f.checked : f.value);
+}
+$("points").addEventListener("input", ptOnFieldEdit);
+$("points").addEventListener("change", ptOnFieldEdit);
+
 /* points undo: one step per field visited, not per keystroke - the state is
-   captured when a cell takes focus and pushed only if it actually changed */
+   captured when a cell takes focus and pushed only if it actually changed.
+   Registered after ptOnFieldEdit on purpose: the keystroke has to be in the model
+   before this compares the model with the state the cell was entered in. */
 $("points").addEventListener("focusin", () => { if (!ptPreEdit) ptPreEdit = ptCapture(); });
 $("points").addEventListener("change", ptCommitPendingEdit);
 $("points").addEventListener("focusout", e => {
   if (!e.relatedTarget || !$("points").contains(e.relatedTarget)) ptCommitPendingEdit();
 });
 
+/* Which values a column's control will take. Paste has to honour it by hand now
+   that it writes points rather than controls - dropping an unlisted value is what
+   the <select> used to do on its own. */
+function ptColChoices(col) {
+  switch (col) {
+    case "datatype":    requireBoot(); return [""].concat(BOOT.datatypes.map(d => d.name));
+    case "alarm":       return ["","A","N","B","C"];
+    case "scale":       return scaleItems().map(String);
+    case "rw":          return ["r","rw","vr","vrw"];
+    case "update_freq": return ["","fast","norm","slow","once","never"];
+    case "decimals":    return ["","0","1","2","3"];
+    default:            return null;                   // free text
+  }
+}
 /* Excel-style paste: a multi-cell clipboard (rows = lines, columns = tabs)
    pasted into any table cell fills the visible rows downward from that cell,
    column by column to the right, the way a spreadsheet would. A single plain
-   value keeps the browser's normal paste. Rows are created when the block
-   runs past the table; selects only take values they already list; checkbox
-   columns are left alone. The whole paste is one undo step. */
+   value keeps the browser's normal paste. Points are created when the block
+   runs past the table; a column backed by a list only takes a value it offers;
+   checkbox columns are left alone. The whole paste is one undo step. */
 $("points").addEventListener("paste", e => {
   if (!e.target.matches("input, select")) return;
   const text = (e.clipboardData || window.clipboardData).getData("text");
@@ -2887,34 +3104,33 @@ $("points").addEventListener("paste", e => {
   const lines = text.replace(/\r/g, "").split("\n");
   if (lines.length && lines[lines.length - 1] === "") lines.pop();   // Excel's trailing newline
   if (lines.length < 2 && !text.includes("\t")) return;              // ordinary paste
+  const startTd = e.target.closest("td");
+  const tr = startTd && startTd.parentElement;
+  let r = tr && tr._pt ? ptView.indexOf(tr._pt) : -1;
+  if (r < 0) return;
   e.preventDefault();
   ptCommitPendingEdit();
   ptPushState(null, `paste ${lines.length} row${lines.length === 1 ? "" : "s"}`);
-  const startTd = e.target.closest("td");
-  const colIdx = [...startTd.parentElement.children].indexOf(startTd);
-  const rows = ptVisible();
-  let r = rows.indexOf(startTd.parentElement);
-  let lastRow = rows[r];
+  const colIdx = [...tr.children].indexOf(startTd);
+  let last = null;
   for (const line of lines) {
-    let row = rows[r];
-    if (!row) { row = addPointRow(); rows.push(row); }
-    lastRow = row;
+    let p = ptView[r];
+    if (!p) { p = ptAdd(); ptView.push(p); }      // the block ran past the table
+    last = p;
     line.split("\t").forEach((v, j) => {
-      const cell = row.children[colIdx + j];
-      const f = cell && cell.querySelector("input, select");
-      if (!f) return;
+      const col = PT_COLS[colIdx + j];
+      if (!col || col === "online" || col === "no_group") return;    // checkboxes stay
       v = v.trim();
-      if (f.matches("select")) {
-        hydrateSelect(f);                  // a lazy list carries only its own value
-        if ([...f.options].some(o => o.value === v)) f.value = v;
-      } else if (f.type !== "checkbox") f.value = v;
+      const choices = ptColChoices(col);
+      if (choices && !choices.includes(v)) return;
+      ptWriteField(p, col, v);
     });
     r++;
   }
   renumber();
   ptPreEdit = ptCapture();   // typing after the paste diffs against the pasted state
-  e.target.dispatchEvent(new Event("input", {bubbles: true}));   // reach the autosave hook
-  ptRevealRow(lastRow);
+  queueAutosave();           // no input event was raised; reach the hook directly
+  ptReveal(last);
 });
 $("btnPtUndo").onclick = ptDoUndo;
 ptUpdateUndoButton();
@@ -2957,9 +3173,9 @@ $("points").addEventListener("focusout", () => setTimeout(updatePointTip, 0));
 
 /* points view controls */
 $("ptSearch").addEventListener("input", ptQueueRefresh);   // same settle as the cells
-// the window follows the scroll position, and the viewport height decides its size
-ptWrap()?.addEventListener("scroll", ptQueueWindow, {passive:true});
-window.addEventListener("resize", ptQueueWindow);
+// the pool follows the scroll position, and the viewport height decides its size
+ptWrap()?.addEventListener("scroll", ptOnScroll, {passive:true});
+window.addEventListener("resize", () => ptRender(true));
 $("btnPtOrder").onclick = ptCommitOrder;
 $("btnPtFull").onclick = () => ptSetMaximized(!$("points").closest(".card").classList.contains("maximized"));
 document.querySelector("table.points thead").addEventListener("click", e => {
@@ -2969,9 +3185,17 @@ document.querySelector("table.points thead").addEventListener("click", e => {
 document.addEventListener("keydown", e => {
   const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName);
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
-    // only claim Ctrl+Z when this card has something to undo; otherwise leave it
-    // to the browser so the other cards' fields keep their native undo
-    if (ptUndo.length || ptPreEdit) { e.preventDefault(); ptDoUndo(); }
+    /* Claim it outright while the points table has the focus. Its inputs are pool
+       slots, so the browser's own per-field undo stack holds what was typed into
+       whatever point was in that slot earlier - possibly in a different project,
+       since a load no longer destroys the fields. Stepping back through it would
+       put another point's text on screen and, through the delegated input
+       listener, into this point. Nothing to undo here means the key does nothing,
+       which is the right answer for a table this card owns. Elsewhere on the page
+       a field's native undo really is its own, so it is left alone unless this
+       card has history of its own to step back through. */
+    const inPoints = $("points").contains(document.activeElement);
+    if (inPoints || ptUndo.length || ptPreEdit) { e.preventDefault(); ptDoUndo(); }
     return;
   }
   if (e.key === "/" && !typing) { e.preventDefault(); $("ptSearch").focus(); $("ptSearch").select(); }
@@ -3372,11 +3596,11 @@ async function init() {
   }
 }
 /* live stat chips while editing (debounced, delegated).
-   Both calls read every row - two full passes of rowData plus a re-sort and a
-   visibility sweep - so on an imported 1600-row list they cost several times the
-   frame budget of a single keystroke, and running them per frame made typing in
-   the table stutter. Settling after the typing pauses keeps the chips and the
-   active filter honest without the field itself lagging behind the keyboard.
+   Both calls walk every point - two passes plus a re-sort, a filter sweep and a
+   render - so on an imported 1600-row list they cost several times the frame
+   budget of a single keystroke, and running them per frame made typing in the
+   table stutter. Settling after the typing pauses keeps the chips and the active
+   filter honest without the field itself lagging behind the keyboard.
 
    Waiting is only worth it on a list long enough for the pair to cost more than a
    frame. On an ordinary project they cost about a millisecond together, and there
@@ -3396,7 +3620,7 @@ function ptRefreshNow() {
 function ptQueueRefresh() {
   clearTimeout(statsTimer);
   statsTimer = null;
-  if ($("points").children.length < PT_SETTLE_MIN) {
+  if (ptModel.length < PT_SETTLE_MIN) {
     if (statsQueued) return;                   // one refresh per frame, not per key
     statsQueued = true;
     requestAnimationFrame(ptRefreshNow);
