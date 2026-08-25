@@ -598,6 +598,9 @@
       <button id="btnPtUndo" class="ghost tool" disabled>↶ undo</button>
       <button id="btnPtExport" class="ghost tool"
               title="Download every point as its own project .json, carrying only the groups and state texts these points use. Project order, and a search or filter does not narrow it - select rows and use the bar below for that">⤓ points</button>
+      <button id="btnPtImport" class="ghost tool"
+              title="Append the points from another project file to this list, bringing the groups and state texts they need with them. The rest of that file - table, plant, options, driver - is ignored. Use Import project to replace this list instead">⤒ points</button>
+      <input id="ptImportFile" type="file" accept=".json,.yaml,.yml,application/json" hidden>
       <button id="btnPtFull" class="ghost tool" title="Maximise this card (Esc to close)">⛶</button>
     </h2>
     <details class="help"><summary title="All seventeen columns explained in table order">help</summary>
@@ -1356,7 +1359,9 @@ const BOOT_GATED = ["fileSelect","btnLoad","btnNew","btnImportJson","btnImportSq
                     "btnImportXlsm","btnSave","btnExport","btnXlsm","btnValidate",
                     "btnGenerate","btnSaveSql","btnAddPoint","btnOptReset","bulkCol",
                     // both collect a project, so both need the tables Export needs
-                    "btnPtExport","bulkExport"];
+                    "btnPtExport","bulkExport",
+                    // and this one builds rows, which needs the datatype list
+                    "btnPtImport"];
 const BOOT_WAIT_MSG =
   "modbusgen is still loading its lookup tables (datatypes, units, scaling and the " +
   "option defaults), so a project cannot be opened yet. Wait a moment and try again - " +
@@ -3418,6 +3423,111 @@ function ptExportPoints(points, suffix) {
 }
 $("btnPtExport").onclick = () => ptExportPoints(ptModel, "points");
 $("bulkExport").onclick = () => ptExportPoints(repSourceRows(), "selected");
+
+/* Appending someone else's points to this list is not the same as loading their
+   project, and the difference is where it can go wrong quietly.
+
+   A group key that is missing here has to be created or every point using it fails
+   validation. A group key that already exists is left alone: the alias on screen is
+   this plant's wording and an incoming file has no business overwriting it.
+
+   State texts are the dangerous half. They are referenced by id, and ids are small
+   integers that every list starts at 1 - so an incoming list 1 meaning
+   Closed/Open lands on a project whose list 1 means OK/Alarm, and the points now
+   read words nobody chose. The JSON stays legal and validation cannot see it,
+   because the reference resolves. So an incoming id is adopted only when it is free,
+   or when the list already there is character-for-character the same; otherwise it
+   is moved to a free id and the imported points are repointed at it. The count of
+   moves is reported, because a silent remap is only marginally better than a silent
+   collision. */
+function ptMergeStatetexts(incoming, used) {
+  const here = collectStates();
+  const map = new Map();
+  let added = 0, moved = 0;
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  for (const id of [...used].sort((a, b) => Number(a) - Number(b))) {
+    const states = incoming[id] ?? incoming[String(id)];
+    if (!states) continue;                      // referenced but not supplied - validation reports it
+    if (!(id in here) && !(String(id) in here)) {
+      addStateRow(String(id), states); here[String(id)] = states; added++;
+      continue;
+    }
+    if (same(here[String(id)], states)) continue;      // identical list, reuse the id
+    let free = 1;
+    while (String(free) in here) free++;
+    addStateRow(String(free), states); here[String(free)] = states;
+    map.set(String(id), free); added++; moved++;
+  }
+  return {map, added, moved};
+}
+function ptImportPoints(data, label) {
+  const raw = Array.isArray(data) ? data : (data && data.points);
+  if (!Array.isArray(raw) || !raw.length)
+    throw new Error("no points in that file - it needs a `points` array");
+  const src = Array.isArray(data) ? {} : data;
+
+  const usedStates = new Set(raw.map(p => p.statetext).filter(v => v != null && v !== ""));
+  const st = ptMergeStatetexts(src.statetexts || {}, usedStates);
+
+  const here = collectGroups();
+  let groupsAdded = 0, aliasKept = 0;
+  for (const name of new Set(raw.map(p => p.group).filter(Boolean))) {
+    const alias = (src.groups || {})[name];
+    if (!(name in here)) {
+      addGroupRow(name, typeof alias === "string" ? alias : (alias?.alias || name));
+      here[name] = alias; groupsAdded++;
+    } else if (typeof alias === "string" && alias && alias !== here[name]) {
+      aliasKept++;                              // this plant's wording wins
+    }
+  }
+  if (groupsAdded) refreshGroupList();
+
+  // an identical datatype+addr+bit is the same driver_id, which validation rejects
+  const key = p => `${p.datatype}|${p.addr}|${p.bit ?? ""}`;
+  const mine = new Set(ptModel.map(key));
+  const clashes = raw.filter(p => mine.has(key(p))).length;
+
+  ptPushState(null, "import points");
+  for (const p of raw) {
+    const moved = st.map.get(String(p.statetext));
+    ptAdd(moved != null ? Object.assign({}, p, {statetext: moved}) : p);
+  }
+  renumber();
+  queueAutosave();
+
+  const bits = [`${raw.length} point(s) appended from ${label}`];
+  if (groupsAdded) bits.push(`${groupsAdded} group(s) created`);
+  if (aliasKept) bits.push(`${aliasKept} group alias(es) left as this project has them`);
+  if (st.added) bits.push(`${st.added} state-text list(s) added`);
+  const out = [el("div", {class: "msg ok"}, "✓ " + bits.join(", ") + ".")];
+  if (st.moved) out.push(el("div", {class: "msg note"},
+    `${st.moved} incoming state-text list(s) collided with a different list already ` +
+    `here and were given new ids; the imported points were repointed at them. ` +
+    `Nothing already in this project changed.`));
+  if (clashes) out.push(el("div", {class: "msg warn"},
+    `${clashes} imported point(s) repeat a datatype and address already in this list, ` +
+    `which is the same driver id twice - Validate will reject it. Change the address, ` +
+    `or delete whichever copy is wrong.`));
+  out.push(el("div", {class: "msg note"},
+    "Ctrl+Z removes the imported points again. Any group or state-text list the " +
+    "import created stays - an unused one is harmless, but delete it if you undo."));
+  $("out").replaceChildren(...out);
+}
+$("btnPtImport").onclick = () => $("ptImportFile").click();
+$("ptImportFile").onchange = async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    requireBoot();
+    const text = await file.text();
+    const data = /\.ya?ml$/i.test(file.name) ? await api("/api/parse", {text})
+                                             : JSON.parse(text);
+    ptImportPoints(data, file.name);
+  } catch (err) {
+    showError(new Error(`could not import points from ${file.name}: ${err.message}`));
+  }
+  e.target.value = "";
+};
 
 /* Back into the old Excel tool, in both backends. The browser build has further to
    go - openpyxl and the template are fetched on the first click - so the button can
