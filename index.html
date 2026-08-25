@@ -1277,10 +1277,15 @@ function colDocOpen(btn, col) {
   colDocFor = btn;
 }
 
+/* Returns immediately when no panel is open, because the scroll listener below
+   calls this on every scroll event of every scroller on the page - and the points
+   table fires one per frame while it is being dragged through a thousand rows.
+   Closing an already-closed panel still wrote two DOM properties per event. */
 function colDocClose() {
-  if (colDocFor) colDocFor.setAttribute("aria-expanded", "false");
+  if (!colDocFor) return;
+  colDocFor.setAttribute("aria-expanded", "false");
   colDocFor = null;
-  if (colDocBox) colDocBox.hidden = true;
+  colDocBox.hidden = true;
 }
 
 document.addEventListener("click", e => {
