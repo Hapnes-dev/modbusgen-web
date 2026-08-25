@@ -591,7 +591,7 @@
     <h2>Points <span class="chips" id="pointStats"></span>
       <span class="h2fill"></span>
       <input id="ptSearch" class="search tool" placeholder="search rows   Ctrl+F"
-             title="Filter rows on any column - group, text, datatype, address, unit. Ctrl+F or / anywhere on the page jumps here, Esc clears. Use this rather than the browser's find: only the rows on screen exist in the page, so the browser's find cannot see the rest of the list">
+             title="Filter rows on any column - group, text, datatype, address, unit. Several words all have to match, in any order and any column: 'tilluft temp' finds Temperaturgiver tilluft. æ ø å can be typed as ae o a. If nothing matches exactly you get close matches instead, marked ≈ - but never for numbers, so an address is always found exactly or not at all. Ctrl+F or / jumps here, Esc clears. Use this rather than the browser's find: only the rows on screen exist in the page">
       <span class="chip tool" id="ptFilterInfo" hidden></span>
       <button id="btnPtOrder" class="ghost tool" hidden
               title="Write the order you are looking at into the project. Until you press this, sorting only changes the view - the saved order, and the group view_order derived from it, are untouched">keep this order</button>
@@ -714,6 +714,18 @@
             address, unit. <code>Ctrl+F</code> or <code>/</code> anywhere on the page
             jumps into it, <code>Esc</code> clears it. The chip beside it reads
             <span class="ex">12 of 200 shown</span> whenever anything is hidden.</li>
+          <li><b>It does not need to be exact.</b> Several words all have to match, in
+            any order and in any column, so <span class="ex">tilluft temp</span> finds
+            <i>Temperaturgiver tilluft</i>. <code>æ ø å</code> can be typed
+            <code>ae o a</code> - <span class="ex">kjoling</span> finds <i>Kjøling</i>.
+            And if nothing matches exactly you get near misses instead, a letter or two
+            out, with the chip marked <span class="ex">≈ 3 of 200 shown</span> so you
+            can see the answer is approximate. Exact matches are never diluted: the
+            relaxed pass only runs when the strict one found nothing.</li>
+          <li><span class="note">Numbers are never approximated.</span> An address is an
+            identity, not a description, so <span class="ex">101</span> will not offer
+            you <span class="ex">1010</span>. A term containing a digit always has to
+            match exactly.</li>
           <li><b>Use it instead of the browser's find.</b> The table keeps about fifty
             rows on screen however long the list is, so <code>Ctrl+F</code> is taken
             over deliberately: the browser's own find can only see the rows currently
@@ -1926,6 +1938,7 @@ const ptBit = v => { const s = ptStr(v);
    through here - the delegated input listener, bulk edit, paste, the advice fixes -
    so a column can only be normalised one way. */
 function ptWriteField(p, col, raw) {
+  p._hay = null;                    // the search cache is now a keystroke out of date
   switch (col) {
     case "addr": case "decimals": case "statetext": p[col] = ptNum(raw); break;
     case "bit":                                     p.bit = ptBit(raw); break;
@@ -1997,14 +2010,92 @@ function ptSortKey(d, col) {
   }
   return String(v ?? "").toLowerCase();
 }
-/* Search reads the same values collection writes, _orig included - a project field
-   this table has no column for is still part of the point and still findable. */
-function ptMatches(p, needle) {
-  if (!needle) return true;
-  const hit = v => v != null && v !== false && String(v).toLowerCase().includes(needle);
-  for (const col of PT_FIELDS) if (hit(p[col])) return true;
-  for (const k in p._orig) if (!PT_FIELDS.includes(k) && hit(p._orig[k])) return true;
-  return false;
+/* ---------- search ----------
+   Search reads the same values collection writes, _orig included - a project field
+   this table has no column for is still part of the point and still findable.
+
+   Three things make an exact substring match the wrong tool on these lists. The text
+   is Norwegian, so a keyboard-lazy "kjoling" or "apne" should still find Kjøling and
+   Åpne. The descriptions read "Temperaturgiver tilluft", so someone hunting it types
+   "tilluft temp" and gets nothing from a single-substring test. And they are typed by
+   hand, at length, so "temperatru" happens.
+
+   What must NOT be relaxed is anything numeric. In a register list an address is an
+   identity, and offering 1010 or 100 to someone who typed 101 is not helpfulness, it
+   is a wrong answer wearing a helpful face. Numeric terms therefore stay exact
+   substrings at every tier, and only word terms of four characters or more are ever
+   allowed an edit.
+
+   Approximation is also a last resort rather than a default: the relaxed pass runs
+   only when the strict one found nothing at all, so a search that works keeps working
+   exactly as it did. When it does run, the chip says so - an approximate answer the
+   user thinks is exact is the thing worth avoiding here. */
+const PT_FOLD = [[/ø/g, "o"], [/æ/g, "ae"], [/å/g, "a"], [/ß/g, "ss"]];
+function ptFold(s) {
+  let out = String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  for (const [re, to] of PT_FOLD) out = out.replace(re, to);
+  return out;
+}
+/* Every value of one point as one folded string, cached: the strict pass runs it
+   against 1619 points on each keystroke, and rebuilding it there was the only part
+   of searching that showed up at that size. ptWriteField drops the cache. */
+function ptHay(p) {
+  if (p._hay != null) return p._hay;
+  const parts = [];
+  for (const col of PT_FIELDS) {
+    const v = p[col];
+    if (v != null && v !== false && v !== "") parts.push(v);
+  }
+  for (const k in p._orig)
+    if (!PT_FIELDS.includes(k)) {
+      const v = p._orig[k];
+      if (v != null && v !== false && v !== "") parts.push(v);
+    }
+  return (p._hay = ptFold(parts.join("\n")));
+}
+/* Bounded Levenshtein: anything past `max` is not interesting, so it stops instead of
+   finishing the matrix. Called only in the relaxed pass. */
+function ptEditsWithin(a, b, max) {
+  if (Math.abs(a.length - b.length) > max) return false;
+  let prev = Array.from({length: b.length + 1}, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    let best = i;
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = a[i-1] === b[j-1] ? prev[j-1]
+             : 1 + Math.min(prev[j-1], prev[j], cur[j-1]);
+      if (cur[j] < best) best = cur[j];
+    }
+    if (best > max) return false;
+    prev = cur;
+  }
+  return prev[b.length] <= max;
+}
+function ptParseSearch(raw) {
+  const terms = ptFold(raw).split(/\s+/).filter(Boolean).map(t => ({
+    t,
+    numeric: /\d/.test(t),
+    // an edit on a short word turns it into a different word; 4 is where it stops
+    slack: /\d/.test(t) ? 0 : t.length >= 8 ? 2 : t.length >= 4 ? 1 : 0,
+  }));
+  return {terms, fuzzable: terms.some(t => t.slack > 0)};
+}
+function ptStrictMatch(p, terms) {
+  if (!terms.length) return true;
+  const hay = ptHay(p);
+  for (const {t} of terms) if (!hay.includes(t)) return false;
+  return true;
+}
+function ptLooseMatch(p, terms) {
+  const hay = ptHay(p);
+  let words = null;
+  for (const term of terms) {
+    if (hay.includes(term.t)) continue;
+    if (!term.slack) return false;                  // numeric, or too short to bend
+    if (words === null) words = hay.split(/[^a-z0-9]+/).filter(Boolean);
+    if (!words.some(w => ptEditsWithin(term.t, w, term.slack))) return false;
+  }
+  return true;
 }
 function ptPassesFilters(d) {
   for (const f of ptFilters) {
@@ -2034,8 +2125,15 @@ function applyPointView() {
       return a._seq - b._seq;                            // stable within ties
     });
   }
-  ptView = ptOrder.filter(p =>
-    ptMatches(p, needle) && ptPassesFilters(p) && ptPassesBadFilter(p));
+  const {terms, fuzzable} = ptParseSearch(needle);
+  const others = p => ptPassesFilters(p) && ptPassesBadFilter(p);
+  ptView = ptOrder.filter(p => ptStrictMatch(p, terms) && others(p));
+  // relaxed only when exact found nothing - a search that works keeps its results
+  let approx = false;
+  if (!ptView.length && terms.length && fuzzable) {
+    const loose = ptOrder.filter(p => ptLooseMatch(p, terms) && others(p));
+    if (loose.length) { ptView = loose; approx = true; }
+  }
 
   for (const th of document.querySelectorAll('.points th[data-col]')) {
     if (th.dataset.col === ptSort.col && ptSort.dir) th.dataset.sort = ptSort.dir;
@@ -2058,9 +2156,16 @@ function applyPointView() {
   const filtered = needle || ptFilters.size;
   info.hidden = !filtered;
   if (filtered) {
-    info.textContent = `${ptView.length} of ${ptModel.length} shown`;
-    info.title = "Filters and search only hide rows. Hidden rows are still part of the "
-               + "project and are still validated and generated";
+    info.textContent = approx
+      ? `≈ ${ptView.length} of ${ptModel.length} shown`
+      : `${ptView.length} of ${ptModel.length} shown`;
+    info.classList.toggle("warnfilter", approx);
+    info.title = (approx
+        ? "Nothing matched exactly, so these are close matches - a letter or two out, "
+        + "or spelled without æ/ø/å. Addresses and other numbers are never approximated. "
+        : "")
+      + "Filters and search only hide rows. Hidden rows are still part of the "
+      + "project and are still validated and generated";
   }
   ptRender(true);           // points, order or filter may all have moved
 }
