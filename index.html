@@ -2842,15 +2842,101 @@ const FIX_ACTIONS = {
     label:"switch on auto_motherwords",
     title:"Checks auto_motherwords in the Project card so the missing word rows are synthesized, and validates again",
     run:(ctx)=>ctx.setOption("auto_motherwords", true)},
+
+  /* The suggestion fix is the one to be careful with, and the most useful. It applies
+     each row's OWN near key, never one key across the group, and the label names the
+     substitution so nobody clicks it blind. A word order is a register-level fact: this
+     button is for a transposed spelling, not for deciding what the device does. */
+  "datatype-unknown": {
+    label:"use the suggested key on these rows",
+    title:"Replaces each unknown datatype with the near key the tables offer - row by row, each with its own. Check it against the device document first: _N, _R and _W read the same register differently and all three look plausible (docs/15)",
+    run:(ctx)=>{const usable = ctx.rows.filter(r => r.f.suggestion);
+      if(!usable.length) return;
+      ptPushState(null, "apply datatype suggestion");
+      for(const r of usable) r.p.datatype = r.f.suggestion;
+      dtInvalidateKnown(); ptMarkUnknownDatatypes(); updateStats(); applyPointView();}},
+
+  /* Clearing is the documented remedy for these two, not a shortcut: docs/11 says an
+     unmatched unit means an omitted field and an unmatched scale means omit `scale`,
+     keep the point and say so - never an invented spelling. */
+  "unit-unknown": {
+    label:"clear the unit on these rows",
+    title:"Empties the unit on each affected row (undoable). That is the documented remedy - an unmatched unit is an omitted field, never an invented spelling. Add the real one to data/tables/units.csv if the device document names it",
+    run:(ctx)=>{if(!ctx.points.length) return;
+      ptPushState(null, "clear unit");
+      for(const p of ctx.points) p.unit = null;
+      updateStats(); applyPointView();}},
+  "scale-unknown": {
+    label:"clear the scale on these rows",
+    title:"Empties the scale on each affected row (undoable), which is what docs/11 prescribes: omit the factor and keep the point. The value then reads raw, so add the factor to data/tables/scaling.csv if the document gives one",
+    run:(ctx)=>{if(!ctx.points.length) return;
+      ptPushState(null, "clear scale");
+      for(const p of ctx.points) p.scale = null;
+      updateStats(); applyPointView();}},
+  "decimals-range": {
+    label:"clear decimals on these rows",
+    title:"Empties the decimals field on each affected row (undoable). The value is outside 0-3 and cannot be written; blank means no display format",
+    run:(ctx)=>{if(!ctx.points.length) return;
+      ptPushState(null, "clear decimals");
+      for(const p of ctx.points) p.decimals = null;
+      updateStats(); applyPointView();}},
+  "alarm-invalid": {
+    label:"clear the alarm letter",
+    title:"Empties the alarm column on each affected row (undoable). Blank means the point raises no alarm - set A, B, C or N deliberately if it should",
+    run:(ctx)=>{if(!ctx.points.length) return;
+      ptPushState(null, "clear alarm");
+      for(const p of ctx.points) p.alarm = null;
+      updateStats(); applyPointView();}},
+  "rw-invalid": {
+    label:"set rw to r on these rows",
+    title:"Sets the access column to r on each affected row (undoable). The value there is not one the tool knows, and read-only is the safe reading of an unusable one",
+    run:(ctx)=>{if(!ctx.points.length) return;
+      ptPushState(null, "fix rw");
+      for(const p of ctx.points) p.rw = "r";
+      updateStats(); applyPointView();}},
+  "bit-needs-register": {
+    label:"clear the bit on these rows",
+    title:"Empties the bit column on each affected row (undoable). A coil or discrete input is already a single bit, so the bit number means nothing there - use Bit_Hold or Bit_Input instead if the value really lives inside a register",
+    run:(ctx)=>{if(!ctx.points.length) return;
+      ptPushState(null, "clear bit");
+      for(const p of ctx.points) p.bit = null;
+      updateStats(); applyPointView();}},
+  "group-missing": {
+    label:"switch on auto_groups",
+    title:"Checks auto_groups in the Project card, which fills an empty group from the datatype's own default - aio for analog, dio for digital - and validates again",
+    run:(ctx)=>ctx.setOption("auto_groups", true)},
+  /* No entry for group-order-clash on purpose. The Groups card has no order field -
+     collectGroups() returns name -> alias and the loader numbers them by row position,
+     so this page cannot produce that clash and has nothing to renumber. It reaches a
+     file edited elsewhere; a button here would be theatre. */
+  "datatype-redefines-shipped": {
+    label:"drop the project's copy",
+    title:"Removes the row from this project's Modbus variables. The shipped table already wins the lookup - first writer, as in Excel's VLOOKUP - so the points using it keep the definition they were already getting, and nothing about the generated list changes",
+    run:(ctx)=>{for(const e of ctx.errors){
+        const m=e.match(/^datatypes\.(.+?): already in data/); if(m) delete dtProject[m[1]];}
+      dtInvalidateKnown(); renderDatatypeCard(); applyPointView();}},
+  "datatype-name-illegal": {
+    label:"rename to a legal key",
+    title:"Replaces every character outside letters, digits and underscore with an underscore, and follows the points using the old name so none is left pointing at something gone",
+    run:(ctx)=>{for(const e of ctx.errors){
+        const m=e.match(/^datatypes\.(.+?): a datatype name takes/); if(!m) continue;
+        const bad=m[1], good=bad.replace(/[^A-Za-z0-9_]/g,"_");
+        if(good===bad || !dtProject[bad]) continue;
+        dtProject[good]=dtProject[bad]; delete dtProject[bad];
+        for(const p of ptModel)
+          if(String(p.datatype).toLowerCase()===bad.toLowerCase()) p.datatype=good;}
+      dtInvalidateKnown(); renderDatatypeCard(); ptMarkUnknownDatatypes();
+      applyPointView();}},
 };
 function adviseOn(findings) {
   const byCode = new Map();            // code -> {advice, points, suggestions, fix}
   for (const f of findings || []) {
     if (!byCode.has(f.code))
       byCode.set(f.code, {advice: f.advice, points: new Set(), suggestions: new Set(),
-                          errors: [], fix: FIX_ACTIONS[f.code] || null});
+                          errors: [], findings: [], fix: FIX_ACTIONS[f.code] || null});
     const g = byCode.get(f.code);
     g.errors.push(f.message);
+    g.findings.push(f);
     if (f.point) g.points.add(f.point);
     if (f.suggestion) g.suggestions.add(f.suggestion);
   }
@@ -2860,15 +2946,21 @@ function adviseOn(findings) {
    carries, then validate again so the outcome is visible immediately. Fixes
    that edit points push an undo step; option fixes show as amber deviations. */
 function applyAdviceFix(fix, group, pointRows) {
-  const points = [];
-  for (const n of [...group.points]) {
+  const toPoint = n => {
     const src = Array.isArray(pointRows) ? pointRows[n - 1] : n;
-    if (!src) continue;                        // a synthesized row - nothing to edit
-    const p = ptModel[src - 1];                // point_rows counts the project order
-    if (p) points.push(p);
-  }
+    if (!src) return null;                     // a synthesized row - nothing to edit
+    return ptModel[src - 1] || null;           // point_rows counts the project order
+  };
+  const points = [...group.points].map(toPoint).filter(Boolean);
+  /* Row-level pairs, because a fix that applies a *suggestion* has to apply each
+     point's own: two rows can carry two different bad spellings under one code, and
+     one substitution across both would be a guess wearing a button. */
+  const rows = (group.findings || [])
+    .map(f => ({p: f.point ? toPoint(f.point) : null, f}))
+    .filter(r => r.p);
   fix.run({
     points,
+    rows,
     errors: group.errors,
     setOption: (name, value) => {
       const cb = $("opt_" + name);
