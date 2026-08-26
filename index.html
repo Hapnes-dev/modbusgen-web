@@ -3016,6 +3016,27 @@ function ptMarkUnknownDatatypes() {
   if (map.size) { applyPointView(); updateStats(); }
   return map;
 }
+/* ---------- what an import says about itself ----------
+   An import note is the provenance of a converted list: what was dropped, what was
+   defaulted, and what you still have to do. They all used to render identically, so
+   "skipped 1 040 row(s)" and "plant number is not stored in SQL" looked like remarks
+   about display formats. Dropped data and required actions come first now and carry
+   their advice; the rest stay quiet at the bottom. */
+function importNoteMsgs(res) {
+  const notes = res.import_notes
+    || (res.notes || []).map(n => ({message: String(n), kind: "info", advice: ""}));
+  const rank = {dropped: 0, action: 1, repaired: 2, info: 3};
+  const cls = {dropped: "msg err", action: "msg warn"};
+  return [...notes].sort((a, b) => (rank[a.kind] ?? 3) - (rank[b.kind] ?? 3))
+    .map(n => {
+      const box = el("div",{class: cls[n.kind] || "msg note"},
+        (n.kind === "dropped" ? "✕ dropped: " : n.kind === "action" ? "⚠ do this: " : "")
+        + n.message);
+      if (n.advice && (n.kind === "dropped" || n.kind === "action"))
+        box.append(el("div",{class:"where", style:"margin-top:2px"}, n.advice));
+      return box;
+    });
+}
 /* ---------- the Modbus variables card ---------- */
 function renderDatatypeCard() {
   requireBoot();                        // reads BOOT.datatypes and BOOT.writable_tables
@@ -3854,7 +3875,7 @@ $("xlsmFile").onchange = async e => {
     $("out").replaceChildren(
       el("div",{class:"msg ok"},
         `✓ Converted ${file.name} - review (plant number!), then Validate and Export for the .json file.`),
-      ...(res.notes || []).map(n => el("div",{class:"msg note"}, n)));
+      ...importNoteMsgs(res));
     btnFlash(btn, "converted ✓", "ok");
     queueAutosave();
   } catch (err) {
@@ -4125,7 +4146,7 @@ $("btnXlsm").onclick = async () => {
         + `columns. A workbook downloaded from a browser is marked as coming from `
         + `the internet, and Excel blocks macros in such a file until you either `
         + `right-click it → Properties → Unblock, or keep it in a Trusted Location.`),
-      ...(res.notes || []).map(n => el("div",{class:"msg note"}, n)));
+      ...importNoteMsgs(res));
     btnFlash(btn, "exported ✓", "ok");
   } catch (e) { btnFlash(btn, "export failed", "bad", 2600); showError(e); }
 };
@@ -4401,6 +4422,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=2e4107ea9f"></script>
+<script src="pyodide-adapter.js?v=621d7084bb"></script>
 </body>
 </html>
