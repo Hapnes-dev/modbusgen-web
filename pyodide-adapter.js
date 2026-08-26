@@ -44,7 +44,7 @@ window.PYODIDE_READY = (async () => {
   _overlay("Loading YAML support…");
   await py.loadPackage("pyyaml");
   _overlay("Loading modbusgen…");
-  const buf = await (await fetch("modbusgen-src.zip?v=de110b4219")).arrayBuffer();
+  const buf = await (await fetch("modbusgen-src.zip?v=bdc04b9103")).arrayBuffer();
   py.unpackArchive(buf, "zip");
   py.runPython("import sys; sys.path.insert(0, 'src')");
   const glue = py.pyimport("modbusgen.webapi");
@@ -153,6 +153,14 @@ window.PYODIDE_API = async (path, body) => {
     await _ensureTemplate();
     return JSON.parse(glue.xlsm_json(JSON.stringify(body.project), XLSM_VFS_PATH));
   }
+  /* Promoting a datatype writes data/tables/datatypes.csv, and there is no filesystem
+     here to write it to. The page hides the button on this backend (writable_tables is
+     false), so reaching this is a bug rather than a user action - answer with the
+     reason instead of an exception nobody can act on. */
+  if (path === "/api/datatype-promote")
+    return { error: "the web app cannot write the shared datatype table - it has no " +
+                    "filesystem. The variable stays in this project and travels with " +
+                    "the file; promote it from the local GUI to share it." };
   if (path === "/api/import-xlsm") {
     await _ensureOpenpyxl();          // reading a workbook needs no template
     const res = JSON.parse(glue.import_xlsm_json(body.b64, body.filename || ""));

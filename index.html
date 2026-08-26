@@ -256,6 +256,13 @@
   .msg{white-space:pre-wrap;font-family:Consolas,monospace;font-size:12.5px;
        border-radius:6px;padding:8px 10px;margin-top:8px}
   .msg.err{background:#3a2126;color:var(--red);border:1px solid #5b2b33}
+  /* the Modbus variables dialog - the page's only modal */
+  .dtdlg{background:var(--card);color:var(--fg);border:1px solid var(--line);
+         border-radius:10px;padding:16px;min-width:520px}
+  .dtdlg::backdrop{background:rgba(0,0,0,.55)}
+  .dtrow{display:flex;align-items:center;gap:10px;margin:4px 0}
+  .dtrow>span{min-width:120px;color:var(--dim);font-size:12px}
+  .dtrow>select,.dtrow>input{flex:1}
   .msg.ok{background:#1e3328;color:var(--green);border:1px solid #2b5b3f}
   .msg.warn{background:#33290f;color:var(--amber);border:1px solid #57430f}
   .msg.note{background:#262b35;color:var(--dim);border:1px solid var(--line)}
@@ -588,6 +595,49 @@
   </div>
 
   <div class="card">
+    <h2>Modbus variables</h2>
+    <details class="help"><summary title="What a Modbus variable is, when to make one, and where it goes">help</summary>
+      <div class="helpbody">
+        A <b>Modbus variable</b> is a row of the datatype table — the same
+        <code>Modbus_Variables</code> sheet the Excel tool lets you unhide and edit. It
+        supplies the read and write function codes, the raw type and the word order, so
+        a point's <i>datatype</i> can only name one that exists.
+
+        <h4>When to make one</h4>
+        <ul>
+          <li><b>Only when no shipped key fits.</b> 135 come with the tool and cover
+            nearly everything; the datatype dropdown lists them all.</li>
+          <li>A new variable is a <b>new combination of parts already in service</b> —
+            clone the nearest key and change the one field that differs. The dialog
+            offers no free text for that reason: the driver understands the parts, not
+            the name (<code>docs/15</code>).</li>
+          <li>You cannot redefine a shipped key. Excel's <code>VLOOKUP</code> takes the
+            first match, so a second row of the same name would never take effect — it
+            would only make one name mean two things in two files.</li>
+        </ul>
+
+        <h4>Where it goes</h4>
+        <ul>
+          <li>Into <b>this project's file</b>, so it travels with the list and works in
+            the browser. It is not available to your other projects until you promote
+            it or copy it.</li>
+          <li><b>Export Excel writes it into the workbook</b>, so the macro can resolve
+            it. Nineteen rows fit; past that the export refuses rather than writing
+            where the macro cannot see it.</li>
+          <li><b>Promote</b> — local GUI only — appends it to
+            <code>data/tables/datatypes.csv</code> for every project on this machine. It
+            reaches other people through a commit, not through the project file.</li>
+        </ul>
+      </div>
+    </details>
+    <div id="datatypes"></div>
+    <div class="row" style="margin-top:8px">
+      <button id="btnAddDatatype"
+              title="Define a datatype this project needs and the shipped table does not have - cloned from the nearest existing one">+ variable</button>
+    </div>
+  </div>
+
+  <div class="card">
     <h2>Points <span class="chips" id="pointStats"></span>
       <span class="h2fill"></span>
       <input id="ptSearch" class="search tool" placeholder="search rows   Ctrl+F"
@@ -631,8 +681,9 @@
             imported SQL script can carry a spelling nothing describes: those rows are
             marked red the moment the list loads, Validate rejects them and
             <b>Export Excel refuses to write the workbook at all</b> — its macro derives
-            every generated column from that same table. Pick a real key, or add the row
-            to <code>data/tables/datatypes.csv</code> rather than inventing a spelling.</li>
+            every generated column from that same table. Pick a real key — or, when the
+            register genuinely needs a combination none of them describes, make one in
+            the <b>Modbus variables</b> card above and the project will carry it.</li>
           <li><b>addr</b> — the register number exactly as the device documentation
             prints it (strip a <code>4xxxx</code>/<code>3xxxxx</code> prefix:
             <span class="ex">40101 → 101</span>). The <i>subtract_one</i> option handles
@@ -1113,6 +1164,27 @@
 <datalist id="dlUnits"></datalist>
 <datalist id="dlGroups"></datalist>
 
+<dialog id="dtDialog" class="dtdlg">
+  <h3 id="dtTitle" style="margin:0 0 4px">New Modbus variable</h3>
+  <div class="sub" style="margin-bottom:10px">
+    Clone the nearest existing datatype and change what differs. Every field but the
+    name is a value the shipped table already uses, so the row stays a combination of
+    parts the driver understands.
+  </div>
+  <label class="dtrow"><span>clone from</span>
+    <select id="dtClone" title="Copies all nine fields from an existing datatype - shipped or this project's"></select></label>
+  <label class="dtrow"><span>name</span>
+    <input id="dtName" placeholder="Custom_Hold_U32_W" autocomplete="off"
+           title="Letters, digits and underscore. Must not be a name the shipped table already has - a project adds keys, it never redefines one"></label>
+  <div id="dtFields"></div>
+  <div class="sub" id="dtPreview" style="margin:8px 0"></div>
+  <div class="msg err" id="dtError" hidden></div>
+  <div class="row" style="justify-content:flex-end;margin-top:10px">
+    <button class="ghost" id="dtCancel">Cancel</button>
+    <button id="dtSave">Save variable</button>
+  </div>
+</dialog>
+
 <script>
 "use strict";
 let BOOT = null;          // bootstrap payload - null until init() has it; see the boot gate below
@@ -1151,7 +1223,7 @@ const OPT_HELP = {
    its cells can never drift apart. */
 const COL_HELP = {
   group:"Display group key - must exist in the Groups card. Also builds the key: element_id = <group>_<driver_id>",
-  datatype:"Register type, width and word order. Supplies the read/write function codes, raw type, swap, application class and parameter type. Has to be a key the datatype table describes - a spelling that arrives from an import without being in the table marks the row red and makes Export Excel refuse",
+  datatype:"Register type, width and word order. Supplies the read/write function codes, raw type, swap, application class and parameter type. Has to be a key the datatype table describes - a spelling that arrives from an import without being in the table marks the row red and makes Export Excel refuse. If no shipped key fits, make one in the Modbus variables card",
   addr:"Register number exactly as the documentation prints it - subtract_one handles 1-based docs. Gives driver_id = 0_<readfunc>_<addr>",
   bit:"Bit 0-31 inside the word, or nibble syntax 5#4. Needs a Bit_* datatype; the motherword row is synthesized for you",
   system_no:"Alias part 1: the plant system number, e.g. 360.001. Switched off wholesale by use_system_no",
@@ -1189,7 +1261,7 @@ const COL_DOC = {
   },
   datatype:{
     what:"The register's type, width and word order, chosen from the datatype table. The most consequential column on the row.",
-    use:"It supplies the read and write function codes, the raw type, the byte and word swap, the application class and the parameter type - so it decides how the register is read and how the bits are interpreted. Only a key the table describes can do that: the dropdown offers no others, and a spelling that arrives with a loaded project, a converted workbook or an imported SQL script marks its rows red on load, fails Validate and makes Export Excel refuse the workbook outright. Add the row to data/tables/datatypes.csv rather than inventing a key.",
+    use:"It supplies the read and write function codes, the raw type, the byte and word swap, the application class and the parameter type - so it decides how the register is read and how the bits are interpreted. Only a key the table describes can do that: the dropdown offers no others, and a spelling that arrives with a loaded project, a converted workbook or an imported SQL script marks its rows red on load, fails Validate and makes Export Excel refuse the workbook outright. When a register genuinely needs a combination no shipped key describes, make it in the Modbus variables card - clone the nearest key, change what differs - and the project carries the row with it. That is a last resort, not a shortcut past a key you have not found yet.",
     when:"On every row, matched to what the vendor's register table says: `A_Hold_I16_N` analog holding register, `A_Input_I16_N` analog input register, `I_Hold_U16_N` plain integer or counter, `Digital_X_N` discrete input, `Coil_X_N` coil, `Bit_Hold` / `Bit_Input` for one bit inside a word, and the `_I32` / `_U32` / `_F` variants for 32-bit values. Word order has three forms - `_N` normal, `_W` word-swapped, `_R` reversed - and all three are in the table. Reach for one other than `_N` only where the document states it, as energy meters often do: a wrong word order still reads and still produces numbers, which is why it has to come from the document or from a live read rather than from a trial. A useful tell that a block is 32-bit at all: its register numbers step 0, 2, 4, 6 rather than by one.",
   },
   addr:{
@@ -1893,17 +1965,25 @@ function hydrateSelect(s) {
   }
   return s;
 }
+const DT_NEW = "➕ new variable…";   // a sentinel value, never a datatype name
 function dtFill(s) {
   requireBoot();                       // runs on first touch, long after boot - still gated
   const names = BOOT.datatypes.map(d => d.name);
   const common = DT_COMMON.filter(n => names.includes(n));
   s.append(el("option",{value:""},""));
+  const mine = Object.keys(dtProject);
+  if (mine.length) {                   // this project's own rows, first and labelled
+    const og0 = el("optgroup",{label:"this project"});
+    for (const n of mine) og0.append(el("option",{value:n}, n));
+    s.append(og0);
+  }
   const og1 = el("optgroup",{label:"common"});
   for (const n of common) og1.append(el("option",{value:n}, n));
   s.append(og1);
   const og2 = el("optgroup",{label:"all"});
   for (const n of names) if (!common.includes(n)) og2.append(el("option",{value:n}, n));
   s.append(og2);
+  s.append(el("option",{value:DT_NEW}, DT_NEW));
 }
 function dtSelect(value) {
   requireBoot();                       // every point row needs the datatype list
@@ -2665,6 +2745,7 @@ function collectProject() {
     system: collectSystem(),
     groups: collectGroups(),
     statetexts: collectStates(),
+    datatypes: collectDatatypes(),
     points: ptModel.map(ptOut),   // project order, never the sorted view
   };
 }
@@ -2681,6 +2762,15 @@ function showProject(data) {
   $("statetexts").replaceChildren();
   for (const [id, states] of Object.entries(data.statetexts || {}))
     addStateRow(id, states);
+  /* The project's own datatypes are read before its points, so dtKnown() is right by
+     the time the points load and none of them is wrongly marked. The card itself is
+     rendered further down, after ptSetModel: it counts the points using each variable,
+     and up here ptModel still holds the project being replaced. */
+  dtProject = {};
+  for (const [name, row] of Object.entries(data.datatypes || {}))
+    dtProject[String(name)] = Object.fromEntries(
+      DT_FIELDS.map(f => [f, String((row || {})[f] ?? "")]));
+  dtInvalidateKnown();
   ptSort = {col:null, dir:null};
   ptFilters.clear();
   $("valStatus").hidden = true;
@@ -2691,6 +2781,7 @@ function showProject(data) {
   const wrap = ptWrap();
   if (wrap) wrap.scrollTop = 0;          // a new project starts at its first point
   renumber();
+  renderDatatypeCard();                  // now that ptModel is this project's points
   // every load path comes through here, so one call covers file, JSON, SQL, workbook,
   // autosave restore and the #file-name link
   const unknown = ptMarkUnknownDatatypes();
@@ -2706,7 +2797,13 @@ const FIX_ADVICE = [
   [/datatype missing/,
    "Choose a datatype. It supplies the read and write function codes, so nothing else about the row can be derived until it is set."],
   [/datatype '.*' not in .*datatypes\.csv/,
-   "That datatype key does not exist. Pick one from the dropdown, or add the row to data/tables/datatypes.csv rather than inventing a spelling."],
+   "That datatype key does not exist. Pick one from the dropdown, or - if the register genuinely needs a combination no shipped key describes - make it in the Modbus variables card and the project will carry it."],
+  [/datatypes\..*already in data\/tables\/datatypes\.csv/,
+   "Rename the variable. The shipped table wins: Excel's VLOOKUP takes the first match, so a project row of the same name would never take effect - it would only make one name mean two things in two files."],
+  [/datatypes\..*letters, digits and underscore/,
+   "Rename the variable using letters, digits and underscore only. The key travels into Work column D, a CSV column and a VLOOKUP, and a space or a slash breaks one of the three."],
+  [/datatypes\..*differs only in case/,
+   "Rename one of the two. Datatype lookups fold case, here and in Excel, so two names differing only in case are one name with two definitions."],
   [/group missing/,
    "Give the row a group, or switch on auto_groups in the Project card to fill it from the datatype's default group."],
   [/bit \d+ is outside the \d+-bit motherword/,
@@ -2857,11 +2954,29 @@ function renderAdvice(errors, pointRows) {
    what supplies the read and write function codes, so a key that is not in it cannot
    produce a list, only a broken one. `validate.py` remains the diagnosis of record;
    this is the same question asked earlier, against the same table the backend uses. */
+/* The project's own datatype rows - the Modbus variables card. Name -> the nine
+   columns of Modbus_Variables Z:AI. A shipped key is never in here: a project adds
+   keys and never redefines one, which validate.py enforces and the dialog refuses. */
+let dtProject = {};
+const DT_FIELDS = ["read_func","write_func","raw_type","read_swap","write_swap",
+                   "application","parameter_type","rw_hint","default_group"];
+function collectDatatypes() { return dtProject; }
+function dtInvalidateKnown() { _dtKnown = null; }
+function dtUsageCount(name) {
+  const key = String(name).toLowerCase();
+  return ptModel.filter(p => String(p.datatype || "").toLowerCase() === key).length;
+}
+function dtAllRows() {                  // shipped plus this project's, for the pickers
+  requireBoot();
+  return [...BOOT.datatypes,
+          ...Object.entries(dtProject).map(([name, row]) => ({name, ...row}))];
+}
 let _dtKnown = null;
 function dtKnown() {
   if (!_dtKnown) {
     requireBoot();
-    _dtKnown = new Set(BOOT.datatypes.map(d => String(d.name).toLowerCase()));
+    _dtKnown = new Set([...BOOT.datatypes.map(d => String(d.name).toLowerCase()),
+                        ...Object.keys(dtProject).map(n => n.toLowerCase())]);
   }
   return _dtKnown;                      // lookups are case-insensitive, as in tables.py
 }
@@ -2888,6 +3003,153 @@ function ptMarkUnknownDatatypes() {
   if (map.size) { applyPointView(); updateStats(); }
   return map;
 }
+/* ---------- the Modbus variables card ---------- */
+function renderDatatypeCard() {
+  requireBoot();                        // reads BOOT.datatypes and BOOT.writable_tables
+  const box = $("datatypes");
+  const names = Object.keys(dtProject);
+  if (!names.length) {
+    box.replaceChildren(el("div",{class:"sub"},
+      "None. The 135 shipped datatypes need nothing here - add one only when no key " +
+      "in the datatype dropdown fits the register you are describing."));
+    return;
+  }
+  const shipped = new Set(BOOT.datatypes.map(d => String(d.name).toLowerCase()));
+  box.replaceChildren(...names.map(name => {
+    const row = dtProject[name], used = dtUsageCount(name);
+    return el("div",{class:"grp-row"},
+      el("code",{style:"min-width:190px"}, name),
+      el("span",{class:"sub", style:"flex:1"},
+        `${row.read_func}/${row.write_func || "-"} · ${row.raw_type} · ` +
+        `${row.read_swap}/${row.write_swap} · ${row.application} · ` +
+        `${row.parameter_type} · ${row.default_group} · ${used} point(s)` +
+        (shipped.has(name.toLowerCase()) ? " · also in the shared table" : "")),
+      ...(BOOT.writable_tables && !shipped.has(name.toLowerCase())
+          ? [el("button",{class:"ghost rowbtn",
+              title:"Append this row to data/tables/datatypes.csv, for every project on this machine. Other people get it when that file is committed",
+              onclick:() => dtPromote(name)}, "promote")] : []),
+      el("button",{class:"ghost rowbtn", title:"Edit this variable",
+                   onclick:() => dtDialogOpen({name})}, "edit"),
+      el("button",{class:"ghost rowbtn", title:"Delete this variable",
+                   onclick:() => dtDelete(name)}, "✕"));
+  }));
+}
+function dtDelete(name) {
+  const used = dtUsageCount(name);
+  if (used) {
+    showError(new Error(
+      `${used} point(s) still use ${name}. Change them first - deleting the variable ` +
+      `would leave a datatype nothing describes, which Validate rejects and Export ` +
+      `Excel refuses.`));
+    return;
+  }
+  delete dtProject[name];
+  dtInvalidateKnown(); renderDatatypeCard(); markValStale(); queueAutosave();
+}
+async function dtPromote(name) {
+  requireBoot();                        // the reply replaces BOOT.datatypes
+  try {
+    const res = await api("/api/datatype-promote", {row: {name, ...dtProject[name]}});
+    if (res.error) throw new Error(res.error);
+    BOOT.datatypes = res.datatypes;
+    dtInvalidateKnown(); renderDatatypeCard();
+    $("out").replaceChildren(el("div",{class:"msg ok"},
+      `✓ ${name} appended to data/tables/datatypes.csv. Every project on this machine ` +
+      `can use it now; other people get it when that file is committed. It stays in ` +
+      `this project too, which is harmless and keeps the file working elsewhere.`));
+  } catch (e) { showError(e); }
+}
+
+/* ---------- the clone-from-existing dialog ----------
+   One dialog, reused. It is handed the point object and never the <tr>: #points is a
+   recycled pool and the row that opened it may be showing somebody else by the time it
+   closes (CLAUDE.md, "The points table is a recycled pool"). */
+let dtDialogTarget = {name:null, point:null};
+function dtVocabulary(field) {
+  return [...new Set(dtAllRows().map(d => String(d[field] ?? "")))]
+    .sort((a, b) => a.localeCompare(b));
+}
+function dtDialogFields(row) {
+  $("dtFields").replaceChildren(...DT_FIELDS.map(f =>
+    el("label",{class:"dtrow"},
+      el("span",{}, f),
+      el("select",{class:"dtf", "data-field":f, onchange:dtDialogPreview},
+        ...dtVocabulary(f).map(v => {
+          const o = el("option",{value:v}, v === "" ? "(empty)" : v);
+          if (v === String(row[f] ?? "")) o.selected = true;
+          return o;
+        })))));
+}
+function dtDialogRow() {
+  const row = {};
+  for (const s of $("dtFields").querySelectorAll(".dtf")) row[s.dataset.field] = s.value;
+  return row;
+}
+function dtDialogPreview() {
+  const r = dtDialogRow();
+  $("dtPreview").textContent =
+    `${$("dtName").value.trim() || "(name)"} · reads with function ${r.read_func} · ` +
+    `writes with ${r.write_func || "nothing"} · the driver is told raw type and word ` +
+    `order ${r.raw_type}_${r.read_swap}`;
+}
+function dtDialogOpen(opts = {}) {
+  requireBoot();
+  dtDialogTarget = {name: opts.name || null, point: opts.point || null};
+  const rows = dtAllRows();
+  const start = opts.name ? {name: opts.name, ...dtProject[opts.name]}
+                          : (rows.find(d => d.name === "A_Hold_I16_N") || rows[0]);
+  $("dtTitle").textContent = opts.name ? `Edit ${opts.name}` : "New Modbus variable";
+  $("dtClone").replaceChildren(...rows.map(d => {
+    const o = el("option",{value:d.name}, d.name);
+    if (d.name === start.name) o.selected = true;
+    return o;
+  }));
+  $("dtName").value = opts.name || "";
+  dtDialogFields(start);
+  dtDialogPreview();
+  $("dtError").hidden = true;
+  $("dtDialog").showModal();
+  $("dtName").focus();
+}
+$("dtClone").onchange = () => {
+  const picked = dtAllRows().find(d => d.name === $("dtClone").value);
+  if (picked) { dtDialogFields(picked); dtDialogPreview(); }
+};
+$("dtName").oninput = dtDialogPreview;
+$("dtCancel").onclick = () => $("dtDialog").close();
+$("dtSave").onclick = () => {
+  const name = $("dtName").value.trim();
+  const fail = m => { $("dtError").textContent = m; $("dtError").hidden = false; };
+  if (!/^[A-Za-z0-9_]+$/.test(name))
+    return fail("A datatype name takes letters, digits and underscore only.");
+  const shipped = BOOT.datatypes.some(d => d.name.toLowerCase() === name.toLowerCase());
+  if (shipped)
+    return fail(`${name} is already a shipped datatype. Pick it from the dropdown, or `
+                + `name this one differently - a project adds keys, it never redefines `
+                + `one, and Excel's VLOOKUP would take the shipped row anyway.`);
+  const clash = Object.keys(dtProject).some(
+    n => n.toLowerCase() === name.toLowerCase() && n !== dtDialogTarget.name);
+  if (clash) return fail(`This project already defines ${name}.`);
+
+  if (dtDialogTarget.name && dtDialogTarget.name !== name) {
+    // a rename has to follow the points using the old name, or they lose their datatype
+    for (const p of ptModel)
+      if (String(p.datatype).toLowerCase() === dtDialogTarget.name.toLowerCase())
+        p.datatype = name;
+    delete dtProject[dtDialogTarget.name];
+  }
+  dtProject[name] = dtDialogRow();
+  dtInvalidateKnown();
+  if (dtDialogTarget.point) dtDialogTarget.point.datatype = name;
+  renderDatatypeCard();
+  ptMarkUnknownDatatypes();
+  applyPointView();
+  markValStale();
+  queueAutosave();
+  $("dtDialog").close();
+};
+$("btnAddDatatype").onclick = () => dtDialogOpen();
+
 function dtUnknownMsgs(map) {           // spread into a message list; empty when clean
   if (!map.size) return [];
   return [el("div",{class:"msg warn"},
@@ -3281,7 +3543,18 @@ function ptOnFieldEdit(e) {
   if (!p) return;
   const cls = [...f.classList].find(c => c.startsWith("p-"));
   if (!cls) return;
+  /* the datatype dropdown's last entry is not a datatype: it opens the variable
+     dialog for this point. Put the select back to what the point says first - the
+     dialog may be cancelled, and the sentinel must never reach the model. */
+  if (cls === "p-datatype" && f.value === DT_NEW) {
+    ptSetSel(f, p.datatype || "");
+    dtDialogOpen({point: p});
+    return;
+  }
   ptWriteField(p, cls.slice(2), f.type === "checkbox" ? f.checked : f.value);
+  // the card counts the points using each variable, so that number moves with this
+  // edit. Only when the project has variables at all - a select fires once per pick
+  if (cls === "p-datatype" && Object.keys(dtProject).length) renderDatatypeCard();
 }
 $("points").addEventListener("input", ptOnFieldEdit);
 $("points").addEventListener("change", ptOnFieldEdit);
@@ -4078,6 +4351,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=7490c78ec6"></script>
+<script src="pyodide-adapter.js?v=833fcff411"></script>
 </body>
 </html>
