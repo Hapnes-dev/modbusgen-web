@@ -3259,12 +3259,25 @@ function showResult(res, sqlWanted) {
   setValStatus(res);
   const out = $("out");
   out.replaceChildren();
-  const warns = (res.notes || []).filter(n => n.startsWith("warning:"));
+  /* Warnings arrive structurally now - code, message and advice - rather than as
+     notes told apart by a "warning:" prefix. Each one says what it costs to ignore,
+     because a warning nobody can act on is what gets the next one ignored too. The
+     fallback keeps an older cached adapter working, where notes were all there was. */
+  const warns = res.warnings
+    || (res.notes || []).filter(n => n.startsWith("warning:"))
+                        .map(n => ({message: n, advice: "", code: ""}));
   const infos = (res.notes || []).filter(n => !n.startsWith("warning:"));
   if (infos.length) out.append(el("div",{class:"msg note"}, infos.join("\n")));
-  if (warns.length)
-    out.append(el("div",{class:"msg warn"},
-      warns.map(w => w.replace(/^warning:\s*/, "⚠ ")).join("\n")));
+  if (warns.length) {
+    const box = el("div",{class:"msg warn"});
+    for (const w of warns) {
+      box.append(el("div",{style:"margin-top:4px"},
+        "⚠ " + String(w.message || "").replace(/^warning:\s*/, "")));
+      if (w.advice)
+        box.append(el("div",{class:"where", style:"margin:2px 0 0 14px"}, w.advice));
+    }
+    out.append(box);
+  }
   if (res.errors && res.errors.length) {
     out.append(el("div",{class:"msg err"},
       res.errors.map(e => "✕ " + e).join("\n")));
@@ -4388,6 +4401,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=933512ae25"></script>
+<script src="pyodide-adapter.js?v=2e4107ea9f"></script>
 </body>
 </html>
