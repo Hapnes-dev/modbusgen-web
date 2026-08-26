@@ -12,7 +12,7 @@
   "properties": {
     "$schema": {
       "type": "string",
-      "description": "Optional editor metadata - point it at this file for inline validation. Ignored by the tool."
+      "description": "Optional editor metadata - point it at this contract for inline validation; ignored by the tool. Use the published copy https://hapnes-dev.github.io/modbusgen-web/project.schema.json in files that travel, or ../schema/project.schema.json for files inside the repository. Convention: any field absent from the file is at its documented default."
     },
     "table": {
       "type": "string",
