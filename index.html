@@ -348,7 +348,7 @@
   <button id="btnExport" class="ghost"
           title="Download the project as a file to continue later. Named plant_table_dd.mm.yyyy_HH.MM - e.g. 10225_spar_hansnes_vent_25.08.2026_14.32.json. Put a .yaml in the name box to get YAML instead">Export</button>
   <button id="btnXlsm" class="ghost"
-          title="Download this project as a filled Modbustemplate workbook (.xlsm), for anyone still working in the old Excel tool. Open it and run the workbook's macro to regenerate its output columns">Export Excel</button>
+          title="Download this project as a filled Modbustemplate workbook (.xlsm), for anyone still working in the old Excel tool. It carries the INAS Modbus tab and macros of the template - open it, unblock it if Windows says it came from the internet, and hit Run Application to fill the generated columns">Export Excel</button>
   <button id="btnDelete" class="ghost" disabled
           title="Select a project saved in this browser to delete it">Delete</button>
   <span style="flex:1"></span>
@@ -3712,8 +3712,11 @@ $("btnXlsm").onclick = async () => {
                   "application/vnd.ms-excel.sheet.macroEnabled.12");
     $("out").replaceChildren(
       el("div",{class:"msg ok"},
-        `✓ Exported ${name} - open it and run the workbook's macro to fill `
-        + `its generated columns.`),
+        `✓ Exported ${name} - the template's macros and its INAS Modbus tab come `
+        + `with it. Open the file and hit Run Application to fill the generated `
+        + `columns. A workbook downloaded from a browser is marked as coming from `
+        + `the internet, and Excel blocks macros in such a file until you either `
+        + `right-click it → Properties → Unblock, or keep it in a Trusted Location.`),
       ...(res.notes || []).map(n => el("div",{class:"msg note"}, n)));
     btnFlash(btn, "exported ✓", "ok");
   } catch (e) { btnFlash(btn, "export failed", "bad", 2600); showError(e); }
@@ -3990,6 +3993,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=6779a90113"></script>
+<script src="pyodide-adapter.js?v=7ec3150acd"></script>
 </body>
 </html>
