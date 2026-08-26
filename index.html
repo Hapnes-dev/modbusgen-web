@@ -626,7 +626,13 @@
             <code>Bit_Hold</code>/<code>Bit_Input</code> one bit inside a word ·
             <code>…_I32/U32/F</code> for 32-bit values. If the doc says the word order is
             reversed (LSW first — energy meters often do), use the <code>_W</code> or <code>_R</code>
-            variants.</li>
+            variants. <b>The key has to exist in the datatype table.</b> The dropdown
+            only offers keys that do, but a loaded project, a converted workbook or an
+            imported SQL script can carry a spelling nothing describes: those rows are
+            marked red the moment the list loads, Validate rejects them and
+            <b>Export Excel refuses to write the workbook at all</b> — its macro derives
+            every generated column from that same table. Pick a real key, or add the row
+            to <code>data/tables/datatypes.csv</code> rather than inventing a spelling.</li>
           <li><b>addr</b> — the register number exactly as the device documentation
             prints it (strip a <code>4xxxx</code>/<code>3xxxxx</code> prefix:
             <span class="ex">40101 → 101</span>). The <i>subtract_one</i> option handles
@@ -1145,7 +1151,7 @@ const OPT_HELP = {
    its cells can never drift apart. */
 const COL_HELP = {
   group:"Display group key - must exist in the Groups card. Also builds the key: element_id = <group>_<driver_id>",
-  datatype:"Register type, width and word order. Supplies the read/write function codes, raw type, swap, application class and parameter type",
+  datatype:"Register type, width and word order. Supplies the read/write function codes, raw type, swap, application class and parameter type. Has to be a key the datatype table describes - a spelling that arrives from an import without being in the table marks the row red and makes Export Excel refuse",
   addr:"Register number exactly as the documentation prints it - subtract_one handles 1-based docs. Gives driver_id = 0_<readfunc>_<addr>",
   bit:"Bit 0-31 inside the word, or nibble syntax 5#4. Needs a Bit_* datatype; the motherword row is synthesized for you",
   system_no:"Alias part 1: the plant system number, e.g. 360.001. Switched off wholesale by use_system_no",
@@ -1183,7 +1189,7 @@ const COL_DOC = {
   },
   datatype:{
     what:"The register's type, width and word order, chosen from the datatype table. The most consequential column on the row.",
-    use:"It supplies the read and write function codes, the raw type, the byte and word swap, the application class and the parameter type - so it decides how the register is read and how the bits are interpreted.",
+    use:"It supplies the read and write function codes, the raw type, the byte and word swap, the application class and the parameter type - so it decides how the register is read and how the bits are interpreted. Only a key the table describes can do that: the dropdown offers no others, and a spelling that arrives with a loaded project, a converted workbook or an imported SQL script marks its rows red on load, fails Validate and makes Export Excel refuse the workbook outright. Add the row to data/tables/datatypes.csv rather than inventing a key.",
     when:"On every row, matched to what the vendor's register table says: `A_Hold_I16_N` analog holding register, `A_Input_I16_N` analog input register, `I_Hold_U16_N` plain integer or counter, `Digital_X_N` discrete input, `Coil_X_N` coil, `Bit_Hold` / `Bit_Input` for one bit inside a word, and the `_I32` / `_U32` / `_F` variants for 32-bit values. Word order has three forms - `_N` normal, `_W` word-swapped, `_R` reversed - and all three are in the table. Reach for one other than `_N` only where the document states it, as energy meters often do: a wrong word order still reads and still produces numbers, which is why it has to come from the document or from a live read rather than from a trial. A useful tell that a block is 32-bit at all: its register numbers step 0, 2, 4, 6 rather than by one.",
   },
   addr:{
@@ -2685,6 +2691,10 @@ function showProject(data) {
   const wrap = ptWrap();
   if (wrap) wrap.scrollTop = 0;          // a new project starts at its first point
   renumber();
+  // every load path comes through here, so one call covers file, JSON, SQL, workbook,
+  // autosave restore and the #file-name link
+  const unknown = ptMarkUnknownDatatypes();
+  if (unknown.size) $("out").replaceChildren(...dtUnknownMsgs(unknown));
 }
 
 /* ---------- output ---------- */
@@ -2831,6 +2841,59 @@ function renderAdvice(errors, pointRows) {
     box.append(el("div",{style:"margin-top:6px",class:"where"},
       `${unmatched.length} other error(s) above have no stock advice — read the message itself.`));
   return box;
+}
+
+/* ---------- a datatype the tables do not describe ----------
+   The column is a dropdown, so this is not about what you can type - it is about what
+   arrives. A loaded JSON, a converted workbook and an imported SQL script all bring
+   their own spellings, and a select cannot show a value it does not list, so the page
+   keeps the incoming one as an extra option rather than dropping it (hydrateSelect,
+   ptSetSel). That is the right call for not losing data and the wrong one for noticing:
+   the row then looks exactly like a good row until something checks.
+
+   Nothing described the datatype and nothing said so until Validate was pressed. Now
+   the check runs the moment a project is loaded, marks the rows in the same red the
+   validator uses, and Export Excel refuses outright - `data/tables/datatypes.csv` is
+   what supplies the read and write function codes, so a key that is not in it cannot
+   produce a list, only a broken one. `validate.py` remains the diagnosis of record;
+   this is the same question asked earlier, against the same table the backend uses. */
+let _dtKnown = null;
+function dtKnown() {
+  if (!_dtKnown) {
+    requireBoot();
+    _dtKnown = new Set(BOOT.datatypes.map(d => String(d.name).toLowerCase()));
+  }
+  return _dtKnown;                      // lookups are case-insensitive, as in tables.py
+}
+function ptUnknownDatatypes(points = ptModel) {
+  const known = dtKnown(), found = new Map();
+  for (const p of points) {
+    const name = p.datatype == null ? "" : String(p.datatype).trim();
+    // an empty datatype is `datatype missing`, a different error with a different fix
+    if (!name || known.has(name.toLowerCase())) continue;
+    if (!found.has(name)) found.set(name, []);
+    found.get(name).push(p);
+  }
+  return found;
+}
+function dtUnknownSummary(map) {
+  return [...map].map(([name, ps]) =>
+    `'${name}' on ${ps.length} row(s), first row ${ps[0]._seq + 1}`).join("; ");
+}
+/* Marks live on the point, not the row, so a sorted view and the recycled pool both
+   keep them; the next Validate re-marks whatever is still wrong. */
+function ptMarkUnknownDatatypes() {
+  const map = ptUnknownDatatypes();
+  for (const ps of map.values()) for (const p of ps) ptBad.add(p);
+  if (map.size) { applyPointView(); updateStats(); }
+  return map;
+}
+function dtUnknownMsgs(map) {           // spread into a message list; empty when clean
+  if (!map.size) return [];
+  return [el("div",{class:"msg warn"},
+    `⚠ ${dtUnknownSummary(map)} - not in the datatype table. Those rows are marked `
+    + `red. Validation rejects the list and Export Excel refuses it: pick a key from `
+    + `the datatype dropdown, or add the row to data/tables/datatypes.csv.`)];
 }
 
 /* ---------- mark the points validation rejected ----------
@@ -3416,8 +3479,11 @@ $("jsonFile").onchange = async e => {
       : JSON.parse(text);
     showProject(data);
     $("fileName").value = file.name;
+    // the SQL and workbook importers report their own unknown datatypes from the
+    // backend; a hand-written or hand-edited JSON has nobody to do that for it
     $("out").replaceChildren(el("div",{class:"msg note"},
-      `Imported ${file.name} - review, then Validate and Save/Export.`));
+      `Imported ${file.name} - review, then Validate and Save/Export.`),
+      ...dtUnknownMsgs(ptUnknownDatatypes()));
     queueAutosave();
   } catch (err) { showError(new Error(`could not import ${file.name}: ${err.message}`)); }
   e.target.value = "";
@@ -3508,8 +3574,11 @@ $("btnExport").onclick = async () => {
     } else {
       downloadTextFile(name, JSON.stringify(collectProject(), null, 2) + "\n");
     }
+    // Export is the save-your-work button, so an undescribed datatype is said, not
+    // blocked - the file is the record of where you got to, warts included
     $("out").replaceChildren(el("div",{class:"msg ok"},
-      `✓ Exported ${name} - import it later to continue where you left off.`));
+      `✓ Exported ${name} - import it later to continue where you left off.`),
+      ...dtUnknownMsgs(ptMarkUnknownDatatypes()));
     btnFlash(btn, "exported ✓", "ok");
   } catch (e) { btnFlash(btn, "export failed", "bad", 2600); showError(e); }
 };
@@ -3677,6 +3746,7 @@ function ptImportPoints(data, label) {
     `${clashes} imported point(s) repeat a datatype and address already in this list, ` +
     `which is the same driver id twice - Validate will reject it. Change the address, ` +
     `or delete whichever copy is wrong.`));
+  out.push(...dtUnknownMsgs(ptMarkUnknownDatatypes()));
   out.push(el("div", {class: "msg note"},
     "Ctrl+Z removes the imported points again. Any group or state-text list the " +
     "import created stays - an unused one is harmless, but delete it if you undo."));
@@ -3703,6 +3773,21 @@ $("ptImportFile").onchange = async e => {
    sit busy for a while the first time. */
 $("btnXlsm").onclick = async () => {
   const btn = $("btnXlsm");
+  /* Refused here as well as in the backend, which is the real gate and the one the
+     CLI shares. Asking first saves the browser build a 640 KB template fetch and an
+     openpyxl install to be told no, and puts the marks on the rows before the
+     message names them. */
+  const unknown = ptMarkUnknownDatatypes();
+  if (unknown.size) {
+    $("out").replaceChildren(el("div",{class:"msg err"},
+      `✕ Export Excel refused: ${dtUnknownSummary(unknown)} - not in the datatype `
+      + `table. The workbook's macro derives every generated column from that table, `
+      + `so a spelling nothing describes produces a broken list rather than an error. `
+      + `Pick a key from the datatype dropdown, or add the row to `
+      + `data/tables/datatypes.csv first. The rows are marked red.`));
+    btnFlash(btn, "export refused", "bad", 2600);
+    return;
+  }
   btnBusy(btn, "building…");
   try {
     const res = await api("/api/xlsm", {project: collectProject()});
@@ -3993,6 +4078,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=7ec3150acd"></script>
+<script src="pyodide-adapter.js?v=7490c78ec6"></script>
 </body>
 </html>
