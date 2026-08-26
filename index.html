@@ -1180,11 +1180,14 @@
     <input id="dtName" placeholder="Custom_Hold_U32_W" autocomplete="off"
            title="Letters, digits and underscore. Must not be a name the shipped table already has - a project adds keys, it never redefines one"></label>
   <div id="dtFields"></div>
-  <div class="sub" id="dtPreview" style="margin:8px 0"></div>
+  <div class="sub" id="dtPreview" style="margin:8px 0"
+       title="The row read back in plain words, including the raw type and word order the driver is actually told - check this line rather than the dropdowns before saving"></div>
   <div class="msg err" id="dtError" hidden></div>
   <div class="row" style="justify-content:flex-end;margin-top:10px">
-    <button class="ghost" id="dtCancel">Cancel</button>
-    <button id="dtSave">Save variable</button>
+    <button class="ghost" id="dtCancel"
+            title="Close without saving. Nothing is added to the project, and a point row that opened this dialog keeps the datatype it had">Cancel</button>
+    <button id="dtSave"
+            title="Add the variable to this project. It travels in the project file, Export Excel writes it into the workbook, and the local GUI can promote it into the shared table">Save variable</button>
   </div>
 </dialog>
 
@@ -2963,6 +2966,50 @@ function renderAdvice(errors, pointRows) {
 let dtProject = {};
 const DT_FIELDS = ["read_func","write_func","raw_type","read_swap","write_swap",
                    "application","parameter_type","rw_hint","default_group"];
+/* One line per column of Modbus_Variables Z:AI, said in terms of what it does to the
+   point rather than what it is called. Two of the nine are the ones people get wrong -
+   the swaps, which are exclusive and driver-dependent, and rw_hint, which looks like an
+   access control and is read by nothing. A test asserts every field has an entry. */
+const DT_FIELD_HELP = {
+  read_func:
+    "Modbus read function: 1 read coils, 2 read discrete inputs, 3 read holding "
+    + "registers, 4 read input registers, 0 virtual (no register at all). This is the "
+    + "middle part of the point's driver_id - 0_<read_func>_<address>.",
+  write_func:
+    "Modbus write function: 5 write single coil, 6 write single register, 16 write "
+    + "multiple registers, empty for a read-only type. A 32-bit value needs 16, because "
+    + "6 writes one 16-bit register and cannot carry it - and the modbus.php driver "
+    + "cannot do 16 at all, so ask which driver the plant runs.",
+  raw_type:
+    "What the driver casts the registers to, which also decides how many it reads: X "
+    + "one bit · I16/U16 one register · I32/U32/F two · D, I64I32 and U64U32 four · CLK "
+    + "one register shown as HH:MM or MM:SS · STR4/STR8 a real string. I64I32 and "
+    + "U64U32 truncate to 32 bits on save.",
+  read_swap:
+    "Byte and word order when reading: N normal · R swap bytes · W swap words. Never "
+    + "both - a datatype swaps one or the other. Use anything but N only where the "
+    + "device document says so, since a wrong order still returns plausible numbers, "
+    + "and W needs the mb.exe driver: modbus.php supports N only.",
+  write_swap:
+    "The same for writes, and normally the same value as read_swap. A device that "
+    + "delivers words in one order accepts them in that order too.",
+  application:
+    "Which family IWMAC files the point under: Digital IO · Analog values · Integral "
+    + "values · String values. It affects how the value is presented and grouped, not "
+    + "how the register is decoded.",
+  parameter_type:
+    "How the value is stored and shown once decoded: boolean, float, integer or "
+    + "string. Pair it with the raw type - a counter is integer, a scaled measurement "
+    + "float.",
+  rw_hint:
+    "Informational only: what this type is capable of. Neither Excel nor modbusgen "
+    + "reads it, and it grants nothing - a point's own rw column decides whether it can "
+    + "be written.",
+  default_group:
+    "The group auto_groups puts a point in when it uses this datatype and names no "
+    + "group of its own: aio for analog values, dio for digital. Ignored while "
+    + "auto_groups is off, which is the default.",
+};
 function collectDatatypes() { return dtProject; }
 function dtInvalidateKnown() { _dtKnown = null; }
 function dtUsageCount(name) {
@@ -3073,10 +3120,12 @@ function dtVocabulary(field) {
     .sort((a, b) => a.localeCompare(b));
 }
 function dtDialogFields(row) {
+  // the help hangs off the whole row, so the label and the control both answer a hover
   $("dtFields").replaceChildren(...DT_FIELDS.map(f =>
-    el("label",{class:"dtrow"},
+    el("label",{class:"dtrow", title:DT_FIELD_HELP[f] || f},
       el("span",{}, f),
-      el("select",{class:"dtf", "data-field":f, onchange:dtDialogPreview},
+      el("select",{class:"dtf", "data-field":f, onchange:dtDialogPreview,
+                   title:DT_FIELD_HELP[f] || f},
         ...dtVocabulary(f).map(v => {
           const o = el("option",{value:v}, v === "" ? "(empty)" : v);
           if (v === String(row[f] ?? "")) o.selected = true;
