@@ -44,7 +44,7 @@ window.PYODIDE_READY = (async () => {
   _overlay("Loading YAML support…");
   await py.loadPackage("pyyaml");
   _overlay("Loading modbusgen…");
-  const buf = await (await fetch("modbusgen-src.zip?v=5a8d35ec3b")).arrayBuffer();
+  const buf = await (await fetch("modbusgen-src.zip?v=c78cf93e52")).arrayBuffer();
   py.unpackArchive(buf, "zip");
   py.runPython("import sys; sys.path.insert(0, 'src')");
   const glue = py.pyimport("modbusgen.webapi");
@@ -146,6 +146,8 @@ window.PYODIDE_API = async (path, body) => {
     if (res.error) throw new Error(res.error);
     return res;
   }
+  if (path === "/api/canonical")
+    return JSON.parse(glue.canonical_json(JSON.stringify(body.project)));
   if (path === "/api/yaml")
     return { text: glue.yaml_text(JSON.stringify(body.project)) };
   if (path === "/api/xlsm") {

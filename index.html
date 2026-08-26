@@ -3989,6 +3989,18 @@ function downloadBytes(name, b64, type = "text/plain") {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
+/* The canonical, self-describing form of a project for download: same pruning as the
+   YAML path, unknown keys dropped, $schema first with the published URL - so the file
+   names its own contract to any editor or AI agent that receives it cold. Falls back
+   to the raw form rather than failing: Export is the save-your-work button, and a dead
+   backend must never cost the work. */
+async function canonicalJson(proj) {
+  try {
+    const res = await api("/api/canonical", {project: proj});
+    if (res && res.project) return JSON.stringify(res.project, null, 2) + "\n";
+  } catch (e) { /* fall through to the raw form */ }
+  return JSON.stringify(proj, null, 2) + "\n";
+}
 function downloadTextFile(name, text) {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([text], {type:"text/plain;charset=utf-8"}));
@@ -4008,7 +4020,7 @@ $("btnExport").onclick = async () => {
       const res = await api("/api/yaml", {project: collectProject()});
       downloadTextFile(name, res.text);
     } else {
-      downloadTextFile(name, JSON.stringify(collectProject(), null, 2) + "\n");
+      downloadTextFile(name, await canonicalJson(collectProject()));
     }
     // Export is the save-your-work button, so an undescribed datatype is said, not
     // blocked - the file is the record of where you got to, warts included
@@ -4074,11 +4086,11 @@ function exportName(kind, ext) {
   const time = `${p2(n.getHours())}.${p2(n.getMinutes())}`;
   return [plant, table, kind, date, time].filter(Boolean).join("_") + ext;
 }
-function ptExportPoints(points, suffix) {
+async function ptExportPoints(points, suffix) {
   if (!points.length) { showError(new Error("no points to export")); return; }
   const name = exportName(suffix, ".json");
   const proj = ptSubsetProject(points);
-  downloadTextFile(name, JSON.stringify(proj, null, 2) + "\n");
+  downloadTextFile(name, await canonicalJson(proj));
   const nG = Object.keys(proj.groups).length, nS = Object.keys(proj.statetexts).length;
   const out = [el("div",{class:"msg ok"},
     `✓ Exported ${name} — ${proj.points.length} point(s), ${nG} group(s), ` +
@@ -4514,6 +4526,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=621d7084bb"></script>
+<script src="pyodide-adapter.js?v=e58dc0bcdf"></script>
 </body>
 </html>

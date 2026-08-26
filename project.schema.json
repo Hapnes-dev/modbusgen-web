@@ -1,0 +1,662 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "modbusgen project",
+  "description": "IWMAC Modbus list project file (replaces the Work sheet of the INAS Modbus Excel tool). One file per plant/table; the modbusgen tool validates it and generates the SQL import script. Field semantics: docs/02-inputs.md; authoring guide for AI agents: docs/11-ai-json-authoring.md. Cross-field rules the schema cannot express: every points[].group must be a key of groups (unless options.auto_groups fills it); every points[].statetext must be a key of statetexts; at least one point needs online: true; driver_id (function+addr+bit) and element_id must be unique across points.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "table",
+    "plant",
+    "points"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional editor metadata - point it at this file for inline validation. Ignored by the tool."
+    },
+    "table": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "description": "Table name <t> for iw_par_<t>_param / iw_par_<t>_groups / iw_set_<t>. Lowercase letters, digits, underscore. Ask the user - never invent it.",
+      "examples": [
+        "kjol",
+        "maskin_foredamper"
+      ]
+    },
+    "plant": {
+      "type": [
+        "string",
+        "integer"
+      ],
+      "description": "Plant number, used only in the output file name. Prefer a string. Ask the user.",
+      "examples": [
+        "12345"
+      ]
+    },
+    "options": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Generation toggles, mirroring the Excel setup cells. Defaults are the template's shipped values - an authoring agent normally sets ONLY subtract_one and leaves the rest alone unless the user asks.",
+      "properties": {
+        "subtract_one": {
+          "type": "boolean",
+          "default": true,
+          "description": "Subtract 1 from every Modbus address before building driver ids. true when the documentation numbers registers from 1 (most vendor docs, and all 4xxxx-style lists); false for zero-based protocol addresses. Never pre-subtract per point."
+        },
+        "truncate": {
+          "type": "boolean",
+          "default": true,
+          "description": "legacy sql_format only: emit TRUNCATE TABLE before the inserts. Ignored by modern, which uses REPLACE INTO."
+        },
+        "create_tables": {
+          "type": "boolean",
+          "default": false,
+          "description": "legacy sql_format only: emit CREATE TABLE. Ignored by modern, which always emits CREATE TABLE IF NOT EXISTS."
+        },
+        "use_system_no": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include each point's system_no in the alias text."
+        },
+        "use_tag": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include each point's tag in the alias text."
+        },
+        "use_extra": {
+          "type": "boolean",
+          "default": true,
+          "description": "Append each point's extra in parentheses at the end of the alias."
+        },
+        "reserve_text": {
+          "type": "string",
+          "default": "Reserve.",
+          "description": "Rows whose text equals this stay inactive (spare rows) even with force_active. Empty string disables the rule."
+        },
+        "force_active": {
+          "type": "boolean",
+          "default": true,
+          "description": "Every point gets active=1 regardless of its own active field (reserve_text rows still win)."
+        },
+        "include_minmax": {
+          "type": "boolean",
+          "default": false,
+          "description": "Carry points[].range_min/range_max into the param record. Off leaves the columns blank, which is what the real fleet does."
+        },
+        "use_json": {
+          "type": "boolean",
+          "default": true,
+          "description": "Master gate on state texts (Excel Prot!B54): off = no format_extra JSON and no state list in the alias, regardless of per-point statetext ids."
+        },
+        "statetext_only_rw": {
+          "type": "boolean",
+          "default": false,
+          "description": "Emit state-text JSON only for writable (rw/vrw) points."
+        },
+        "statetext_in_alias": {
+          "type": "boolean",
+          "default": false,
+          "description": "Also flatten the state list into the point's extra, so it shows in the alias. Overwrites a hand-written extra on matched rows."
+        },
+        "override_decimal": {
+          "type": "boolean",
+          "default": false,
+          "description": "Fill the decimals column from the unit table's decimals entry, overwriting hand-typed values on matching units (Excel Prot!B46)."
+        },
+        "exclude_motherwords_from_groups": {
+          "type": "boolean",
+          "default": true,
+          "description": "Keep motherword rows out of the groups block, so the operator menu shows the named bits rather than the raw word."
+        },
+        "auto_motherwords": {
+          "type": "boolean",
+          "default": true,
+          "description": "Synthesize the missing word row for bit-addressed points. Leave on; do not author motherword rows by hand."
+        },
+        "auto_groups": {
+          "type": "boolean",
+          "default": false,
+          "description": "Fill an empty points[].group from the datatype's default group."
+        },
+        "alarms_to_alm": {
+          "type": "boolean",
+          "default": false,
+          "description": "Move points with an alarm letter into the alm group. Only acts when auto_groups is also on."
+        },
+        "proper_case_states": {
+          "type": "boolean",
+          "default": true,
+          "description": "Proper-case state words (drift paa -> Drift Paa), matching Excel's WorksheetFunction.Proper."
+        },
+        "encoding": {
+          "type": "string",
+          "default": "cp1252",
+          "description": "Output file encoding. The IWMAC tables are latin1 - leave as cp1252."
+        },
+        "require_motherwords": {
+          "type": "boolean",
+          "default": false,
+          "description": "Promote a missing motherword from a soft warning to a hard validation error."
+        },
+        "sql_format": {
+          "type": "string",
+          "enum": [
+            "modern",
+            "legacy"
+          ],
+          "default": "modern",
+          "description": "modern = REPLACE INTO house style (2026 reference exports); legacy = the Excel tool's single-line INSERTs. Do not change without being asked."
+        }
+      }
+    },
+    "system": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "description": "Optional iw_sys_* blocks: physical device registration and driver communication settings. Omit the whole object unless the user asks for a complete/new-plant script - an existing plant already has these. Omitting it is fully supported; writing \"system\": null is neither required nor useful, and adding it does not affect GUI import. An imported or GUI-exported project carries \"system\": null because the source workbook enabled no iw_sys section - that is what the converter emits, not a serialisation style to copy when authoring. Nothing is emitted unless units and/or settings is true.",
+      "properties": {
+        "units": {
+          "type": "boolean",
+          "default": false,
+          "description": "Emit one iw_sys_plant_units row per device (unit_list or the single-unit fields), plus the order-number link."
+        },
+        "settings": {
+          "type": "boolean",
+          "default": false,
+          "description": "Emit the iw_mb.exe process registration and all driver communication settings."
+        },
+        "unit_id": {
+          "type": "string",
+          "description": "Single-device form: device id in IWMAC.",
+          "examples": [
+            "U01"
+          ]
+        },
+        "unit_name": {
+          "type": "string",
+          "description": "Single-device form: name the operator sees.",
+          "examples": [
+            "Frysemaskin"
+          ]
+        },
+        "reg_type": {
+          "type": "string",
+          "description": "Registration type recorded against the units. Usually blank."
+        },
+        "order_no": {
+          "type": "string",
+          "description": "Order number linked to the units in iw_sys_order_no."
+        },
+        "owner": {
+          "type": "string",
+          "description": "Driver/settings owner - it is the settings owner, the driver_type and the process name in one, e.g. EM270 or GRUNDFOS. IWMAC documents a maximum of 10 characters, capitals and digits only; both are reported by soft_checks as warnings rather than enforced, because the fleet contradicts them (docs/16)."
+        },
+        "driver_addr": {
+          "type": [
+            "string",
+            "integer"
+          ],
+          "description": "Single-device form: Modbus slave address on the bus."
+        },
+        "driver_addr_prefix": {
+          "type": "string",
+          "enum": [
+            "0_",
+            "1_"
+          ],
+          "description": "Prefix for device addresses: 0_ for the first driver on the plant, 1_ for the second."
+        },
+        "view_order": {
+          "type": "integer",
+          "default": 0,
+          "description": "Single-device form: sort position in the IWMAC device list."
+        },
+        "unit_list": {
+          "type": "array",
+          "description": "Several devices on one driver (Carel-style ID01..IDnn); overrides the single-unit fields.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "unit_id": {
+                "type": "string",
+                "examples": [
+                  "ID01"
+                ]
+              },
+              "unit_name": {
+                "type": "string",
+                "examples": [
+                  "Carel EVD 01"
+                ]
+              },
+              "driver_addr": {
+                "type": [
+                  "string",
+                  "integer"
+                ],
+                "description": "Modbus slave address of this device."
+              },
+              "view_order": {
+                "type": "integer",
+                "default": 0
+              }
+            }
+          }
+        },
+        "comm": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Driver communication settings (emitted with settings: true). tcp needs ip (+port); rtu needs com_port, baudrate, parity, stop_bits.",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "tcp",
+                "rtu"
+              ]
+            },
+            "ip": {
+              "type": "string",
+              "description": "tcp: IP of the device or gateway.",
+              "examples": [
+                "10.10.100.5"
+              ]
+            },
+            "port": {
+              "type": "integer",
+              "default": 502,
+              "description": "tcp: Modbus TCP port."
+            },
+            "com_port": {
+              "type": "string",
+              "description": "rtu: serial port on the IWMAC machine.",
+              "examples": [
+                "1"
+              ]
+            },
+            "baudrate": {
+              "type": "integer",
+              "default": 19200,
+              "enum": [
+                300,
+                600,
+                1200,
+                2400,
+                4800,
+                9600,
+                14400,
+                19200,
+                38400,
+                57600,
+                76800,
+                115200
+              ],
+              "description": "rtu: the rate the bus is actually commissioned at, written verbatim into comm_baudrate. The Excel tool offered only 9600/19200 (a checkbox); the driver setting is a free numeric value, so the full standard ladder is allowed here - docs/10 divergence 15."
+            },
+            "parity": {
+              "type": "string",
+              "enum": [
+                "none",
+                "odd",
+                "even"
+              ]
+            },
+            "stop_bits": {
+              "type": "integer",
+              "enum": [
+                1,
+                2
+              ]
+            },
+            "data_bits": {
+              "type": "integer",
+              "default": 8
+            }
+          }
+        }
+      }
+    },
+    "groups": {
+      "type": "object",
+      "description": "Display grouping for the operator menu: group key -> display alias (or {alias, order}). Every group a point uses must exist here. Conventional default set: aio 'Analoge inn/ut', dio 'Digitale inn/ut', alm 'Alarmer', misc 'Diverse', sch 'Tidsskjema'. Keys are short lowercase mnemonics; aliases are in the user's language.",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string",
+            "description": "The display alias; order defaults to list position."
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "alias": {
+                "type": "string"
+              },
+              "order": {
+                "type": "integer",
+                "description": "Explicit view order of the group itself. Two groups must not share one."
+              }
+            }
+          }
+        ]
+      }
+    },
+    "statetexts": {
+      "type": "object",
+      "description": "Enumeration lists: list id -> {state number -> word}. Define each distinct vendor enumeration once and reference it from points via statetext: <id>. Keep the vendor's numbers exactly (>= 0 only - negative values cannot be state texts); translate only the words. Keys are digit strings in JSON.",
+      "propertyNames": {
+        "pattern": "^[0-9]+$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "propertyNames": {
+          "pattern": "^[0-9]+$"
+        },
+        "additionalProperties": {
+          "type": "string",
+          "minLength": 1
+        },
+        "examples": [
+          {
+            "0": "Av",
+            "1": "Drift",
+            "2": "Avriming"
+          }
+        ]
+      }
+    },
+    "datatypes": {
+      "type": "object",
+      "description": "Datatype rows this project defines for itself - the Modbus_Variables!Z:AI table, carried in the file. Use only when no shipped key in data/tables/datatypes.csv fits; a name that already exists there must not be redefined. Every field should be a value the shipped table already uses, so the row is a new combination of primitives the IWMAC driver understands rather than a new primitive (docs/15).",
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9_]+$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["read_func", "write_func", "raw_type", "read_swap", "write_swap",
+                     "application", "parameter_type", "rw_hint", "default_group"],
+        "properties": {
+          "read_func": {
+            "type": "string",
+            "description": "Modbus read function: 1 coils, 2 discrete inputs, 3 holding registers, 4 input registers, 0 virtual. (Modbus_Variables!AA)"
+          },
+          "write_func": {
+            "type": "string",
+            "description": "Modbus write function: 5 single coil, 6 single register, 16 multiple registers; empty for read-only. (AB)"
+          },
+          "raw_type": {
+            "type": "string",
+            "description": "Raw type sent to the driver: X, I16, U16, I32, U32, F and the types added 2026-08-20 (D, CLK, STR4, BCD35, rU16 and the rest). (AC)"
+          },
+          "read_swap": {
+            "type": "string",
+            "description": "Byte and word order on read: N normal, R reversed, W word-swapped. (AD)"
+          },
+          "write_swap": {
+            "type": "string",
+            "description": "Byte and word order on write: N, R or W. (AE)"
+          },
+          "application": {
+            "type": "string",
+            "description": "Digital IO | Analog values | Integral values | String values. (AF)"
+          },
+          "parameter_type": {
+            "type": "string",
+            "description": "boolean | float | integer | string. (AG)"
+          },
+          "rw_hint": {
+            "type": "string",
+            "description": "Informational read/write capability of the type. Excel does not read it and neither does modbusgen. (AH)"
+          },
+          "default_group": {
+            "type": "string",
+            "description": "Group that auto_groups assigns to a point using this datatype and no group of its own: aio or dio. (AI)"
+          }
+        },
+        "examples": [
+          {
+            "read_func": "3",
+            "write_func": "16",
+            "raw_type": "U32",
+            "read_swap": "W",
+            "write_swap": "W",
+            "application": "Analog values",
+            "parameter_type": "float",
+            "rw_hint": "rw",
+            "default_group": "aio"
+          }
+        ]
+      }
+    },
+    "points": {
+      "type": "array",
+      "description": "One object per Modbus point, in the order the operator should see them (usually documentation order). This order decides the menu (view_order) - it is meaningful, not cosmetic.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "datatype",
+          "addr"
+        ],
+        "properties": {
+          "group": {
+            "type": "string",
+            "description": "Group key - must exist in groups. Required in practice; may be omitted only with options.auto_groups. (Work!A)"
+          },
+          "datatype": {
+            "type": "string",
+            "description": "Key into data/tables/datatypes.csv, exactly as spelled there - never invented. Encodes presentation, register table, raw type and word order, e.g. A_Hold_I16_N, I_Hold_U16_N, Bit_Hold, Coil_X_N, A_Input_F_N, Custom_Hold_U32_W. (Work!D)",
+            "examples": [
+              "A_Hold_I16_N",
+              "I_Hold_U16_N",
+              "Bit_Hold",
+              "Digital_X_N"
+            ]
+          },
+          "addr": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65535,
+            "description": "Register/coil address exactly as the documentation prints it (strip 4xxxx/3xxxxx prefixes). Where a document prints both a Modicon-style register and an explicit protocol-address column, take the explicit one as printed and set subtract_one false - do not also strip a prefix or subtract again. options.subtract_one is the ONLY global offset conversion; never subtract per point. (Work!E)"
+          },
+          "bit": {
+            "description": "Bit number inside the register for Bit_* datatypes. 0-15 normally: the synthesized motherword is 16-bit and is never widened, because a 32-bit one would have to guess the word order. A bit of 16-31 is therefore a validation error UNLESS an explicit 32-bit point is authored at the same address, which commits to a word order and serves as the motherword. String form '5#4' = legacy nibble start#length. Do not author a motherword row otherwise - the tool synthesizes it. (Work!F)",
+            "oneOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 31
+              },
+              {
+                "type": "string",
+                "pattern": "^[0-9]+#[0-9]+$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "element_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Manual element_id override; rare - the tool derives <group>_<driver_id>. (Work!C)"
+          },
+          "system_no": {
+            "type": [
+              "string",
+              "number",
+              "null"
+            ],
+            "description": "Alias part 1: the plant system number, e.g. 360.001. Prefer a string - 360.010 as a number loses its trailing zero. Only when the user supplies a tag scheme. (Work!M)"
+          },
+          "tag": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Alias part 2: short component tag, e.g. RT401. (Work!N)",
+            "examples": [
+              "RT401"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "Main alias text, the name the operator reads - user's language, short. The only alias part always included; leaving it empty draws a validation warning. The literal 'Motherword' marks a motherword row - do not author those. (Work!P)",
+            "examples": [
+              "Romtemperatur"
+            ]
+          },
+          "extra": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Alias suffix in parentheses. Overwritten on generate when options.statetext_in_alias is on and the row has a statetext. (Work!O)"
+          },
+          "alarm": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "A",
+              "B",
+              "C",
+              "N",
+              null
+            ],
+            "description": "Alarm priority -> plant_pri. A = alarm (the fleet default for anything that is an alarm), N = note; B/C nearly unused. Omit for non-alarm points. (Work!R)"
+          },
+          "unit": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Key into data/tables/units.csv (case-insensitive), e.g. C for temperature, %, Pa, kWh. Omit when no unit is documented - never invent a spelling. (Work!S)",
+            "examples": [
+              "C",
+              "%",
+              "kWh"
+            ]
+          },
+          "scale": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Key into data/tables/scaling.csv matching the documented multiplier - x0.1 dominates real lists; INV inverts digitals. Omit for raw values. (Work!T)",
+            "examples": [
+              "x0.1",
+              "x0.01",
+              "INV"
+            ]
+          },
+          "rw": {
+            "type": "string",
+            "enum": [
+              "r",
+              "rw",
+              "vr",
+              "vrw"
+            ],
+            "default": "r",
+            "description": "r read-only, rw writable - only when the documentation says so. vr/vrw are derived forms for bit rows; authoring agents write r or rw only. (Work!U)"
+          },
+          "update_freq": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "fast",
+              "norm",
+              "slow",
+              "once",
+              "never",
+              null
+            ],
+            "description": "Polling override; omit for automatic (analog/integral: norm read-only / slow writable; digital: slow). Set slow on rarely-changing measured values like energy totals - they still log min/1."
+          },
+          "online": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": false,
+            "description": "Online-indication point - IWMAC uses these to see the unit is alive. Mark 1-3 reliable, always-readable points; validation fails with none. (Work!V)"
+          },
+          "active": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "enum": [
+              0,
+              1,
+              null
+            ],
+            "description": "Per-point active; ignored while options.force_active is on. (Work!W)"
+          },
+          "no_group": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": false,
+            "description": "Keep this row out of the groups block (still a parameter, absent from the operator menu). (Work!X)"
+          },
+          "menu": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Menu override; normally hand-patched after generation, not authored. (Work!AA)"
+          },
+          "decimals": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "enum": [
+              0,
+              1,
+              2,
+              3,
+              null
+            ],
+            "description": "Display decimals -> format %.Nf. Pair with the scale: x0.1 usually means 1. (Work!AB)"
+          },
+          "range_min": {
+            "type": [
+              "string",
+              "number",
+              "null"
+            ],
+            "description": "Engineering range minimum; only reaches the output with options.include_minmax. (Work!AC)"
+          },
+          "range_max": {
+            "type": [
+              "string",
+              "number",
+              "null"
+            ],
+            "description": "Engineering range maximum; only reaches the output with options.include_minmax. (Work!AD)"
+          },
+          "statetext": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "State-text list id - must exist as a key in statetexts. (Work!AE)"
+          }
+        }
+      }
+    }
+  }
+}
