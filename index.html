@@ -3067,20 +3067,42 @@ function renderDatatypeCard() {
   const shipped = new Set(BOOT.datatypes.map(d => String(d.name).toLowerCase()));
   box.replaceChildren(...names.map(name => {
     const row = dtProject[name], used = dtUsageCount(name);
+    const alsoShared = shipped.has(name.toLowerCase());
     return el("div",{class:"grp-row"},
-      el("code",{style:"min-width:190px"}, name),
-      el("span",{class:"sub", style:"flex:1"},
+      el("code",{style:"min-width:190px",
+                 title:`The key you type in a point's datatype column. It exists in `
+                     + `this project only - the file carries the definition with it, `
+                     + `so ${name} means the same thing wherever this project is opened`},
+         name),
+      el("span",{class:"sub", style:"flex:1",
+                 title:"Read/write function · raw type · read/write word order · "
+                     + "application · parameter type · default group · how many points "
+                     + "use it. Hover the fields in edit for what each one does"},
         `${row.read_func}/${row.write_func || "-"} · ${row.raw_type} · ` +
         `${row.read_swap}/${row.write_swap} · ${row.application} · ` +
         `${row.parameter_type} · ${row.default_group} · ${used} point(s)` +
-        (shipped.has(name.toLowerCase()) ? " · also in the shared table" : "")),
-      ...(BOOT.writable_tables && !shipped.has(name.toLowerCase())
+        (alsoShared ? " · also in the shared table" : "")),
+      ...(BOOT.writable_tables && !alsoShared
           ? [el("button",{class:"ghost rowbtn",
-              title:"Append this row to data/tables/datatypes.csv, for every project on this machine. Other people get it when that file is committed",
+              title:`Append ${name} to data/tables/datatypes.csv, so every project on `
+                  + `this machine can use it. It stays in this project too, which keeps `
+                  + `the file working on machines that do not have it yet; other people `
+                  + `get the row when that file is committed. Nothing is overwritten - a `
+                  + `name already there with a different definition is refused`,
               onclick:() => dtPromote(name)}, "promote")] : []),
-      el("button",{class:"ghost rowbtn", title:"Edit this variable",
+      el("button",{class:"ghost rowbtn",
+                   title:`Change what ${name} means, or rename it. A rename follows the `
+                       + `${used} point(s) using it, so none is left pointing at a `
+                       + `datatype that no longer exists`,
                    onclick:() => dtDialogOpen({name})}, "edit"),
-      el("button",{class:"ghost rowbtn", title:"Delete this variable",
+      el("button",{class:"ghost rowbtn",
+                   title:used
+                     ? `Cannot be deleted yet: ${used} point(s) use ${name}. Change `
+                       + `their datatype first, or deleting it would leave them naming `
+                       + `something nothing describes`
+                     : `Remove ${name} from this project. Nothing uses it, so no point `
+                       + `is affected` + (alsoShared
+                          ? " - and the shared table keeps its own copy" : ""),
                    onclick:() => dtDelete(name)}, "✕"));
   }));
 }
