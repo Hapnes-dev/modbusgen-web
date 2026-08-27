@@ -14,6 +14,15 @@
       "type": "string",
       "description": "Optional editor metadata - point it at this contract for inline validation; ignored by the tool. Use the published copy https://hapnes-dev.github.io/modbusgen-web/project.schema.json in files that travel, or ../schema/project.schema.json for files inside the repository. Convention: any field absent from the file is at its documented default."
     },
+    "_help": {
+      "type": [
+        "object",
+        "array",
+        "string",
+        "null"
+      ],
+      "description": "Free-form annotation for whoever opens the file next, human or agent - JSON's substitute for the comments YAML carries. Ignored by the tool: load_project strips it, and every JSON the tool writes replaces it with the current block (src/modbusgen/yamlio.py HELP_BLOCK), so editing it here changes nothing and is not preserved. Deliberately unconstrained in shape; the shipped form is an object of short prose lines covering what the file is, what generates from it, that an absent field is at its default, and the rules an agent cannot recover from the data (never invent a datatype/unit/scale key, one global subtract_one and no per-point subtraction, point order is the operator's view_order)."
+    },
     "table": {
       "type": "string",
       "pattern": "^[a-z0-9_]+$",

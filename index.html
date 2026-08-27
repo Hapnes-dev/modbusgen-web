@@ -1156,7 +1156,12 @@
             from the project: <span class="ex">10225_spar_hansnes_vent_25.08.2026_14.32.json</span>
             — plant, table, date and 24-hour time. Two exports in the same minute get
             the same name, so the browser numbers the second one. Put a
-            <code>.yaml</code> in the name box for YAML instead of JSON.</li>
+            <code>.yaml</code> in the name box for YAML instead of JSON.
+            The file explains itself: it opens with <code>$schema</code>, naming the
+            contract every field is written against, and a <code>_help</code> block
+            saying what the file is and what would be wrong to change — so whoever opens
+            it next, person or AI, is not guessing. Both are ignored when the file is
+            loaded back, and rewritten on the next export.</li>
           <li><b>Direct link:</b> add <code>#file-name</code> to the URL, e.g.
             <code>…/#example-belimo-ev.json</code>.</li>
         </ul>
@@ -4526,6 +4531,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=e58dc0bcdf"></script>
+<script src="pyodide-adapter.js?v=6496cc6db5"></script>
 </body>
 </html>
