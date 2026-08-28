@@ -330,7 +330,7 @@
     },
     "groups": {
       "type": "object",
-      "description": "Display grouping for the operator menu: group key -> display alias (or {alias, order}). Every group a point uses must exist here. Conventional default set: aio 'Analoge inn/ut', dio 'Digitale inn/ut', alm 'Alarmer', misc 'Diverse', sch 'Tidsskjema'. Keys are short lowercase mnemonics; aliases are in the user's language.",
+      "description": "Display grouping for the operator menu: group key -> display alias (or {alias, order}). Every group a point uses must exist here. Conventional default set: aio 'Analoge inn/ut', dio 'Digitale inn/ut', alm 'Alarmer', misc 'Diverse', sch 'Tidsskjema'. Keys are short lowercase mnemonics. An alias taken from a source document keeps that document's wording; the five above are the tool's own fallback for a document with no sections of its own.",
       "additionalProperties": {
         "oneOf": [
           {
@@ -355,7 +355,7 @@
     },
     "statetexts": {
       "type": "object",
-      "description": "Enumeration lists: list id -> {state number -> word}. Define each distinct vendor enumeration once and reference it from points via statetext: <id>. Keep the vendor's numbers exactly (>= 0 only - negative values cannot be state texts); translate only the words. Keys are digit strings in JSON.",
+      "description": "Enumeration lists: list id -> {state number -> word}. Define each distinct vendor enumeration once and reference it from points via statetext: <id>. Keep the vendor's numbers exactly (>= 0 only - negative values cannot be state texts), and its words as printed - state words are not translated. Keys are digit strings in JSON.",
       "propertyNames": {
         "pattern": "^[0-9]+$"
       },
@@ -516,7 +516,7 @@
           },
           "text": {
             "type": "string",
-            "description": "Main alias text, the name the operator reads - user's language, short. The only alias part always included; leaving it empty draws a validation warning. The literal 'Motherword' marks a motherword row - do not author those. (Work!P)",
+            "description": "Main alias text, the name the operator reads - short, and in the maker's own wording for the value: take it from the vendor document rather than translating it or inventing a description, so the list and the manual read side by side. A bare register number is not a name; where the document supplies none, say so instead of shipping 'Register 4'. State words and group aliases follow the same rule - the document's words as printed. The only alias part always included; leaving it empty draws a validation warning. The literal 'Motherword' marks a motherword row - do not author those. (Work!P)",
             "examples": [
               "Romtemperatur"
             ]
