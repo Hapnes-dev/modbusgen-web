@@ -38,6 +38,20 @@
            align-items:center}
   .card h2 .chips{display:flex;gap:6px;font-weight:400;text-transform:none;
                   letter-spacing:0}
+  /* collapse. The heading is the hit area, so the whole strip works and not a 12px
+     chevron - but clicks that land on a control inside it (the Points card's search,
+     its tool buttons, a help summary) are that control's, not the card's. */
+  .card > h2{cursor:pointer;user-select:none}
+  .card > h2 .caret{flex:none;width:11px;color:var(--line2);font-size:9px;
+                    transition:transform .12s ease;transform:rotate(90deg)}
+  .card.collapsed > h2 .caret{transform:rotate(0deg)}
+  .card > h2:hover .caret{color:var(--text)}
+  .card.collapsed > h2{margin-bottom:0}
+  .card.collapsed > *:not(h2){display:none}
+  .card.collapsed{padding-bottom:12px}
+  /* Points keeps its chips when folded - a count is worth reading at a glance - but not
+     its row tools: undo, export and maximise for a table that is not on screen. */
+  .card.collapsed > h2 .tool{display:none}
   .chip{font-size:11px;background:var(--panel2);border:1px solid var(--line);
         border-radius:20px;padding:1px 9px;color:var(--text)}
   /* last-validate verdict, beside the Validate button */
@@ -390,6 +404,8 @@
           title="Download this project as a filled Modbustemplate workbook (.xlsm), for anyone still working in the old Excel tool. It carries the INAS Modbus tab and macros of the template - open it, unblock it if Windows says it came from the internet, and hit Run Application to fill the generated columns">Export Excel</button>
   <button id="btnDelete" class="ghost" disabled
           title="Select a project saved in this browser to delete it">Delete</button>
+  <button id="btnFoldAll" class="ghost"
+          title="Fold every card to its heading, or unfold them all. Each heading also folds its own card; what is folded is remembered in this browser">collapse all</button>
   <span style="flex:1"></span>
   <span id="valStatus" hidden></span>
   <button id="btnValidate"
@@ -4670,6 +4686,51 @@ $("btnValidate").onclick = runValidate;
 $("btnGenerate").onclick = runGenerate;
 $("btnRunValidate").onclick = runValidate;
 $("btnRunGenerate").onclick = runGenerate;
+/* ---------- folding cards ----------
+   Nine cards is a long page, and most of a given session happens in one or two of them.
+   Every card folds to its heading; what is folded survives a reload, because a fold you
+   have to redo on every visit is worse than no fold at all.
+
+   The caret and the "folded" hint are injected rather than written into the markup nine
+   times: one place to change, and a card added later gets both for free. */
+const FOLD_KEY = "modbusgen_folded";
+
+function foldRead() {
+  try { return new Set(JSON.parse(localStorage.getItem(FOLD_KEY) || "[]")); }
+  catch { return new Set(); }
+}
+function foldWrite() {
+  const shut = [...document.querySelectorAll(".card.collapsed")].map(c => c.id).filter(Boolean);
+  localStorage.setItem(FOLD_KEY, JSON.stringify(shut));
+  const all = document.querySelectorAll("main > .card").length;
+  $("btnFoldAll").textContent = shut.length >= all ? "expand all" : "collapse all";
+}
+function initFolding() {
+  const shut = foldRead();
+  for (const card of document.querySelectorAll("main > .card")) {
+    const h2 = card.querySelector(":scope > h2");
+    if (!h2) continue;
+    h2.prepend(el("span", {class:"caret", "aria-hidden":"true"}, "▶"));
+    h2.title = "Click the heading to fold or unfold this card";
+    h2.onclick = (e) => {
+      // a control inside the heading keeps its own click - Points has a search box,
+      // five tool buttons and the maximise control living up here
+      if (e.target.closest("button, input, select, textarea, summary, a, label")) return;
+      card.classList.toggle("collapsed");
+      foldWrite();
+    };
+    if (card.id && shut.has(card.id)) card.classList.add("collapsed");
+  }
+  $("btnFoldAll").onclick = () => {
+    const cards = [...document.querySelectorAll("main > .card")];
+    const shutAll = !cards.every(c => c.classList.contains("collapsed"));
+    cards.forEach(c => c.classList.toggle("collapsed", shutAll));
+    foldWrite();
+  };
+  foldWrite();
+}
+initFolding();
+
 /* ---------- the wizard ----------
    One pass over the page in the order the work actually happens: get the JSON out of an
    AI agent, then every card top to bottom, then validate and generate. Each step scrolls
@@ -4731,6 +4792,8 @@ function wizFocus(id) {
   document.querySelectorAll(".wizfocus").forEach(el => el.classList.remove("wizfocus"));
   const card = id && $(id);
   if (!card) return;
+  // a step that outlines a folded card is pointing at a heading and nothing else
+  if (card.classList.contains("collapsed")) { card.classList.remove("collapsed"); foldWrite(); }
   card.classList.add("wizfocus");
   card.scrollIntoView({block:"start", behavior:"smooth"});
 }
