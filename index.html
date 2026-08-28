@@ -1209,13 +1209,13 @@
           <button id="btnCopyPrompt" class="ghost" style="font-size:10px;padding:2px 8px"
             title="Copy the whole prompt to the clipboard, clipped or not">copy prompt</button>
           <button id="btnMorePrompt" class="ghost" style="font-size:10px;padding:2px 8px"
-            title="Fold the prompt down to its first few lines, or unfold it again">show less</button></div>
+            title="Unfold the whole prompt, or fold it back to its first few lines">show more</button></div>
         <p><b>Attach the vendor's register document</b> — and any previous delivery for
         this plant. The reference documents are already in the agent's <b>Modbus List
         Helper</b> folder; the prompt below names the ones to read. Paste it as it
         stands — nothing to fill in. The plant number only becomes the export file
         name, so change it here or fix it on the page afterwards:</p>
-        <pre id="aiPrompt">Build a modbusgen project JSON from the attached register document.
+        <pre id="aiPrompt" class="clip">Build a modbusgen project JSON from the attached register document.
 
 READ FIRST, from Modbus List Helper
   11-ai-json-authoring.md        binding - JSON shape, addressing, coverage
@@ -4352,10 +4352,10 @@ $("btnCopyPrompt").onclick = async (e) => {
   } catch (err) { btnFlash(btn, "copy failed", "bad", 2600); }
 };
 
-/* Open by default: the prompt is the point of this section, and a reader who has to
-   press a button to see it will paste the five lines they can see. `show less` folds it
-   to its first few lines for when the card is in the way. Copy takes the whole thing
-   either way - it reads textContent, which the clip never touches. */
+/* Clipped by default: the prompt is 98 lines and unfolded it buries the rest of the
+   card. Copy takes the whole thing either way - it reads textContent, which the clip
+   never touches, and the button says so. The wizard's first step unfolds it, because
+   there the prompt is the thing being handed over. */
 $("btnMorePrompt").onclick = (e) => {
   const clipped = $("aiPrompt").classList.toggle("clip");
   e.currentTarget.textContent = clipped ? "show more" : "show less";
