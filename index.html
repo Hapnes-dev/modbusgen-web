@@ -27,6 +27,12 @@
          border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
   header .title{font-weight:700;font-size:16px;margin-right:14px;letter-spacing:.02em}
   header .title span{color:var(--accent)}
+  /* The header runs to a dozen controls doing four unrelated things - open a project,
+     bring one in from elsewhere, write one out, change the view - and read as one wall
+     of buttons. A rule between the groups is what makes it scannable. The header wraps,
+     so at some widths a divider can land first on a line; it is cosmetic and CSS cannot
+     see a wrap, which is the price of not adding a resize listener for a 1px line. */
+  header .sep{width:1px;height:20px;flex:none;background:var(--line2);margin:0 2px}
   header .title small{display:block;font-weight:400;font-size:10px;color:var(--dim);
                       letter-spacing:.08em;text-transform:uppercase}
   main{padding:18px 16px 40px;max-width:1520px;margin:0 auto}
@@ -402,6 +408,7 @@
   <button id="btnLoad" title="Open the selected project - replaces everything on this page">Load</button>
   <button id="btnNew" class="ghost"
           title="Start an empty project - clears the page, so export first if the current work matters">New</button>
+  <span class="sep" aria-hidden="true"></span>
   <button id="btnImportJson" class="ghost"
           title="Load a project file from disk - Copilot-generated JSON or an exported YAML">Import project</button>
   <input id="jsonFile" type="file" accept=".json,.yaml,.yml,application/json" hidden>
@@ -411,18 +418,22 @@
   <button id="btnImportXlsm" class="ghost"
           title="Convert a filled Modbustemplate workbook into an editable project - both template generations are recognised. Export afterwards for the .json file">Insert Excel</button>
   <input id="xlsmFile" type="file" accept=".xlsm,.xlsx" hidden>
+  <span class="sep" aria-hidden="true"></span>
   <input id="fileName" size="24" placeholder="project-name.yaml" title="Name for Save, which keeps a copy in this browser under it. Export does not use it as the name - it builds one from the plant number, table, date, 24-hour time and an export number - but a .yaml here makes Export write YAML instead of JSON">
   <button id="btnSave" title="Keep the project in this browser under the name beside this button. Nothing is written to disk and nothing is downloaded - use Export for a file. The button reports the outcome">Save</button>
   <button id="btnExport" class="ghost"
           title="Download the project as a file to continue later. Named plant_table_dd.mm.yyyy_HH.MM - e.g. 10225_spar_hansnes_vent_25.08.2026_14.32.json. Put a .yaml in the name box to get YAML instead">Export</button>
   <button id="btnXlsm" class="ghost"
           title="Download this project as a filled Modbustemplate workbook (.xlsm), for anyone still working in the old Excel tool. It carries the INAS Modbus tab and macros of the template - open it, unblock it if Windows says it came from the internet, and hit Run Application to fill the generated columns">Export Excel</button>
+  <span class="sep" aria-hidden="true"></span>
   <button id="btnDelete" class="ghost" disabled
           title="Select a project saved in this browser to delete it">Delete</button>
+  <span class="sep" aria-hidden="true"></span>
   <button id="btnFoldAll" class="ghost"
           title="Fold every card to its heading, or unfold them all. Each heading also folds its own card; what is folded is remembered in this browser">collapse all</button>
   <span style="flex:1"></span>
   <span id="valStatus" hidden></span>
+  <span class="sep" aria-hidden="true"></span>
   <button id="btnValidate"
           title="Check the project without producing SQL: unknown table keys, duplicate ids, undefined groups, unresolved state refs, no online point. Warnings do not block">Validate</button>
   <button id="btnGenerate" class="primary"
@@ -1210,11 +1221,16 @@
             title="Copy the whole prompt to the clipboard, clipped or not">copy prompt</button>
           <button id="btnMorePrompt" class="ghost" style="font-size:10px;padding:2px 8px"
             title="Unfold the whole prompt, or fold it back to its first few lines">show more</button></div>
-        <p><b>Attach the vendor's register document</b> — and any previous delivery for
-        this plant. The reference documents are already in the agent's <b>Modbus List
-        Helper</b> folder; the prompt below names the ones to read. Paste it as it
-        stands — nothing to fill in. The plant number only becomes the export file
-        name, so change it here or fix it on the page afterwards:</p>
+        <ol style="margin:4px 0 8px;padding-left:20px">
+          <li><b>Attach the device's register document</b> to a Copilot chat — the PDF or
+            spreadsheet from the maker. If a previous delivery for this plant exists,
+            attach that too.</li>
+          <li><b>Copy the prompt below and paste it in.</b> There is nothing to fill in.
+            The reference documents are already in the agent's <b>Modbus List Helper</b>
+            folder, and the prompt tells it which to read. The plant number in it is
+            <code>1234</code>; that number only ends up in the export file name, so change
+            it here or fix it on the page later.</li>
+        </ol>
         <pre id="aiPrompt" class="clip">Build a modbusgen project JSON from the attached register document.
 
 READ FIRST, from Modbus List Helper
@@ -1316,22 +1332,26 @@ Valid JSON only - no comments, no trailing commas, questions to me in chat and
 never into the file. Do not tell me it validates - JSON parse is not modbusgen
 validation. I run the validator.</pre>
         <h4>Then, in the chat</h4>
-        <ol style="margin:4px 0;padding-left:20px">
-          <li>It asks first whether a filled Modbustemplate workbook, a generated SQL
-            script or a previous delivery exists. If one does, <b>stop the chat</b> —
-            <b>Insert Excel</b> and <b>Import SQL</b> convert those here, losslessly and
-            complete.</li>
-          <li>Answer its questions instead of letting it assume. It should also stop by
-            itself if the document turns out 0-based, or the plant runs
-            <code>modbus.php</code>.</li>
-          <li>Check the three things it has to report back: the <b>table name</b> it
-            chose, the <b>coverage ledger</b> against the document, and what it
-            <b>inferred rather than read</b>.</li>
-          <li>Save the <code>.json</code>, then <b>Import project</b> and
-            <b>Validate</b> here. Its word that the file is valid counts for
-            nothing.</li>
-          <li>On errors, paste the whole failure back into the chat — code, advice and
-            all — rather than hand-editing rows.</li>
+        <ol start="3" style="margin:4px 0;padding-left:20px">
+          <li><b>It asks about an older delivery first.</b> If a filled Modbustemplate
+            workbook or a generated SQL script already exists for this plant, say so and
+            stop the chat there. <b>Insert Excel</b> and <b>Import SQL</b> convert those
+            on this page, exactly and completely. Writing the list again by hand is always
+            worse than converting the one that exists.</li>
+          <li><b>Answer its questions.</b> It is meant to ask — anything the document does
+            not say, only you can answer. It should also stop and tell you if the document
+            turns out to number registers from 0, or if this plant runs the
+            <code>modbus.php</code> driver, because both change what is possible.</li>
+          <li><b>Read what it reports back.</b> Three things: the <b>table name</b> it
+            chose, the <b>coverage ledger</b> — every row of the maker's document either
+            used, covered by a bit, or skipped with a reason — and what it <b>worked out
+            rather than read</b>, so you can overrule it.</li>
+          <li><b>Bring the file here.</b> Save the <code>.json</code>, press <b>Import
+            project</b>, then <b>Validate</b>. The agent saying the file is fine counts
+            for nothing; this page decides.</li>
+          <li><b>If validation fails, paste the whole error back into the chat</b> — code,
+            advice and all — and let it fix the file. That is faster and safer than
+            editing rows by hand.</li>
         </ol>
       </div>
 
@@ -4829,9 +4849,12 @@ function initFolding() {
     h2.prepend(el("span", {class:"caret", "aria-hidden":"true"}, "▶"));
     h2.title = "Click the heading to fold or unfold this card";
     h2.onclick = (e) => {
-      // a control inside the heading keeps its own click - Points has a search box,
-      // five tool buttons and the maximise control living up here
-      if (e.target.closest("button, input, select, textarea, summary, a, label")) return;
+      /* A control inside the heading keeps its own click. Points has a search box, five
+         tool buttons and the maximise control up here - and the stats chips, which are
+         spans rather than buttons and are filter toggles, so a selector listing only the
+         form elements folded the card instead of filtering the list. */
+      if (e.target.closest("button, input, select, textarea, summary, a, label, .chip"))
+        return;
       card.classList.toggle("collapsed");
       foldWrite();
     };
