@@ -312,6 +312,9 @@
                letter-spacing:.09em;color:var(--dim);font-weight:600}
   .helpbody h4:first-of-type{margin-top:8px}
   .helpbody p{margin:4px 0}
+  .helpbody pre{background:#12151b;border:1px solid var(--line);border-radius:4px;
+    padding:9px 12px;margin:7px 0;font-size:12px;color:#a8d8ff;line-height:1.5;
+    white-space:pre-wrap;overflow-x:auto}
   .pill{font-size:11px;background:var(--panel2);border:1px solid var(--line);
         border-radius:10px;padding:2px 8px;color:var(--amber)}
   .grp-grid,.st-grid{display:flex;flex-direction:column;gap:6px}
@@ -1115,6 +1118,135 @@
       </div>
 
       <div class="sub">
+        <div class="subhead">getting the list out of an AI agent
+          <button id="btnCopyPrompt" class="ghost" style="font-size:10px;padding:2px 8px"
+            title="Copy the prompt below to the clipboard">copy prompt</button></div>
+        <p><b>Attach the vendor's register document</b> — and any previous delivery for
+        this plant. The reference documents are already in the agent's <b>Modbus List
+        Helper</b> folder; the prompt below names the ones to read. Paste it as it
+        stands — nothing to fill in. The plant number only becomes the export file
+        name, so change it here or fix it on the page afterwards:</p>
+        <pre id="aiPrompt">Build a modbusgen project JSON from the attached register document.
+
+READ FIRST, from Modbus List Helper
+  11-ai-json-authoring.md        binding - JSON shape, addressing, coverage
+  13-partner-doc-interpretation.md  this vendor's dialect and traps
+  06-validation-and-checks.md    what validation enforces, and what it cannot
+  15-iwmac-driver-limits.md      word order, function codes, poll cost
+  16-modbus-commissioning.md     proving the link, and the import after
+  datatypes.csv, units.csv, scaling.csv   the only legal datatype, unit and
+                                 scale keys - a key not in these does not exist
+Search these phrases and read the sections they land on: Template
+checkpoint · Reuse shape, re-prove semantics · Source-defined groups outrank
+default groups · Source-row coverage vs project point count · JSON parse is not
+modbusgen validation.
+
+FIRST MESSAGE, BEFORE READING THE DATASHEET
+Do the Template checkpoint: ask me whether a filled Modbustemplate workbook, a
+generated SQL script or a previous delivery exists for this plant. Those convert
+losslessly, and hand-authoring instead of converting once put a 21-point
+skeleton where a 1619-point delivery existed. Do not start until I answer.
+
+FIXED FOR THIS JOB
+table: derive it from the attached documentation - lowercase letters, digits
+and underscore only - and tell me what you chose.
+plant: 1234
+Addressing: subtract_one true - the document numbers registers from 1. If it
+is explicitly 0-based (a protocol-address column, or a hex table from 0000),
+stop and tell me rather than shifting every address by one.
+Driver: mb.exe - say so if this is an existing plant on modbus.php, because
+then no _W datatypes and no 32-bit writes.
+Alias texts and state words in Norwegian; register names stay the vendor's.
+
+PICKING KEYS
+datatype: {A|I}_{Hold|Input}_{I16|U16|I32|U32|F}_{N|R|W}, plus Bit_Hold,
+  Bit_Input, Coil_X_*, Digital_X_*. A_ presents as an analog value, I_ as an
+  integral one. _N is normal order and dominates the fleet - reach for _R or
+  _W only when the document or a live read proves the swap.
+scale: a printed factor is inverted - "factor 10" or "x10" means x0.1. Only a
+  document defining "actual = register x factor" is used as printed. No factor
+  stated means no scale key at all.
+unit: the fleet spellings - C (never °C), %, sec, V, %RH, ppm, m3/h, Pa, kWh.
+  No key fits: omit unit, keep the value raw, report the gap. Do not reach for
+  a neighbour - kVAh is not VAh, sek is not ms.
+decimals: match the scale - x0.1 gives 1, x0.01 gives 2.
+
+ALWAYS
+- Keep the document's own sections as the groups, in source order, with the
+  heading as the group alias. aio/dio/alm/misc/sch are the fallback for a
+  document with no structure of its own.
+- Point order as printed - it becomes the operator's menu (view_order).
+- A bit row carries only its Bit_/Coil_ datatype and bit number.
+- Every point the document identifies as an alarm, fault or trip gets alarm A.
+  N for a note; B and C are effectively unused. A row stating its own letter
+  keeps it. Omit alarm everywhere else, and never infer alarm-hood from a
+  section or tag name that merely has the word in it.
+- Keep vendor enum numbers exactly, gaps and all; translate only the words.
+- Mark 3-4 online points and say why each was picked. A live measurement or
+  status register, never a firmware version or serial number - those answer
+  even when the device is dead.
+- update_freq slow on energy totals, counters and configuration values.
+- Write canonical, not exhaustive: leave out every field at its default.
+- Prefer a deliberate subset - the driver sends one Modbus request per point.
+
+NEVER
+- Never invent a datatype, unit or scale key. If none fits, stop and ask.
+- Never adjust an address per point - subtract_one is set once for the file.
+- Never author a motherword row; it is synthesized. And no bit of 16-31
+  unless an explicit 32-bit point at that address fixes the word order.
+- Never make a point rw unless the document says it is writable. A holding
+  register is not permission.
+- Never turn a negative-numbered enum or a bitmask into a state text.
+- Never let a unit-code register fill another point's unit - it is its own
+  state-text point.
+- Never ship a 64-bit counter through I64I32/U64U32 - IWMAC truncates it to
+  32 bits silently. Skip the row and say so.
+- Never write a system: block unless I ask for a new-plant script.
+- Never transcribe an existing list by hand.
+- Never delete a row because it reports an error - fix what the code names.
+  A validator suggestion is a guess: I_Hold_U16R_N suggests I_Hold_U16_R,
+  which is wrong for a device that really is _N.
+
+DECIDE ONCE, WRITE IT DOWN
+- Holding or Input, where the document offers both for the same value: one
+  family for the whole file, and say which.
+- Register column or address column, where both are printed and differ by one:
+  one column for the whole file, and say which.
+- Scope, if not everything goes in: agree it with me before picking a subset.
+- An example project and the vendor document disagreeing on a register fact:
+  that is a question for me, never a preference to settle quietly.
+
+DELIVER
+1. One .json file: $schema first, every field at its default left out.
+2. A coverage ledger - every source row as included, covered indirectly by a
+   bit point, or skipped with the reason, plus totals. A smaller list is fine;
+   a subset called "all points" is not.
+3. What you inferred rather than read, so I can overrule it.
+4. Every question the document did not answer. Ask rather than assume.
+Valid JSON only - no comments, no trailing commas, questions to me in chat and
+never into the file. Do not tell me it validates - JSON parse is not modbusgen
+validation. I run the validator.</pre>
+        <h4>Then, in the chat</h4>
+        <ol style="margin:4px 0;padding-left:20px">
+          <li>It asks first whether a filled Modbustemplate workbook, a generated SQL
+            script or a previous delivery exists. If one does, <b>stop the chat</b> —
+            <b>Insert Excel</b> and <b>Import SQL</b> convert those here, losslessly and
+            complete.</li>
+          <li>Answer its questions instead of letting it assume. It should also stop by
+            itself if the document turns out 0-based, or the plant runs
+            <code>modbus.php</code>.</li>
+          <li>Check the three things it has to report back: the <b>table name</b> it
+            chose, the <b>coverage ledger</b> against the document, and what it
+            <b>inferred rather than read</b>.</li>
+          <li>Save the <code>.json</code>, then <b>Import project</b> and
+            <b>Validate</b> here. Its word that the file is valid counts for
+            nothing.</li>
+          <li>On errors, paste the whole failure back into the chat — code, advice and
+            all — rather than hand-editing rows.</li>
+        </ol>
+      </div>
+
+      <div class="sub">
         <div class="subhead">keyboard</div>
         <ul>
           <li><code>Ctrl+F</code> or <code>/</code> search the points ·
@@ -1130,40 +1262,28 @@
       <div class="sub">
         <div class="subhead">tips</div>
         <ul>
-          <li><b>Before the list exists, prove the device answers.</b> A list built
-            against a register map the device does not implement is legal, complete
-            and wrong, and you find out on site. <code>ping</code>, then
-            <code>modpoll</code> on one register you already know the right answer to.
-            The unit ID and the serial settings are what to suspect first when nothing
-            comes back.</li>
-          <li><b>Start a project:</b> <b>New</b> for an empty one, pick a saved one
-            from the list, or bring one in — <b>Import project</b> for a
-            <code>.json</code>/<code>.yaml</code>, <b>Import SQL</b> for a generated
-            script, <b>Insert Excel</b> for a filled Modbustemplate workbook.</li>
-          <li><b>Then work down the page:</b> Project for the table name, plant number
-            and options · Groups and State texts for what the operator sees · Points
-            for the register list · Units &amp; driver only when this plant's devices
-            are not registered yet.</li>
-          <li><b>Editing points:</b> <code>Ctrl+F</code> finds rows, click and drag
-            selects several, and the bar under the table changes them together.
-            <b>⤓ points</b> saves the list as its own file, <b>⤒ points</b> appends
-            one from somewhere else.</li>
-          <li><b>Finish with Validate, then Generate SQL.</b> Validate lists what would
-            stop the import; warnings do not block. A project built from an imported
-            SQL script has no plant number in it — set one before generating.</li>
-          <li><b>Save keeps a copy in this browser. Export writes the real file</b> —
-            that is the one to keep, mail, or move to another machine. It names itself
-            from the project: <span class="ex">10225_spar_hansnes_vent_25.08.2026_14.32.json</span>
-            — plant, table, date and 24-hour time. Two exports in the same minute get
-            the same name, so the browser numbers the second one. Put a
-            <code>.yaml</code> in the name box for YAML instead of JSON.
-            The file explains itself: it opens with <code>$schema</code>, naming the
-            contract every field is written against, and a <code>_help</code> block
-            saying what the file is and what would be wrong to change — so whoever opens
-            it next, person or AI, is not guessing. Both are ignored when the file is
-            loaded back, and rewritten on the next export.</li>
-          <li><b>Direct link:</b> add <code>#file-name</code> to the URL, e.g.
-            <code>…/#example-belimo-ev.json</code>.</li>
+          <li><b>Start:</b> <b>New</b> · pick a saved file · <b>Import project</b> for a
+            <code>.json</code>/<code>.yaml</code> · <b>Import SQL</b> for a generated
+            script · <b>Insert Excel</b> for a filled Modbustemplate workbook.</li>
+          <li><b>Import SQL</b> brings no plant number with it — set one before
+            generating.</li>
+          <li><b>Work down the page:</b> Project · Groups · State texts · Points ·
+            Units &amp; driver, that last only for a plant with no driver yet.</li>
+          <li><b>Points:</b> <code>Ctrl+F</code> finds, drag selects, and the bar under
+            the table edits the whole selection. <b>⤓ points</b> saves the list or the
+            selection as its own file; <b>⤒ points</b> appends one.</li>
+          <li><b>Finish:</b> <b>Validate</b> — warnings do not block, failing rows go
+            red, and <b>fix:</b> buttons repair the mechanical ones — then
+            <b>Generate SQL</b>.</li>
+          <li><b>Save</b> keeps it in this browser. <b>Export</b> writes the real file,
+            named from the project and self-explaining (<code>$schema</code> +
+            <code>_help</code>). <code>.yaml</code> in the name box for YAML.</li>
+          <li><b>Export Excel</b> hands the list to anyone still working in the
+            workbook.</li>
+          <li><b>Direct link:</b> <code>…/#example-belimo-ev.json</code>.</li>
+          <li><b>Before all of it:</b> <code>ping</code>, then <code>modpoll</code> one
+            register you know the answer to. A list built against a map the device does
+            not implement is legal, complete and wrong.</li>
         </ul>
       </div>
     </div>
@@ -4013,6 +4133,16 @@ function downloadTextFile(name, text) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
+
+/* The starter prompt in the help panel. textContent, so the angle-bracket blanks the
+   user still has to fill in arrive as typed rather than as HTML entities. */
+$("btnCopyPrompt").onclick = async (e) => {
+  const btn = e.currentTarget;
+  try {
+    await navigator.clipboard.writeText($("aiPrompt").textContent);
+    btnFlash(btn, "copied ✓", "ok");
+  } catch (err) { btnFlash(btn, "copy failed", "bad", 2600); }
+};
 
 $("btnExport").onclick = async () => {
   const btn = $("btnExport");

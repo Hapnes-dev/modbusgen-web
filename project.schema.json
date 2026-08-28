@@ -458,7 +458,7 @@
           },
           "datatype": {
             "type": "string",
-            "description": "Key into data/tables/datatypes.csv, exactly as spelled there - never invented. Encodes presentation, register table, raw type and word order, e.g. A_Hold_I16_N, I_Hold_U16_N, Bit_Hold, Coil_X_N, A_Input_F_N, Custom_Hold_U32_W. (Work!D)",
+            "description": "Key into data/tables/datatypes.csv, exactly as spelled there - never invented. Encodes presentation, register table, raw type and word order, e.g. A_Hold_I16_N, I_Hold_U16_N, Bit_Hold, Coil_X_N, A_Input_F_N. A name the shipped table does not carry is legal only when this project defines it in its own datatypes block (Custom_Hold_U32_W is the worked example of that, not a shipped key). (Work!D)",
             "examples": [
               "A_Hold_I16_N",
               "I_Hold_U16_N",
