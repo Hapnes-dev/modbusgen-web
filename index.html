@@ -352,6 +352,20 @@
   .msg.fix .fixbtn{font-size:11px;padding:1px 8px;margin-left:4px;
                    border-color:#2f4d70;color:#a9cbef;vertical-align:1px}
   .msg.fix .fixbtn:hover{border-color:var(--accent)}
+  /* Errors and warnings are prose, and prose set in 12.5px monospace across a card
+     1500px wide is the hardest reading on the page - about 180 characters to the line,
+     with the remedy in the same weight and colour as the diagnosis. The boxes keep
+     their colour and lose the typewriter: UI font, a measure that stops at 92
+     characters, the message in bold and its advice set back behind a rule. */
+  .msg.err, .msg.warn{font-family:inherit;line-height:1.55;padding:10px 12px}
+  .msg.err > div, .msg.warn > div{max-width:92ch}
+  .msg.err > div.finding, .msg.warn > div.finding{font-weight:600;margin-top:11px}
+  .msg.err > div.finding:first-child, .msg.warn > div.finding:first-child{margin-top:0}
+  .msg.err .advice, .msg.warn .advice{font-weight:400;font-size:12px;opacity:.8;
+      margin:4px 0 0 15px;padding-left:10px;border-left:2px solid currentColor}
+  .msg.err .fixbtn, .msg.warn .fixbtn{font-size:11px;padding:1px 8px;margin-left:2px;
+      border-color:#2f4d70;color:#a9cbef;white-space:nowrap}
+  .msg.err .fixbtn:hover, .msg.warn .fixbtn:hover{border-color:var(--accent)}
   .sqlbar{display:flex;gap:8px;align-items:center;margin-top:10px}
   /* match the row-count chip rather than the page's full-size buttons */
   .sqlbar button{font-size:12px;padding:3px 10px;line-height:1.5}
@@ -3171,7 +3185,15 @@ const FIX_ACTIONS = {
     label:"set decimals from the scale",
     title:"Fills decimals on each scaled row from its scale - x0.1 gives 1, x0.01 gives 2 (undoable). Only touches rows that have none",
     run:(ctx)=>{if(!ctx.points.length) return;
-      const from = s => {const m=/^x0\.(0*)1$/.exec(String(s||"")); return m ? m[1].length+1 : null;};
+      /* The multiplier is the key itself, so the decimals are its own - x0.1 gives 1,
+         x0.25 gives 2, x3.6 gives 1. A whole multiplier (x1, x10, x65) implies none and
+         the warning does not raise those; an earlier version matched only x0.1-style
+         keys and silently did nothing on the rest, so the button changed no rows and
+         the warning stayed on screen. Mirrors scale_decimals in validate.py. */
+      const from = s => {const m=/^x(\d*\.?\d+)$/.exec(String(s||"").trim());
+        if(!m) return null;
+        const v=parseFloat(m[1]); if(!isFinite(v) || v===Math.trunc(v)) return null;
+        const dot=m[1].indexOf("."); return dot<0 ? null : (m[1].length-dot-1) || null;};
       ptPushState(null, "decimals from scale");
       for(const p of ctx.points){const d=from(p.scale); if(d!=null && p.decimals==null) p.decimals=d;}
       updateStats(); applyPointView();}},
@@ -3395,9 +3417,9 @@ function flashPoints(points) {
    - a project-wide error has no row, and a control that goes nowhere is worse than text. */
 function findingLine(text, f, pointRows, style, kind) {
   const pts = pointsOfFinding(f, pointRows);
-  if (!pts.length) return el("div", {style: style || ""}, text);
+  if (!pts.length) return el("div", {class:"finding", style: style || ""}, text);
   const n = pts.length;
-  return el("div", {class:"jump", style: style || "",
+  return el("div", {class:"finding jump", style: style || "",
                     title:`Show ${n === 1 ? "this row" : "these " + n + " rows"} in the Points card`,
                     onclick:() => pinPoints(pts, kind)},
     text, el("span",{class:"to"}, n === 1 ? "  → show the row" : `  → show ${n} rows`));
@@ -3841,7 +3863,7 @@ function showResult(res, sqlWanted) {
       box.append(findingLine("⚠ " + String(w.message || "").replace(/^warning:\s*/, ""),
                              w, res.point_rows, "margin-top:4px", "warn"));
       if (w.advice) {
-        const line = el("div",{class:"where", style:"margin:2px 0 0 14px"}, w.advice);
+        const line = el("div",{class:"advice"}, w.advice);
         /* A warning with a mechanical remedy gets the same button an error does. It
            never blocked anything, so the button is the only thing that makes the
            difference between a remark and a repair. */
@@ -5280,6 +5302,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=528c9a6142"></script>
+<script src="pyodide-adapter.js?v=3e7beada5c"></script>
 </body>
 </html>
