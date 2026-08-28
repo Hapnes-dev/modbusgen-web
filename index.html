@@ -3101,6 +3101,53 @@ function showProject(data) {
 const FIX_ACTIONS = {
   /* Repairs for the delivery warnings. A warning with a mechanical remedy is the same
      shape as an error with one - the only difference is that nothing was blocking. */
+  /* Dead configuration: an option that makes other data do nothing. The repair is
+     almost always the option rather than the data, because the data is what somebody
+     meant - which is why every one of these turns a switch and none deletes a field. */
+  "alarms-to-alm-inert": {
+    label:"switch auto_groups on",
+    title:"Turns on the pass alarms_to_alm runs inside. Note it also fills empty groups from each datatype's default, which is wrong on a source that defines its own sections - switch alarms_to_alm off instead if that is your case",
+    run:(ctx)=>ctx.setOption("auto_groups", true)},
+  "legacy-only-option": {
+    label:"switch create_tables off",
+    title:"Modern format always emits CREATE TABLE IF NOT EXISTS, so the option changes nothing. Switch sql_format to legacy instead if you wanted the Excel-era serialisation",
+    run:(ctx)=>ctx.setOption("create_tables", false)},
+  "ranges-dropped": {
+    label:"switch include_minmax on",
+    title:"Carries range_min and range_max into the param row. Off is what the real fleet does, so delete the ranges instead if you did not mean to ship them",
+    run:(ctx)=>ctx.setOption("include_minmax", true)},
+  "statetexts-dropped": {
+    label:"switch use_json on",
+    title:"The master gate on state texts - on, every point with a list id emits format_extra",
+    run:(ctx)=>ctx.setOption("use_json", true)},
+  "alias-part-dropped": {
+    label:"switch the alias part back on",
+    title:"Turns the alias toggle named in the warning back on, so the field reaches the operator",
+    run:(ctx)=>{for(const e of ctx.errors){const m=e.match(/options\.(use_\w+) is off/);
+      if(m) ctx.setOption(m[1], true);}}},
+  "statetext-only-rw-drops": {
+    label:"switch statetext_only_rw off",
+    title:"Lets read-only points emit their state text too",
+    run:(ctx)=>ctx.setOption("statetext_only_rw", false)},
+  "active-ignored": {
+    label:"clear active on these points",
+    title:"Clears the per-point active that force_active is overriding, so the file says what the output does (undoable). Switch force_active off instead if you meant those rows to ship inactive",
+    run:(ctx)=>{if(!ctx.points.length) return;
+      ptPushState(null, "clear active");
+      /* active has no column in the points table, so ptOut does not write it - it
+         survives from _orig, which is where a loaded file's value lives. Clearing only
+         the model field would leave the payload untouched and the button would look
+         like it worked. */
+      for(const p of ctx.points){ p.active = null; if(p._orig) p._orig.active = null; }
+      updateStats(); applyPointView();}},
+  "proper-case-mangles": {
+    label:"switch proper_case_states off",
+    title:"Keeps state words exactly as typed, so kWh stays kWh. On, Excel's Proper() upper-cases each word's first letter and lowers the rest",
+    run:(ctx)=>ctx.setOption("proper_case_states", false)},
+  "decimals-overwritten": {
+    label:"switch override_decimal off",
+    title:"Keeps the decimals typed on each row instead of taking the unit table's value",
+    run:(ctx)=>ctx.setOption("override_decimal", false)},
   "comm-incomplete": {
     label:"switch the driver block off",
     title:"Unticks 'add the driver' in the Units & driver card, so no communication settings are written at all. Right when the plant already has its driver; wrong if you simply have not typed the address yet",
@@ -5233,6 +5280,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=811066a83d"></script>
+<script src="pyodide-adapter.js?v=528c9a6142"></script>
 </body>
 </html>
