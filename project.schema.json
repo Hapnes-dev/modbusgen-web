@@ -42,6 +42,23 @@
         "12345"
       ]
     },
+    "driver": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "mb.exe",
+        "modbus.php",
+        "",
+        null
+      ],
+      "default": "",
+      "description": "Which IWMAC Modbus driver the plant runs (docs/15 section 1). Written into no SQL column - it decides what validation can conclude about word order and 32-bit writes, which the vendor document cannot settle. mb.exe supports word/byte swaps and FC16; modbus.php supports neither, so on it only _N datatypes read correctly and a writable 32-bit point cannot be written at all - both fail silently. Absent or empty means not stated, and leaves those checks as warnings that ask you to confirm. Ask the user; do not guess.",
+      "examples": [
+        "mb.exe"
+      ]
+    },
     "options": {
       "type": "object",
       "additionalProperties": false,

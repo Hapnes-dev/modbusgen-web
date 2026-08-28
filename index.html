@@ -475,6 +475,7 @@
       <div class="row">
         <label class="f f-lg" title="Names the three tables the script fills: iw_par_<name>_param, iw_par_<name>_groups, iw_set_<name>. Lowercase letters and digits">table name<input id="pTable" placeholder="kjol" title="Names the three tables the script fills: iw_par_<name>_param, iw_par_<name>_groups, iw_set_<name>. Lowercase letters and digits"></label>
         <label class="f f-sm" title="Identifies the plant. Used only in the generated file name, never in the SQL itself">plant number<input id="pPlant" placeholder="12345" title="Identifies the plant. Used only in the generated file name, never in the SQL itself"></label>
+        <label class="f f-sm" title="Which IWMAC Modbus driver this plant runs. Written into no SQL column - it decides what validation can conclude about swapped word order and 32-bit writes. mb.exe carries both, modbus.php neither and silently. Leave it unstated if you do not know: validation then asks rather than assumes">driver<select id="pDriver" title="Which IWMAC Modbus driver this plant runs. Written into no SQL column - it decides what validation can conclude about swapped word order and 32-bit writes. mb.exe carries both, modbus.php neither and silently. Leave it unstated if you do not know: validation then asks rather than assumes"><option value="">not stated</option><option value="mb.exe">mb.exe</option><option value="modbus.php">modbus.php</option></select></label>
       </div>
     </div>
 
@@ -496,6 +497,18 @@
         <code>iw_set_&lt;name&gt;</code>. Lowercase letters and digits, e.g.
         <span class="ex">kjol</span>. <b>plant number</b> is used only in the SQL file's
         name; it is not written into the database.
+
+        <p><b>driver</b> is which of IWMAC's two Modbus drivers the plant runs, and it
+        reaches no database column either. It is here because two things the device
+        documentation cannot settle depend on it: <code>mb.exe</code> supports a swapped
+        word order (<code>_R</code>, <code>_W</code>) and 32-bit writes, and
+        <code>modbus.php</code> supports neither — silently, so a swapped point there
+        reads a plausible wrong number and a 32-bit write simply never happens. Leave it
+        <b>not stated</b> if you do not know: validation warns and asks you to confirm,
+        which is what it did before this field existed. Say <code>mb.exe</code> and those
+        warnings stop, because there is nothing left to confirm. Say
+        <code>modbus.php</code> and they stop asking and start telling you what the list
+        will do on the bus.</p>
 
         <p>Below, the badge after each option is its default; hovering a checkbox shows
         the same summary.</p>
@@ -1289,8 +1302,10 @@ plant: 1234
 Addressing: subtract_one true - the document numbers registers from 1. If it
 is explicitly 0-based (a protocol-address column, or a hex table from 0000),
 stop and tell me rather than shifting every address by one.
-Driver: mb.exe - say so if this is an existing plant on modbus.php, because
-then no _W datatypes and no 32-bit writes.
+Driver: mb.exe - write it into the file, "driver": "mb.exe" beside plant. If
+this is an existing plant on modbus.php, say so: "driver": "modbus.php", and
+then no _R or _W datatypes and no 32-bit writes. Leave the field out only if
+nobody knows which driver it is.
 Alias text (the point's name): keep the maker's own wording for the value, as
 the document prints it. The document's language is the list's language - a
 Norwegian manual gives Norwegian texts, an English one English; translating
@@ -3057,6 +3072,7 @@ function collectProject() {
   return {
     table: $("pTable").value.trim(),
     plant: $("pPlant").value.trim(),
+    driver: $("pDriver").value,
     options: collectOptions(),
     system: collectSystem(),
     groups: collectGroups(),
@@ -3069,6 +3085,17 @@ function showProject(data) {
   requireBoot();          // no project may be rendered before the tables are in
   $("pTable").value = data.table || "";
   $("pPlant").value = data.plant != null ? String(data.plant) : "";
+  /* An unknown spelling is kept rather than dropped, as hydrateSelect does for an
+     imported datatype: assigning a value a <select> does not list is a silent no-op, and
+     silence here would show "not stated" over a file that states something, then export
+     the page's answer instead of the file's. Validation reports it as driver-unknown. */
+  const drv = $("pDriver"), want = data.driver == null ? "" : String(data.driver).trim();
+  for (const extra of [...drv.options]) if (extra.dataset.foreign) extra.remove();
+  drv.value = want;
+  if (drv.value !== want) {
+    drv.append(el("option",{value:want, "data-foreign":"1"}, want));
+    drv.value = want;
+  }
   showSystem(data.system);
   renderOptions(data.options || {});
   $("groups").replaceChildren();
@@ -3168,6 +3195,19 @@ const FIX_ACTIONS = {
     label:"switch the driver block off",
     title:"Unticks 'add the driver' in the Units & driver card, so no communication settings are written at all. Right when the plant already has its driver; wrong if you simply have not typed the address yet",
     run:()=>{const cb=$("sysSettings"); if(cb && cb.checked){cb.checked=false; cb.dispatchEvent(new Event("change",{bubbles:true}));}}},
+  /* The 32-bit half of the old driver-needs-mb-exe warning, which is why that one is
+     now two codes. This half has a remedy docs/15 wrote down: on modbus.php the write
+     has no FC16 to travel on, so it silently never happens, and dropping it costs only
+     the write - a 32-bit read without a swap works on both drivers. The word-order half
+     deliberately has no entry: _W to _N is not a repair, it is a claim about what the
+     device delivers, and the tool does not make those (see the datatype-unknown note). */
+  "driver-write32-needs-mb-exe": {
+    label:"make these read-only",
+    title:"Sets rw to r on each writable 32-bit row (undoable). That is what docs/15 prescribes for a plant on modbus.php, and the value still reads there. Wrong if the plant runs mb.exe - set the driver field to mb.exe instead, and the warning goes with it",
+    run:(ctx)=>{if(!ctx.points.length) return;
+      ptPushState(null, "32-bit writes read-only");
+      for(const p of ctx.points) p.rw = "r";
+      updateStats(); applyPointView();}},
   "group-unused": {
     label:"delete the empty groups",
     title:"Removes each group that holds no points from the Groups card. The operator loses a menu folder that opened on nothing",
@@ -5048,10 +5088,14 @@ const WIZARD = [
   {title:"Open the project", card:"cardProject",
    body:`<p>Press <b>Import project</b> and pick the <code>.json</code> the agent wrote —
      or <b>New</b> to start from nothing and type it yourself.</p>
-     <p>Then check the two things nobody but you knows. <b>Table name</b> is a short
+     <p>Then check the three things nobody but you knows. <b>Table name</b> is a short
      lowercase word naming the three database tables this plant's list lands in. <b>Plant
-     number</b> identifies the site in IWMAC. Neither can be guessed from a datasheet, so
-     if you are unsure, ask whoever owns the plant.</p>
+     number</b> identifies the site in IWMAC. <b>Driver</b> is which of IWMAC's two Modbus
+     drivers this plant runs, which decides whether a swapped word order and a 32-bit
+     write are possible there at all. None of the three can be guessed from a datasheet,
+     so if you are unsure, ask whoever owns the plant — and leave the driver
+     <b>not stated</b> rather than picking one, because validation then asks instead of
+     assuming.</p>
      <p>Below them are the options. Leave them as they are unless you know why not; an
      option shown <span style="color:#e8b34a">amber</span> is one that differs from the
      recommended setting. The single one worth checking is
@@ -5305,6 +5349,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=e73a950bf7"></script>
+<script src="pyodide-adapter.js?v=34c46fa5a2"></script>
 </body>
 </html>
