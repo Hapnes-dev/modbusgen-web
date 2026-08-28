@@ -241,14 +241,26 @@
   .points tr.bad > td{background:rgba(255,107,107,.13)}
   .points tr.bad > td:first-child{box-shadow:inset 2px 0 0 var(--red);color:var(--red)}
   .points tr.bad.sel > td{background:rgba(255,107,107,.2)}
-  /* the rows the message you just clicked is about - after .bad on purpose, so a
-     pinned failing row shows which message you followed rather than staying anonymous */
-  .points tr.pin > td{background:rgba(77,163,255,.16)}
-  .points tr.pin > td:first-child{box-shadow:inset 2px 0 0 var(--accent);color:var(--accent)}
+  /* The rows the message you just clicked is about - after .bad on purpose, so the pin
+     wins the row it shares. It takes the colour of the message you followed, red from an
+     error and amber from a warning, and carries it much stronger than the standing tint:
+     same hue, so you keep the kind, but unmistakably this row rather than all of them. */
+  .points tr.pinerr > td{background:rgba(255,107,107,.30)}
+  .points tr.pinerr > td:first-child{box-shadow:inset 3px 0 0 var(--red);color:var(--red)}
+  .points tr.pinwarn > td{background:rgba(232,179,74,.26)}
+  .points tr.pinwarn > td:first-child{box-shadow:inset 3px 0 0 var(--amber);color:var(--amber)}
+  /* Three blinks when a message brings you here. The pin colour alone is a state you
+     have to go looking for; the blink is what says "this row, the one you just clicked".
+     transparent at both ends so the pin or error tint underneath shows between flashes. */
+  @keyframes ptflasherr{0%,100%{background:transparent}50%{background:rgba(255,107,107,.55)}}
+  @keyframes ptflashwarn{0%,100%{background:transparent}50%{background:rgba(232,179,74,.52)}}
+  .points tr.flash.pinerr > td{animation:ptflasherr .28s ease-in-out 3}
+  .points tr.flash.pinwarn > td{animation:ptflashwarn .28s ease-in-out 3}
+  @media (prefers-reduced-motion: reduce){ .points tr.flash > td{animation:none} }
   /* a message that knows which rows it is about says so, and takes you there */
   .msg .jump{cursor:pointer;border-radius:4px;padding:1px 3px;margin:0 -3px}
   .msg .jump:hover{background:rgba(77,163,255,.12);color:var(--text)}
-  .msg .jump .to{color:var(--accent);white-space:nowrap}
+  .msg .jump .to{color:inherit;opacity:.72;white-space:nowrap}
   /* only while a drag has actually crossed rows - otherwise selecting text
      inside a single input would stop working */
   body.rowdrag,body.rowdrag .points{user-select:none}
@@ -2377,6 +2389,9 @@ const ptFilters = new Set();          // bits | writable | alarms | online | fai
 const ptBad = new Set();              // points the last validation rejected
 const ptWarn = new Set();             // points the last validation warned about
 const ptPin = new Set();              // points the message you last clicked is about
+let ptPinKind = "err";                // and whether that message was an error or a warning
+const ptFlash = new Set();            // and the same rows for the length of three blinks
+let ptFlashTimer = null;
 
 const PT_NUMERIC = new Set(["addr","bit","statetext","decimals"]);
 function ptSortKey(d, col) {
@@ -2689,7 +2704,10 @@ function ptFill(tr, p, vi) {
   tr.classList.toggle("sel", ptSel.has(p));
   tr.classList.toggle("warn", ptWarn.has(p));
   tr.classList.toggle("bad", ptBad.has(p));
-  tr.classList.toggle("pin", ptPin.has(p));
+  const pinned = ptPin.has(p);
+  tr.classList.toggle("pinerr", pinned && ptPinKind === "err");
+  tr.classList.toggle("pinwarn", pinned && ptPinKind === "warn");
+  tr.classList.toggle("flash", ptFlash.has(p));
   tr.classList.toggle("alt", (vi & 1) === 1);
 }
 /* Grows the pool to the viewport, and only ever grows it: shrinking it after the
@@ -2803,7 +2821,7 @@ function ptDelete(p) {
   ptPushState(null, "delete row");
   const i = ptModel.indexOf(p);
   if (i >= 0) ptModel.splice(i, 1);
-  ptSel.delete(p); ptBad.delete(p); ptWarn.delete(p); ptPin.delete(p);
+  ptSel.delete(p); ptBad.delete(p); ptWarn.delete(p); ptPin.delete(p); ptFlash.delete(p);
   if (ptSelAnchor === p) ptSelAnchor = null;
   renumber();
 }
@@ -3081,6 +3099,35 @@ function showProject(data) {
    there and its fix used to detach with nothing to show for it. What stays here is the
    part only a browser can do: edit rows, tick an option, re-validate. */
 const FIX_ACTIONS = {
+  /* Repairs for the delivery warnings. A warning with a mechanical remedy is the same
+     shape as an error with one - the only difference is that nothing was blocking. */
+  "comm-incomplete": {
+    label:"switch the driver block off",
+    title:"Unticks 'add the driver' in the Units & driver card, so no communication settings are written at all. Right when the plant already has its driver; wrong if you simply have not typed the address yet",
+    run:()=>{const cb=$("sysSettings"); if(cb && cb.checked){cb.checked=false; cb.dispatchEvent(new Event("change",{bubbles:true}));}}},
+  "group-unused": {
+    label:"delete the empty groups",
+    title:"Removes each group that holds no points from the Groups card. The operator loses a menu folder that opened on nothing",
+    run:(ctx)=>{const names=new Set();
+      for(const e of ctx.errors){const m=e.match(/group\(s\) (.+?) are defined/); if(m) m[1].split(", ").forEach(n=>names.add(n.trim()));}
+      for(const input of [...document.querySelectorAll("#groups .g-name")])
+        if(names.has(input.value.trim())) input.parentNode.remove();
+      refreshGroupList();}},
+  "statetext-unused": {
+    label:"delete the unused lists",
+    title:"Removes each state list no point references. Nothing points at them, so nothing can break",
+    run:(ctx)=>{const ids=new Set();
+      for(const e of ctx.errors){const m=e.match(/list\(s\) (.+?) are defined/); if(m) m[1].split(", ").forEach(n=>ids.add(n.trim()));}
+      for(const box of [...$("statetexts").children]){
+        const id=box.querySelector(".st-id"); if(id && ids.has(id.value.trim())) box.remove();}}},
+  "scale-without-decimals": {
+    label:"set decimals from the scale",
+    title:"Fills decimals on each scaled row from its scale - x0.1 gives 1, x0.01 gives 2 (undoable). Only touches rows that have none",
+    run:(ctx)=>{if(!ctx.points.length) return;
+      const from = s => {const m=/^x0\.(0*)1$/.exec(String(s||"")); return m ? m[1].length+1 : null;};
+      ptPushState(null, "decimals from scale");
+      for(const p of ctx.points){const d=from(p.scale); if(d!=null && p.decimals==null) p.decimals=d;}
+      updateStats(); applyPointView();}},
   "group-unknown": {
     label:"define the missing groups",
     title:"Adds each missing group to the Groups card with the key as its display alias - rename the aliases afterwards",
@@ -3272,7 +3319,8 @@ function pointsOfFinding(f, pointRows) {
   return out;
 }
 
-function pinPoints(points) {
+function pinPoints(points, kind) {
+  ptPinKind = kind === "warn" ? "warn" : "err";
   ptPin.clear();
   points.forEach(p => ptPin.add(p));
   const card = $("cardPoints");
@@ -3280,17 +3328,31 @@ function pinPoints(points) {
   applyPointView();
   if (points.length) ptReveal(points[0]);      // scrolls the virtual list to the row
   card.scrollIntoView({block:"start", behavior:"smooth"});
+  flashPoints(points);
+}
+
+/* Three blinks, then gone. Held on the points rather than on the <tr>s the animation
+   runs in, because the pool recycles: scrolling mid-blink would otherwise leave the
+   class on a row now showing something else, and take it off the row you came for.
+   Repaints with ptRender rather than applyPointView - the view has not changed, only
+   what is painted on it. */
+function flashPoints(points) {
+  clearTimeout(ptFlashTimer);
+  ptFlash.clear();
+  points.forEach(p => ptFlash.add(p));
+  ptRender(true);
+  ptFlashTimer = setTimeout(() => { ptFlash.clear(); ptRender(true); }, 900);
 }
 
 /* One message, clickable when it knows where it happened. Not clickable when it does not
    - a project-wide error has no row, and a control that goes nowhere is worse than text. */
-function findingLine(text, f, pointRows, style) {
+function findingLine(text, f, pointRows, style, kind) {
   const pts = pointsOfFinding(f, pointRows);
   if (!pts.length) return el("div", {style: style || ""}, text);
   const n = pts.length;
   return el("div", {class:"jump", style: style || "",
                     title:`Show ${n === 1 ? "this row" : "these " + n + " rows"} in the Points card`,
-                    onclick:() => pinPoints(pts)},
+                    onclick:() => pinPoints(pts, kind)},
     text, el("span",{class:"to"}, n === 1 ? "  → show the row" : `  → show ${n} rows`));
 }
 
@@ -3312,7 +3374,7 @@ function renderAdvice(findings, pointRows) {
     const line = el("div",{style:"margin-top:6px"},
       where ? el("span",{class:"where" + (rows.length ? " jump" : ""),
                          title: rows.length ? "Show these rows in the Points card" : "",
-                         onclick: rows.length ? (() => pinPoints(rows)) : null},
+                         onclick: rows.length ? (() => pinPoints(rows, "err")) : null},
                  where + " — ") : "",
       text);
     // a near key from the same table: the most expensive datatype error on record was
@@ -3730,9 +3792,20 @@ function showResult(res, sqlWanted) {
     const box = el("div",{class:"msg warn"});
     for (const w of warns) {
       box.append(findingLine("⚠ " + String(w.message || "").replace(/^warning:\s*/, ""),
-                             w, res.point_rows, "margin-top:4px"));
-      if (w.advice)
-        box.append(el("div",{class:"where", style:"margin:2px 0 0 14px"}, w.advice));
+                             w, res.point_rows, "margin-top:4px", "warn"));
+      if (w.advice) {
+        const line = el("div",{class:"where", style:"margin:2px 0 0 14px"}, w.advice);
+        /* A warning with a mechanical remedy gets the same button an error does. It
+           never blocked anything, so the button is the only thing that makes the
+           difference between a remark and a repair. */
+        const fix = FIX_ACTIONS[w.code];
+        if (fix)
+          line.append(" ", el("button",{class:"ghost fixbtn", title:fix.title,
+            onclick:()=>applyAdviceFix(fix, {points: w.points || [], findings:[w],
+                                             errors:[w.message]}, res.point_rows)},
+            "fix: " + fix.label));
+        box.append(line);
+      }
     }
     out.append(box);
   }
@@ -3745,7 +3818,7 @@ function showResult(res, sqlWanted) {
              ? res.findings : null;
     const box = el("div",{class:"msg err"});
     res.errors.forEach((e, i) =>
-      box.append(findingLine("✕ " + e, fs ? fs[i] : null, res.point_rows)));
+      box.append(findingLine("✕ " + e, fs ? fs[i] : null, res.point_rows, "", "err")));
     out.append(box);
     const advice = renderAdvice(res.findings, res.point_rows);
     if (advice) out.append(advice);
@@ -5160,6 +5233,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=87d811f3b1"></script>
+<script src="pyodide-adapter.js?v=811066a83d"></script>
 </body>
 </html>
