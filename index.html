@@ -230,6 +230,14 @@
   .points tr.bad > td{background:rgba(255,107,107,.13)}
   .points tr.bad > td:first-child{box-shadow:inset 2px 0 0 var(--red);color:var(--red)}
   .points tr.bad.sel > td{background:rgba(255,107,107,.2)}
+  /* the rows the message you just clicked is about - after .bad on purpose, so a
+     pinned failing row shows which message you followed rather than staying anonymous */
+  .points tr.pin > td{background:rgba(77,163,255,.16)}
+  .points tr.pin > td:first-child{box-shadow:inset 2px 0 0 var(--accent);color:var(--accent)}
+  /* a message that knows which rows it is about says so, and takes you there */
+  .msg .jump{cursor:pointer;border-radius:4px;padding:1px 3px;margin:0 -3px}
+  .msg .jump:hover{background:rgba(77,163,255,.12);color:var(--text)}
+  .msg .jump .to{color:var(--accent);white-space:nowrap}
   /* only while a drag has actually crossed rows - otherwise selecting text
      inside a single input would stop working */
   body.rowdrag,body.rowdrag .points{user-select:none}
@@ -267,7 +275,9 @@
   .wizard .wizhead b{color:var(--text);font-size:13px}
   .wizard .wizstep{font-size:10px;letter-spacing:.08em;color:var(--dim);
     border:1px solid var(--line);border-radius:20px;padding:1px 7px;white-space:nowrap}
-  .wizard .wizbody{padding:10px 12px;max-height:42vh;overflow:auto}
+  .wizard .wizbody{padding:10px 12px;max-height:56vh;overflow:auto}
+  .wizard .wizbody p{margin:0 0 8px}
+  .wizard .wizbody p:last-child{margin-bottom:0}
   .wizard .wizbody code{background:#12151b;border:1px solid var(--line);border-radius:4px;
     padding:0 5px;font-size:11.5px;color:#a8d8ff}
   .wizard .wizbody b{color:var(--text)}
@@ -1194,13 +1204,13 @@
           <button id="btnCopyPrompt" class="ghost" style="font-size:10px;padding:2px 8px"
             title="Copy the whole prompt to the clipboard, clipped or not">copy prompt</button>
           <button id="btnMorePrompt" class="ghost" style="font-size:10px;padding:2px 8px"
-            title="Unfold the whole prompt">show more</button></div>
+            title="Fold the prompt down to its first few lines, or unfold it again">show less</button></div>
         <p><b>Attach the vendor's register document</b> — and any previous delivery for
         this plant. The reference documents are already in the agent's <b>Modbus List
         Helper</b> folder; the prompt below names the ones to read. Paste it as it
         stands — nothing to fill in. The plant number only becomes the export file
         name, so change it here or fix it on the page afterwards:</p>
-        <pre id="aiPrompt" class="clip">Build a modbusgen project JSON from the attached register document.
+        <pre id="aiPrompt">Build a modbusgen project JSON from the attached register document.
 
 READ FIRST, from Modbus List Helper
   11-ai-json-authoring.md        binding - JSON shape, addressing, coverage
@@ -2331,6 +2341,7 @@ function ptSetModel(points) {
 let ptSort = {col:null, dir:null};    // dir: "asc" | "desc" | null
 const ptFilters = new Set();          // bits | writable | alarms | online | failing
 const ptBad = new Set();              // points the last validation rejected
+const ptPin = new Set();              // points the message you last clicked is about
 
 const PT_NUMERIC = new Set(["addr","bit","statetext","decimals"]);
 function ptSortKey(d, col) {
@@ -2640,6 +2651,7 @@ function ptFill(tr, p, vi) {
   ptSetChk(f.no_group, !!p.no_group);
   tr.classList.toggle("sel", ptSel.has(p));
   tr.classList.toggle("bad", ptBad.has(p));
+  tr.classList.toggle("pin", ptPin.has(p));
   tr.classList.toggle("alt", (vi & 1) === 1);
 }
 /* Grows the pool to the viewport, and only ever grows it: shrinking it after the
@@ -2753,7 +2765,7 @@ function ptDelete(p) {
   ptPushState(null, "delete row");
   const i = ptModel.indexOf(p);
   if (i >= 0) ptModel.splice(i, 1);
-  ptSel.delete(p); ptBad.delete(p);
+  ptSel.delete(p); ptBad.delete(p); ptPin.delete(p);
   if (ptSelAnchor === p) ptSelAnchor = null;
   renumber();
 }
@@ -3188,6 +3200,54 @@ function applyAdviceFix(fix, group, pointRows) {
   markValStale();
   return $("btnValidate").onclick();           // re-validate: the panel and chip refresh
 }
+/* ---------- follow a message to the rows it is about ----------
+   Every finding and every warning already carries the rows it came from - `point`/`addr`
+   for a single one, `points`/`addrs` for a set - and the page threw all of it away and
+   printed prose. "1 point(s) without alias text (addr 815)" then left you to find 815 in
+   a list of sixteen hundred by eye.
+
+   Indices are counted after motherword synthesis, so they go through point_rows exactly
+   as markBadRows does. The address is the fallback: it is the one identifier the message
+   and the file being edited agree on, and it still works when the index belongs to a
+   synthesized row that was never in the project. */
+function pointsOfFinding(f, pointRows) {
+  const out = [];
+  const push = p => { if (p && !out.includes(p)) out.push(p); };
+  const idx = (f && f.points && f.points.length) ? f.points : (f && f.point ? [f.point] : []);
+  for (const v of idx) {
+    const src = Array.isArray(pointRows) ? pointRows[v - 1] : v;
+    if (src) push(ptModel[src - 1]);
+  }
+  if (out.length) return out;
+  const addrs = (f && f.addrs && f.addrs.length) ? f.addrs
+              : (f && f.addr != null ? [f.addr] : []);
+  for (const a of addrs)
+    for (const p of ptModel) if (Number(p.addr) === Number(a)) push(p);
+  return out;
+}
+
+function pinPoints(points) {
+  ptPin.clear();
+  points.forEach(p => ptPin.add(p));
+  const card = $("cardPoints");
+  if (card.classList.contains("collapsed")) { card.classList.remove("collapsed"); foldWrite(); }
+  applyPointView();
+  if (points.length) ptReveal(points[0]);      // scrolls the virtual list to the row
+  card.scrollIntoView({block:"start", behavior:"smooth"});
+}
+
+/* One message, clickable when it knows where it happened. Not clickable when it does not
+   - a project-wide error has no row, and a control that goes nowhere is worse than text. */
+function findingLine(text, f, pointRows, style) {
+  const pts = pointsOfFinding(f, pointRows);
+  if (!pts.length) return el("div", {style: style || ""}, text);
+  const n = pts.length;
+  return el("div", {class:"jump", style: style || "",
+                    title:`Show ${n === 1 ? "this row" : "these " + n + " rows"} in the Points card`,
+                    onclick:() => pinPoints(pts)},
+    text, el("span",{class:"to"}, n === 1 ? "  → show the row" : `  → show ${n} rows`));
+}
+
 function renderAdvice(findings, pointRows) {
   const advice = adviseOn(findings);
   if (!advice.size) return null;
@@ -3200,8 +3260,15 @@ function renderAdvice(findings, pointRows) {
       ? (pts.length > 8 ? `points ${pts.slice(0,8).join(", ")} +${pts.length-8} more`
                         : `point${pts.length > 1 ? "s" : ""} ${pts.join(", ")}`)
       : "";
+    // the same jump as the message above it: this panel is where you read the fix, so
+    // it is where you most want the rows in front of you
+    const rows = pts.length ? pointsOfFinding({points: pts}, pointRows) : [];
     const line = el("div",{style:"margin-top:6px"},
-      where ? el("span",{class:"where"}, where + " — ") : "", text);
+      where ? el("span",{class:"where" + (rows.length ? " jump" : ""),
+                         title: rows.length ? "Show these rows in the Points card" : "",
+                         onclick: rows.length ? (() => pinPoints(rows)) : null},
+                 where + " — ") : "",
+      text);
     // a near key from the same table: the most expensive datatype error on record was
     // a transposition, and naming the candidate is most of the fix
     if (group.suggestions.size)
@@ -3535,6 +3602,7 @@ function dtUnknownMsgs(map) {           // spread into a message list; empty whe
    whichever pool row is showing it. */
 function clearBadRows() {
   ptBad.clear();
+  ptPin.clear();          // a pin points at the last run's message, not this one's
   // with no marked points an armed "failing" filter would hide the whole table
   ptFilters.delete("failing");
   applyPointView();
@@ -3602,16 +3670,24 @@ function showResult(res, sqlWanted) {
   if (warns.length) {
     const box = el("div",{class:"msg warn"});
     for (const w of warns) {
-      box.append(el("div",{style:"margin-top:4px"},
-        "⚠ " + String(w.message || "").replace(/^warning:\s*/, "")));
+      box.append(findingLine("⚠ " + String(w.message || "").replace(/^warning:\s*/, ""),
+                             w, res.point_rows, "margin-top:4px"));
       if (w.advice)
         box.append(el("div",{class:"where", style:"margin:2px 0 0 14px"}, w.advice));
     }
     out.append(box);
   }
   if (res.errors && res.errors.length) {
-    out.append(el("div",{class:"msg err"},
-      res.errors.map(e => "✕ " + e).join("\n")));
+    /* One element per error rather than one joined string, so each can carry its own
+       finding and take you to its rows. webapi builds `errors` and `findings` from the
+       same list, so they are index-aligned; a cached older adapter sending only strings
+       falls back to plain, unclickable lines. */
+    const fs = Array.isArray(res.findings) && res.findings.length === res.errors.length
+             ? res.findings : null;
+    const box = el("div",{class:"msg err"});
+    res.errors.forEach((e, i) =>
+      box.append(findingLine("✕ " + e, fs ? fs[i] : null, res.point_rows)));
+    out.append(box);
     const advice = renderAdvice(res.findings, res.point_rows);
     if (advice) out.append(advice);
     markBadRows(res.errors, res.point_rows);
@@ -4244,8 +4320,10 @@ $("btnCopyPrompt").onclick = async (e) => {
   } catch (err) { btnFlash(btn, "copy failed", "bad", 2600); }
 };
 
-/* Clipped by default - the prompt is 98 lines and would otherwise push the rest of the
-   card off the screen. Copy takes the whole thing either way: it reads textContent. */
+/* Open by default: the prompt is the point of this section, and a reader who has to
+   press a button to see it will paste the five lines they can see. `show less` folds it
+   to its first few lines for when the card is in the way. Copy takes the whole thing
+   either way - it reads textContent, which the clip never touches. */
 $("btnMorePrompt").onclick = (e) => {
   const clipped = $("aiPrompt").classList.toggle("clip");
   e.currentTarget.textContent = clipped ? "show more" : "show less";
@@ -4742,53 +4820,124 @@ initFolding();
    step exists to be done, not read. `skip` marks the steps most lists do not need, so a
    first-timer is not left wondering what they failed to fill in. */
 const WIZARD = [
-  {title:"Get the list from an AI agent", card:"cardTips", copy:true,
-   body:`Attach the vendor's register document to a Copilot chat and paste the prompt
-     highlighted below - <b>copy prompt</b> takes it whole. The agent reads its own
-     Modbus List Helper folder, asks you what the document cannot say, and hands back a
-     <code>.json</code>. Already have a filled Modbustemplate workbook or a generated SQL
-     script? Skip the chat: <b>Insert Excel</b> and <b>Import SQL</b> convert those
-     losslessly.`},
+  {title:"What you are making", card:"cardTips", copy:true,
+   body:`<p>A device on a plant — a meter, a valve, a heat pump — holds its values in
+     numbered slots called <b>registers</b>. Register 101 might be the supply
+     temperature, 102 a setpoint. <b>Modbus</b> is the language for asking a device what
+     is in a slot. The device maker publishes which slot holds what, in a table usually
+     called a <i>register map</i> or <i>Modbus list</i>.</p>
+     <p>IWMAC cannot read that PDF. It needs the same information as rows in its
+     database, and this page produces the script that puts them there. That is the whole
+     job: maker's document in, database script out.</p>
+     <p><b>You do not type it in.</b> Attach the maker's document to a Copilot chat and
+     paste the prompt highlighted below — <b>copy prompt</b> takes the whole thing. The
+     agent writes the file and asks you about anything the document does not say. Answer
+     its questions; it is meant to ask.</p>
+     <p>One shortcut worth knowing: if a filled <b>Modbustemplate</b> workbook or an
+     older generated SQL script already exists for this plant, do not use the chat at
+     all. <b>Insert Excel</b> and <b>Import SQL</b> convert those directly and exactly,
+     and an existing delivery beats anything written from scratch.</p>`},
   {title:"Open the project", card:"cardProject",
-   body:`<b>Import project</b> the <code>.json</code> the agent produced - or <b>New</b>
-     to start empty. Then check the two things it could not know: the <b>table name</b>
-     and the <b>plant number</b>. Amber options differ from the recommended defaults;
-     <code>subtract_one</code> is the one worth checking against the device document.`},
+   body:`<p>Press <b>Import project</b> and pick the <code>.json</code> the agent wrote —
+     or <b>New</b> to start from nothing and type it yourself.</p>
+     <p>Then check the two things nobody but you knows. <b>Table name</b> is a short
+     lowercase word naming the three database tables this plant's list lands in. <b>Plant
+     number</b> identifies the site in IWMAC. Neither can be guessed from a datasheet, so
+     if you are unsure, ask whoever owns the plant.</p>
+     <p>Below them are the options. Leave them as they are unless you know why not; an
+     option shown <span style="color:#e8b34a">amber</span> is one that differs from the
+     recommended setting. The single one worth checking is
+     <code>subtract_one</code>. Device makers usually number their registers from 1,
+     while the Modbus protocol itself counts from 0, so the tool subtracts one. Nearly
+     every document is the from-1 kind, so leave it ticked — but if yours prints an
+     explicit column of protocol addresses starting at 0, untick it. Getting this wrong
+     shifts every value by one register, and the list still looks perfectly fine.</p>`},
   {title:"Groups", card:"cardGroups",
-   body:`Groups are the operator's menu. A converted workbook or a structured register
-     list keeps <b>its own section headings</b>, in source order. Only an unstructured
-     document falls back to <b>+ default groups</b>
-     (<code>aio</code>/<code>dio</code>/<code>alm</code>/<code>misc</code>/<code>sch</code>).`},
+   body:`<p>A <b>group</b> is a folder in the menu the operator sees in IWMAC. Every
+     value belongs to exactly one. The short key (<code>aio</code>) is what you type on a
+     row; the alias next to it ("Analoge inn/ut") is what the operator reads, so it goes
+     in their language.</p>
+     <p>If your source document had its own sections — Temperatures, Alarms, Setpoints —
+     <b>use those as your groups, in the same order</b>. Someone already decided how this
+     device is organised, and throwing that away for generic folders makes the menu worse
+     than the document.</p>
+     <p>If the document has no structure of its own, press <b>+ default groups</b> for
+     the five nearly every list uses: <code>aio</code> analogue in/out, <code>dio</code>
+     digital in/out, <code>alm</code> alarms, <code>misc</code> everything else,
+     <code>sch</code> time schedules.</p>`},
   {title:"State texts", card:"cardStates",
-   body:`One list per vendor enumeration, referenced from a point by id. Keep the
-     vendor's numbers exactly - gaps included - and translate only the words. Paste a
-     vendor list straight in; <code>Enter</code> in a word box adds the next state.`,
-   skip:"Nothing to do if no register is enumerated."},
+   body:`<p>Not every register holds a measurement. Some hold a <b>code</b>: 0 means off,
+     1 means running, 2 means defrosting. On its own the operator would just see the
+     number 2.</p>
+     <p>A <b>state text list</b> maps those numbers to words. Write it once here, then
+     point a row at it by its id number.</p>
+     <p>Two rules. Copy the maker's numbers <b>exactly</b> — if the document jumps from 3
+     to 5, your list jumps too, because those numbers are what the device actually sends.
+     Translate only the words, into the operator's language. Press <code>Enter</code> in a
+     word box to add the next one.</p>`,
+   skip:"Nothing to do here if no register in your document has a code table."},
   {title:"Modbus variables", card:"cardVars",
-   body:`Only when a register needs a combination no shipped datatype describes. Prefer a
-     shipped key, keep every field to a value the table already uses, and never redefine
-     a shipped name.`,
-   skip:"Most lists never touch this card."},
+   body:`<p>A <b>datatype</b> tells the driver how to read a register: which Modbus
+     command to send, whether the value is a whole number or has decimals, whether it can
+     be negative, whether it spans two registers, and in what order the bytes arrive.
+     <code>A_Hold_I16_N</code> is one of them.</p>
+     <p>135 datatypes ship with this tool and they cover almost every device. You pick one
+     per row on the Points card, from a dropdown — you do not write them.</p>
+     <p>This card exists only for the rare register that none of the 135 describes. If you
+     think you need one, <b>ask someone first</b>: a wrong datatype does not fail, it
+     quietly reads a believable wrong number.</p>`,
+   skip:"Most lists never touch this card. Skipping it is the normal answer."},
   {title:"Points", card:"cardPoints",
-   body:`The register list itself. <code>Ctrl+F</code> finds rows, click and drag selects
-     several, and the bar under the table edits them together. Red rows carry a datatype
-     no table knows. <b>⤒ points</b> appends a list from elsewhere; <b>⤓ points</b>
-     writes the selection out as its own file.`},
+   body:`<p>This is the list itself, and the real work. A <b>point</b> is one value: one
+     register, one row here, one line the operator sees in IWMAC.</p>
+     <p>A row needs four things at minimum. <b>Group</b>, the folder it belongs to.
+     <b>Datatype</b>, how to read it. <b>Address</b>, the register number straight from the
+     maker's document. <b>Text</b>, the name the operator reads — short, in their
+     language, like "Romtemperatur".</p>
+     <p>The rest is optional and worth filling in where the document supports it: the
+     <b>unit</b> (°C, %, kWh), a <b>scale</b> if the device sends tenths instead of whole
+     numbers, an <b>alarm</b> letter if this value is an alarm, a <b>state text</b> if it
+     is a code.</p>
+     <p>Some values are a single <b>bit</b> inside a register — one status word where bit
+     3 means "filter alarm". Give the bit number and nothing more; the tool works out the
+     rest by itself.</p>
+     <p>Working in here: <code>Ctrl+F</code> searches, click and drag selects several rows
+     and the bar underneath edits them together, and a row highlighted <span
+     style="color:#ff6b6b">red</span> uses a datatype no table knows — fix that before you
+     generate.</p>`},
   {title:"Units & driver", card:"cardSys",
-   body:`Only for a plant whose devices are not registered in IWMAC yet. Both blocks stay
-     off when the plant already has its driver - which is the normal case, so leaving
-     this card untouched is the normal answer.`,
-   skip:"Skip it unless this is a new plant."},
+   body:`<p>Everything so far describes <i>values</i>. This card describes the
+     <b>device</b> and the <b>connection</b>: its address on the bus, whether it is
+     reached over the network or a serial cable, the speed of that cable, and the name
+     the driver runs under.</p>
+     <p>You only need it when this plant has never had this driver before. If the plant is
+     already running, IWMAC knows all of it, and both switches stay off.</p>
+     <p>So the normal answer here is to leave the card alone entirely.</p>`,
+   skip:"Skip it unless this is a brand-new plant or a new device."},
   {title:"Validate", card:"cardRun",
-   body:`Press <b>Validate</b> — here, or in the header. Errors block generation and mark their rows
-     red; warnings do not block but each says what it costs to ignore. The blue panel
-     below carries one recommendation per error kind, and a <b>fix:</b> button where the
-     repair is mechanical.`},
+   body:`<p><b>Validate</b> checks the whole list and produces nothing. Run it as often as
+     you like.</p>
+     <p><b>Errors</b> stop generation and turn their rows red: a datatype that does not
+     exist, two rows reading the same register, a group nothing defines. Each one names
+     what is wrong and what to do about it, and where the repair is mechanical there is a
+     <b>fix:</b> button that does it for you.</p>
+     <p><b>Warnings</b> do not stop you, but they are not noise either — each says what it
+     costs to ignore it. Read them before you decide to.</p>
+     <p>One rule catches everyone the first time: at least one point must be marked
+     <b>online</b>. IWMAC reads those to check the device is still answering, so pick
+     three or four reliable values that change often — a temperature, not a serial
+     number, which would answer even if the device were dead.</p>`},
   {title:"Generate the script", card:"cardResult",
-   body:`<b>Generate SQL</b> renders the script here. Then <b>copy SQL</b> to the
-     clipboard, <b>export SQL</b> to download exactly those bytes, or <b>save file</b> to
-     regenerate and write it. Import it on the IWMAC side, and <b>Export</b> the project
-     itself so the next revision starts from this file rather than the chat.`},
+   body:`<p><b>Generate SQL</b> writes the database script and shows it below. It is plain
+     text, and it is what gets imported into the plant database. <b>copy SQL</b> puts it
+     on the clipboard, <b>export SQL</b> downloads it, <b>save file</b> writes it to
+     disk.</p>
+     <p>Two things after that. The script is not the whole job on the IWMAC side: run
+     <b>Setup Statetext</b>, then <b>JSON Setup</b>, then <b>Generate Param/Grp/Set</b>,
+     and check it reports <span class="ex">Done</span>.</p>
+     <p>And press <b>Export</b> in the header to save the project itself. Next time this
+     plant changes you start from that file rather than from a chat — which is the
+     difference between an edit and doing all of this again.</p>`},
 ];
 let wizAt = -1;
 
