@@ -227,6 +227,11 @@
   .points tr.sel:hover > td{background:rgba(77,163,255,.14)}
   .points tr.sel > td:first-child{box-shadow:inset 2px 0 0 var(--accent)}
   /* rows validation rejected - survives selection so both stay readable */
+  /* Amber for a warning, before the red rules so an error wins the row it shares. A
+     warning does not block generation, and until now nothing on the row said it was
+     there at all - the message named an address and left you to find it. */
+  .points tr.warn > td{background:rgba(232,179,74,.10)}
+  .points tr.warn > td:first-child{box-shadow:inset 2px 0 0 var(--amber);color:var(--amber)}
   .points tr.bad > td{background:rgba(255,107,107,.13)}
   .points tr.bad > td:first-child{box-shadow:inset 2px 0 0 var(--red);color:var(--red)}
   .points tr.bad.sel > td{background:rgba(255,107,107,.2)}
@@ -2341,6 +2346,7 @@ function ptSetModel(points) {
 let ptSort = {col:null, dir:null};    // dir: "asc" | "desc" | null
 const ptFilters = new Set();          // bits | writable | alarms | online | failing
 const ptBad = new Set();              // points the last validation rejected
+const ptWarn = new Set();             // points the last validation warned about
 const ptPin = new Set();              // points the message you last clicked is about
 
 const PT_NUMERIC = new Set(["addr","bit","statetext","decimals"]);
@@ -2456,7 +2462,9 @@ function ptPassesFilters(d) {
   return true;
 }
 function ptPassesBadFilter(p) {
-  return !ptFilters.has("failing") || ptBad.has(p);
+  if (ptFilters.has("failing") && !ptBad.has(p)) return false;
+  if (ptFilters.has("warned") && !ptWarn.has(p)) return false;
+  return true;
 }
 function applyPointView() {
   const needle = ($("ptSearch").value || "").trim().toLowerCase();
@@ -2650,6 +2658,7 @@ function ptFill(tr, p, vi) {
   ptSetV(f.statetext, p.statetext);
   ptSetChk(f.no_group, !!p.no_group);
   tr.classList.toggle("sel", ptSel.has(p));
+  tr.classList.toggle("warn", ptWarn.has(p));
   tr.classList.toggle("bad", ptBad.has(p));
   tr.classList.toggle("pin", ptPin.has(p));
   tr.classList.toggle("alt", (vi & 1) === 1);
@@ -2765,7 +2774,7 @@ function ptDelete(p) {
   ptPushState(null, "delete row");
   const i = ptModel.indexOf(p);
   if (i >= 0) ptModel.splice(i, 1);
-  ptSel.delete(p); ptBad.delete(p); ptPin.delete(p);
+  ptSel.delete(p); ptBad.delete(p); ptWarn.delete(p); ptPin.delete(p);
   if (ptSelAnchor === p) ptSelAnchor = null;
   renumber();
 }
@@ -2970,6 +2979,14 @@ function updateStats() {
       onclick:()=>{ ptFilters.has("failing") ? ptFilters.delete("failing") : ptFilters.add("failing");
                     updateStats(); applyPointView(); }},
       `${ptBad.size} failing`));
+  if (ptWarn.size)
+    $("pointStats").append(el("span",{
+      class:"chip toggle warnfilter" + (ptFilters.has("warned") ? " on" : ""),
+      style:"color:var(--amber);border-color:#5a4523",
+      title:"Rows the last Validate warned about. They do not block generation, but each warning says what it costs to ignore. Click to show only those",
+      onclick:()=>{ ptFilters.has("warned") ? ptFilters.delete("warned") : ptFilters.add("warned");
+                    updateStats(); applyPointView(); }},
+      `${ptWarn.size} warned`));
 }
 
 /* ---------- project assemble / load ---------- */
@@ -3602,10 +3619,23 @@ function dtUnknownMsgs(map) {           // spread into a message list; empty whe
    whichever pool row is showing it. */
 function clearBadRows() {
   ptBad.clear();
+  ptWarn.clear();
   ptPin.clear();          // a pin points at the last run's message, not this one's
-  // with no marked points an armed "failing" filter would hide the whole table
+  // with no marked points an armed filter would hide the whole table
   ptFilters.delete("failing");
+  ptFilters.delete("warned");
   applyPointView();
+}
+
+/* The amber twin of markBadRows. A warning is usually about a set of rows and reports
+   the whole set, so one warning can light up hundreds - which is the point: until now
+   a blank alias on row 1 412 was a sentence in a box and nothing on the row itself. */
+function markWarnRows(warnings, pointRows) {
+  ptWarn.clear();
+  for (const w of warnings || [])
+    for (const p of pointsOfFinding(w, pointRows)) ptWarn.add(p);
+  applyPointView();
+  return ptWarn.size;
 }
 function markBadRows(errors, pointRows) {
   clearBadRows();
@@ -3691,10 +3721,12 @@ function showResult(res, sqlWanted) {
     const advice = renderAdvice(res.findings, res.point_rows);
     if (advice) out.append(advice);
     markBadRows(res.errors, res.point_rows);
+    markWarnRows(warns, res.point_rows);   // amber under the red, both survive the run
     updateStats();
     return;
   }
   clearBadRows();
+  markWarnRows(warns, res.point_rows);     // a clean run still has warnings to show
   updateStats();
   const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
   if (!sqlWanted) {
