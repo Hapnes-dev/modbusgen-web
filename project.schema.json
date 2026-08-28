@@ -516,7 +516,7 @@
           },
           "text": {
             "type": "string",
-            "description": "Main alias text, the name the operator reads - short, and in the maker's own wording for the value: take it from the vendor document rather than translating it or inventing a description, so the list and the manual read side by side. A bare register number is not a name; where the document supplies none, say so instead of shipping 'Register 4'. State words and group aliases follow the same rule - the document's words as printed. The only alias part always included; leaving it empty draws a validation warning. The literal 'Motherword' marks a motherword row - do not author those. (Work!P)",
+            "description": "Main alias text, the name the operator reads - short, and in the maker's own wording for the value: take it from the vendor document rather than translating it or inventing a description, so the list and the manual read side by side. The document's language is the list's language - a Norwegian manual gives Norwegian texts, an English one English; translating either way is the mistake. A bare register number is not a name; where the document supplies none, say so instead of shipping 'Register 4'. State words and group aliases follow the same rule - the document's words as printed. The only alias part always included; leaving it empty draws a validation warning. The literal 'Motherword' marks a motherword row - do not author those. (Work!P)",
             "examples": [
               "Romtemperatur"
             ]

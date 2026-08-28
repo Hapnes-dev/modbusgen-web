@@ -808,7 +808,8 @@
           <li><b>tag</b> — the short component tag, <span class="ex">RT401</span>.</li>
           <li><b>text</b> — the name the operator reads, short, <b>in the maker's own
             wording</b>: take it from the document rather than translating it or writing
-            your own description. State words and group aliases follow the same rule —
+            your own description — a Norwegian manual gives Norwegian texts, an English
+            one English. State words and group aliases follow the same rule —
             the document's words, as printed. The only alias part that is always
             included. <span class="ex">Reserve.</span> marks a spare row: it stays
             in the list but is written inactive even with <i>force_active</i> on.</li>
@@ -1291,8 +1292,9 @@ stop and tell me rather than shifting every address by one.
 Driver: mb.exe - say so if this is an existing plant on modbus.php, because
 then no _W datatypes and no 32-bit writes.
 Alias text (the point's name): keep the maker's own wording for the value, as
-the document prints it. Do not translate it and do not invent your own
-description. Where the document gives no name at all, only a register number,
+the document prints it. The document's language is the list's language - a
+Norwegian manual gives Norwegian texts, an English one English; translating
+either way is the mistake. Do not invent your own description either. Where the document gives no name at all, only a register number,
 say so rather than shipping "Register 4". State words and group aliases are the
 same: keep the document's own words as printed. Translate nothing. Only the five
 default group aliases are ours, and they are the fallback for a document that
@@ -1519,7 +1521,7 @@ const COL_HELP = {
   bit:"Bit 0-31 inside the word, or nibble syntax 5#4. Needs a Bit_* datatype; the motherword row is synthesized for you",
   system_no:"Alias part 1: the plant system number, e.g. 360.001. Switched off wholesale by use_system_no",
   tag:"Alias part 2: the short component tag, e.g. RT401. Switched off wholesale by use_tag",
-  text:"The name the operator reads, in the maker's own wording - the only alias part always included. 'Reserve.' marks a spare row, written inactive",
+  text:"The name the operator reads, in the maker's own wording and language - the only alias part always included. 'Reserve.' marks a spare row, written inactive",
   extra:"Alias suffix in parentheses. Overwritten on generate when statetext_in_alias is on and the row has a state list",
   alarm:"Alarm priority written to plant_pri: A alarm (fleet default), B/C lower, N note. Moves the row to the alm group only when auto_groups and alarms_to_alm are both on",
   unit:"Engineering unit key from the unit table - becomes eng_unit. Add a missing unit to the table rather than inventing a spelling",
@@ -1578,7 +1580,7 @@ const COL_DOC = {
   text:{
     what:"The name the operator reads, short, in the maker's own wording for the value.",
     use:"The one alias part that is always included. `Reserve.` marks a spare row: it stays in the list but is written inactive even with `force_active` on.",
-    when:"On every row - a row with no alias part at all fails validation. Take the document's wording rather than translating it or inventing your own description, so the list and the manual can be read side by side. Two things that are not names: a bare register number, and a heading that covers a whole block. `Register 4` carried through verbatim is worse than no list - where the document names nothing, say so. Keep the wording consistent inside a list. State words and group aliases follow the same rule - the document's words as printed.",
+    when:"On every row - a row with no alias part at all fails validation. Take the document's wording rather than translating it or inventing your own description, so the list and the manual can be read side by side - a Norwegian manual gives Norwegian texts, an English one English, and translating either way is the mistake. Two things that are not names: a bare register number, and a heading that covers a whole block. `Register 4` carried through verbatim is worse than no list - where the document names nothing, say so. Keep the wording consistent inside a list. State words and group aliases follow the same rule - the document's words as printed.",
   },
   extra:{
     what:"The parenthesised suffix at the end of the alias.",
@@ -5099,8 +5101,9 @@ const WIZARD = [
      <p>A row needs four things at minimum. <b>Group</b>, the folder it belongs to.
      <b>Datatype</b>, how to read it. <b>Address</b>, the register number straight from the
      maker's document. <b>Text</b>, the name the operator reads — short, and in the
-     maker's own wording, so the list and the manual can be read side by side. State
-     words and group aliases are the same - the document's words, not translated.</p>
+     maker's own wording, so the list and the manual can be read side by side: a Norwegian
+     manual gives Norwegian texts, an English one English. State words and group aliases
+     are the same - the document's words, never translated.</p>
      <p>The rest is optional and worth filling in where the document supports it: the
      <b>unit</b> (°C, %, kWh), a <b>scale</b> if the device sends tenths instead of whole
      numbers, an <b>alarm</b> letter if this value is an alarm, a <b>state text</b> if it
@@ -5302,6 +5305,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=3e7beada5c"></script>
+<script src="pyodide-adapter.js?v=e73a950bf7"></script>
 </body>
 </html>
