@@ -4705,6 +4705,12 @@ function foldWrite() {
   const all = document.querySelectorAll("main > .card").length;
   $("btnFoldAll").textContent = shut.length >= all ? "expand all" : "collapse all";
 }
+function foldAll(shut) {
+  document.querySelectorAll("main > .card")
+          .forEach(c => c.classList.toggle("collapsed", shut));
+  foldWrite();
+}
+
 function initFolding() {
   const shut = foldRead();
   for (const card of document.querySelectorAll("main > .card")) {
@@ -4723,9 +4729,7 @@ function initFolding() {
   }
   $("btnFoldAll").onclick = () => {
     const cards = [...document.querySelectorAll("main > .card")];
-    const shutAll = !cards.every(c => c.classList.contains("collapsed"));
-    cards.forEach(c => c.classList.toggle("collapsed", shutAll));
-    foldWrite();
+    foldAll(!cards.every(c => c.classList.contains("collapsed")));
   };
   foldWrite();
 }
@@ -4795,7 +4799,19 @@ function wizFocus(id) {
   // a step that outlines a folded card is pointing at a heading and nothing else
   if (card.classList.contains("collapsed")) { card.classList.remove("collapsed"); foldWrite(); }
   card.classList.add("wizfocus");
-  card.scrollIntoView({block:"start", behavior:"smooth"});
+  /* Centred, not top-aligned: an outline in the middle of the screen reads as the thing
+     the step is talking about, while one at the edge reads as somewhere to scroll to.
+     Two things scrollIntoView({block:"center"}) gets wrong here, so the scroll is
+     computed instead. A card taller than the viewport cannot be centred without its top
+     going off-screen, and Points and Workflow & tips both are - those are parked under
+     the header instead. And the header is sticky, so "the top of the viewport" is 99px
+     of chrome, not the top of the card. */
+  const head = document.querySelector("header").getBoundingClientRect().height;
+  const box = card.getBoundingClientRect();
+  const top = window.scrollY + box.top;
+  const room = window.innerHeight - head;
+  window.scrollTo({behavior:"smooth", top: Math.max(0,
+    box.height < room - 24 ? top - head - (room - box.height) / 2 : top - head - 12)});
 }
 
 function wizShow(i) {
@@ -4823,7 +4839,15 @@ function wizStop() {
   document.querySelectorAll(".wizfocus").forEach(el => el.classList.remove("wizfocus"));
 }
 
-$("btnWizard").onclick = () => (wizAt === -1 ? wizShow(0) : wizStop());
+/* Starting the wizard folds the page down to its headings, and each step opens the card
+   it is about. You see the one thing you are being asked to do, and the cards you have
+   already been through stay open behind you - so Back shows your work rather than
+   hiding it again. */
+function wizStart() {
+  foldAll(true);
+  wizShow(0);
+}
+$("btnWizard").onclick = () => (wizAt === -1 ? wizStart() : wizStop());
 $("wizNext").onclick = () => wizShow(wizAt + 1);
 $("wizBack").onclick = () => wizShow(wizAt - 1);
 $("wizClose").onclick = wizStop;
