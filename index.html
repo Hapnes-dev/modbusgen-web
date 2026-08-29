@@ -348,8 +348,30 @@
     border-top:1px solid var(--line)}
   .wizard .wizfoot .sp{flex:1}
   .wizard .skip{font-size:10.5px;color:var(--dim)}
+  /* Spotlight. The dim is pointer-events:none on purpose: the page stays live under the
+     wizard, because every step exists to be done rather than read, and an overlay that
+     swallowed clicks would turn the tour into a slideshow. It sits above the cards and
+     the sticky header, below the panel (70) and the column-help popover (80). */
+  .wizdim{position:fixed;inset:0;background:rgba(6,8,12,.62);z-index:40;
+    pointer-events:none;opacity:0;transition:opacity .22s}
+  body.wiz-on .wizdim{opacity:1}
   /* the card the current step is talking about */
   .wizfocus{outline:2px solid var(--accent);outline-offset:3px}
+  /* lifted clear of the dim, so the step's card is the one lit thing on the page */
+  body.wiz-on .wizfocus{position:relative;z-index:45;
+    box-shadow:0 0 0 5px rgba(77,163,255,.16), 0 16px 48px rgba(0,0,0,.6)}
+  /* A gutter for the panel while the tour runs. Without it the panel sits on top of the
+     card it is pointing at - on the Modbus variables step it covered the + variable
+     button the step was describing. Only where there is room to give: below this width
+     the panel keeps the corner and overlaps, which beats squeezing the cards. */
+  @media (min-width:1160px){
+    body.wiz-on main{padding-right:392px}
+  }
+  /* how far along, as a bar rather than only as "5 / 9" */
+  .wizard .wizbar{height:2px;background:var(--line);border-radius:var(--radius) var(--radius) 0 0;
+    overflow:hidden}
+  .wizard .wizbar i{display:block;height:100%;width:0;background:var(--accent);
+    transition:width .25s ease}
   .card.maximized{position:fixed;inset:8px;z-index:60;margin:0;
                   display:flex;flex-direction:column;overflow:hidden}
   .card.maximized .tblwrap{max-height:none;flex:1;min-height:0}
@@ -1530,7 +1552,9 @@ validation. I run the validator.</pre>
   </div>
 </main>
 
+<div class="wizdim" aria-hidden="true"></div>
 <div id="wizard" class="wizard" hidden>
+  <div class="wizbar"><i id="wizBar"></i></div>
   <div class="wizhead">
     <b id="wizTitle"></b><span class="sp" style="flex:1"></span>
     <span class="wizstep" id="wizCount"></span>
@@ -5248,14 +5272,16 @@ $("fileSelect").addEventListener("change", syncDeleteButton);
 async function runValidate() {
   try { showResult(await api("/api/validate", {project: collectProject()}), false); }
   catch (e) { showError(e); }
+  revealResult();
 }
 async function runGenerate() {
   try { showResult(await api("/api/generate", {project: collectProject()}), true); }
   catch (e) { showError(e); }
-  /* Generate is the one action whose whole point is what the Result card then holds -
-     the script, or the errors that stopped it - so it takes you there either way.
-     Validate deliberately does not: it is run while still editing the points, and being
-     thrown to the bottom of the page mid-edit is worse than the chip you can click. */
+  /* Both runs end where their answer is. Generate's is the script or the errors that
+     stopped it; Validate's is the findings. This one shipped Generate-only on the
+     argument that Validate is run mid-edit and being moved is worse than a chip you can
+     click - which turned out to be the wrong call in practice: pressing a button and
+     having nothing visibly happen is worse still. */
   revealResult();
 }
 $("btnValidate").onclick = runValidate;
@@ -5477,6 +5503,7 @@ function wizShow(i) {
   $("wizard").hidden = false;
   $("wizTitle").textContent = step.title;
   $("wizCount").textContent = `${i + 1} / ${WIZARD.length}`;
+  $("wizBar").style.width = `${(i + 1) / WIZARD.length * 100}%`;
   $("wizBody").innerHTML = step.body;
   $("wizSkip").textContent = step.skip || "";
   $("wizBack").disabled = i === 0;
@@ -5491,6 +5518,7 @@ function wizShow(i) {
 
 function wizStop() {
   $("wizard").hidden = true;
+  document.body.classList.remove("wiz-on");
   wizAt = -1;
   document.querySelectorAll(".wizfocus").forEach(el => el.classList.remove("wizfocus"));
 }
@@ -5500,6 +5528,9 @@ function wizStop() {
    already been through stay open behind you - so Back shows your work rather than
    hiding it again. */
 function wizStart() {
+  /* Before foldAll and before the first wizFocus: the class opens a gutter for the
+     panel, and wizFocus computes its scroll from a rect that has to be the final one. */
+  document.body.classList.add("wiz-on");
   foldAll(true);
   wizShow(0);
 }
