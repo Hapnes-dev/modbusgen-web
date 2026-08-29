@@ -1276,7 +1276,7 @@
         Norwegian text survives.</p>
       </div>
     </details>
-    <div id="out"><div class="message-box message-box-info"><svg viewBox="0 0 16 16" class="mb-icon" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.6"/><path d="M8 7.3v4.1"/><path d="M8 4.6v.1"/></svg><div class="mb-body"><div class="mb-head"><strong>Note:</strong> Validate or generate to see results.</div></div></div></div>
+    <div id="out"><div class="message-box message-box-info"><svg viewBox="0 0 512 512" class="mb-icon" aria-hidden="true" fill="currentColor"><path d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM216 336h24V272H216c-13.3 0-24-10.7-24-24s10.7-24 24-24h48c13.3 0 24 10.7 24 24v88h8c13.3 0 24 10.7 24 24s-10.7 24-24 24H216c-13.3 0-24-10.7-24-24s10.7-24 24-24zm40-208a32 32 0 1 1 0 64 32 32 0 1 1 0-64z"/></svg><div class="mb-body"><div class="mb-head"><strong>Note:</strong> Validate or generate to see results.</div></div></div></div>
   </div>
 
   <div class="card" id="cardTips">
@@ -3240,6 +3240,15 @@ const FIX_ACTIONS = {
      the write - a 32-bit read without a swap works on both drivers. The word-order half
      deliberately has no entry: _W to _N is not a repair, it is a claim about what the
      device delivers, and the tool does not make those (see the datatype-unknown note). */
+  /* Both severities of the same capability share one repair: unstated it clears a
+     warning, on a stated modbus.php it clears an error that is blocking generation. */
+  "driver-write-unsupported": {
+    label:"make these read-only",
+    title:"Sets rw to r on each row whose write needs FC16 (undoable). The project says this plant runs modbus.php, which has no FC16 at all, so the write silently never happens - docs/15 prescribes authoring the point r and reporting why. The value still reads. If the plant is really on mb.exe, correct the driver field instead",
+    run:(ctx)=>{if(!ctx.points.length) return;
+      ptPushState(null, "FC16 writes read-only");
+      for(const p of ctx.points) p.rw = "r";
+      updateStats(); applyPointView();}},
   "driver-write32-needs-mb-exe": {
     label:"make these read-only",
     title:"Sets rw to r on each writable 32-bit row (undoable). That is what docs/15 prescribes for a plant on modbus.php, and the value still reads there. Wrong if the plant runs mb.exe - set the driver field to mb.exe instead, and the warning goes with it",
@@ -3423,8 +3432,12 @@ const GOTO_DRIVER = {
 const GOTO_ACTIONS = {
   "driver-swap-needs-mb-exe": GOTO_DRIVER,
   "driver-write32-needs-mb-exe": GOTO_DRIVER,
+  "driver-wide64-needs-mb-exe": GOTO_DRIVER,
   "driver-unknown": GOTO_DRIVER,
 };
+/* The *-unsupported errors get no link: they only fire once the driver has been stated
+   as modbus.php, and GOTO_DRIVER.when() is false the moment the field holds an answer.
+   Nothing special is needed for that - it falls out of the condition. */
 /* Unfold, scroll and outline - wizFocus already does all three - then put the cursor in
    the field. The outline is cleared afterwards rather than left standing: it is saying
    "here", not marking a state, the same reason flashPoints blinks three times and stops. */
@@ -3454,6 +3467,12 @@ function adviseOn(findings) {
     g.errors.push(f.message);
     g.findings.push(f);
     if (f.point) g.points.add(f.point);
+    /* ...and the plural. Most errors are one per point and carry `point`; a driver
+       capability error covers a whole set and carries `points` instead, exactly as the
+       warnings do. Collecting only the singular left those with an empty set, so the
+       panel named no rows and its fix button ran over nothing and silently changed
+       nothing - the button looked broken because it was. */
+    for (const n of f.points || []) g.points.add(n);
     if (f.suggestion) g.suggestions.add(f.suggestion);
   }
   return byCode;
@@ -3554,34 +3573,46 @@ function findingLine(text, f, pointRows, style, kind, cls) {
     ...kids, el("span",{class:"to"}, n === 1 ? "  → show the row" : `  → show ${n} rows`));
 }
 
-/* The pen's four icons - fa-info-circle, fa-warning, fa-ban, fa-check - drawn as paths
-   rather than pulled from Font Awesome. This page is one self-contained file that has to
-   work with no network (the browser build runs Python in the tab), so a webfont is not
-   available to it; the Wizard button already carries its own inline SVG for the same
-   reason. Stroked, so one colour follows the tone through `currentColor`.
+/* The pen's four icons, and now the pen's actual artwork: Font Awesome Free 6.5.2,
+   fa-info-circle, fa-warning, fa-ban and fa-check - the same glyphs the pen renders from
+   the webfont, embedded as their own path data.
 
-   The paths live inside the function rather than in a `const` beside it, for the reason
+   Embedded rather than linked because this page is one self-contained file that has to
+   work with no network: the browser build runs Python in the tab, and the local GUI is a
+   small Python server that ships this file and nothing else. A CDN <link> would make the
+   icons vanish exactly when the tool is most likely to be used offline on a plant network.
+
+   Icons: CC BY 4.0 (https://fontawesome.com/license/free), Copyright 2024 Fonticons, Inc.
+   That licence wants attribution wherever they travel, which now includes the published
+   web build, so this comment is the attribution and stays with the paths.
+
+   Filled, not stroked, so `currentColor` carries the tone. Each glyph keeps its own
+   viewBox: FA draws on a 512 grid but `check` is 448 wide, and forcing them to share one
+   box squashes it.
+
+   The table lives inside the function rather than in a `const` beside it, for the reason
    spelled out on outNote: these helpers are declared well below the startup code that
    calls them, so a module-scope `const` here is still in its temporal dead zone when the
    first message is rendered and boot dies with "Cannot access MB_ICONS before
    initialization" - which it did. A hoisted declaration cannot be got wrong that way. */
 function mbIcon(kind) {
   const MB_ICONS = {
-    info:    '<circle cx="8" cy="8" r="6.6"/><path d="M8 7.3v4.1"/><path d="M8 4.6v.1"/>',
-    warn:    '<path d="M8 1.9 15.1 14H.9z"/><path d="M8 6.3v3.3"/><path d="M8 11.3v.1"/>',
-    error:   '<circle cx="8" cy="8" r="6.6"/><path d="M3.3 3.3l9.4 9.4"/>',
-    success: '<path d="M2.6 8.3 6.3 12 13.4 4.3"/>',
+    info: ["0 0 512 512",
+      "M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM216 336h24V272H216c-13.3 0-24-10.7-24-24s10.7-24 24-24h48c13.3 0 24 10.7 24 24v88h8c13.3 0 24 10.7 24 24s-10.7 24-24 24H216c-13.3 0-24-10.7-24-24s10.7-24 24-24zm40-208a32 32 0 1 1 0 64 32 32 0 1 1 0-64z"],
+    warn: ["0 0 512 512",
+      "M256 32c14.2 0 27.3 7.5 34.5 19.8l216 368c7.3 12.4 7.3 27.7 .2 40.1S486.3 480 472 480H40c-14.3 0-27.6-7.7-34.7-20.1s-7-27.8 .2-40.1l216-368C228.7 39.5 241.8 32 256 32zm0 128c-13.3 0-24 10.7-24 24V296c0 13.3 10.7 24 24 24s24-10.7 24-24V184c0-13.3-10.7-24-24-24zm32 224a32 32 0 1 0 -64 0 32 32 0 1 0 64 0z"],
+    error: ["0 0 512 512",
+      "M367.2 412.5L99.5 144.8C77.1 176.1 64 214.5 64 256c0 106 86 192 192 192c41.5 0 79.9-13.1 111.2-35.5zm45.3-45.3C434.9 335.9 448 297.5 448 256c0-106-86-192-192-192c-41.5 0-79.9 13.1-111.2 35.5L412.5 367.2zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256z"],
+    success: ["0 0 448 512",
+      "M438.6 105.4c12.5 12.5 12.5 32.8 0 45.3l-256 256c-12.5 12.5-32.8 12.5-45.3 0l-128-128c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0L160 338.7 393.4 105.4c12.5-12.5 32.8-12.5 45.3 0z"],
   };
+  const [box, d] = MB_ICONS[kind] || MB_ICONS.info;
   const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  s.setAttribute("viewBox", "0 0 16 16");
+  s.setAttribute("viewBox", box);
   s.setAttribute("class", "mb-icon");
   s.setAttribute("aria-hidden", "true");
-  s.setAttribute("fill", "none");
-  s.setAttribute("stroke", "currentColor");
-  s.setAttribute("stroke-width", "1.6");
-  s.setAttribute("stroke-linecap", "round");
-  s.setAttribute("stroke-linejoin", "round");
-  s.innerHTML = MB_ICONS[kind] || MB_ICONS.info;
+  s.setAttribute("fill", "currentColor");
+  s.innerHTML = `<path d="${d}"/>`;
   return s;
 }
 /* One message, one box. `f` and `pointRows` are optional: with a finding the head
@@ -3970,9 +4001,15 @@ function markWarnRows(warnings, pointRows) {
   applyPointView();
   return ptWarn.size;
 }
-function markBadRows(errors, pointRows) {
+function markBadRows(errors, pointRows, findings) {
   clearBadRows();
   let unmappable = 0;
+  /* Structured first. Most errors are one per point and say "point 7 (...)", but a
+     driver capability error covers a whole set and names none of them - it carries
+     points/addrs instead, exactly as the warnings do. Parsing the sentence found
+     nothing for those, so an error that blocked generation marked no row red. */
+  for (const f of findings || [])
+    for (const p of pointsOfFinding(f, pointRows)) ptBad.add(p);
   for (const e of errors) {
     const m = e.match(/^point (\d+)/);
     if (!m) continue;                                  // project-wide error, no row
@@ -4073,7 +4110,7 @@ function showResult(res, sqlWanted) {
                             res.point_rows, "err")));
     const advice = renderAdvice(res.findings, res.point_rows);
     if (advice) out.append(advice);
-    markBadRows(res.errors, res.point_rows);
+    markBadRows(res.errors, res.point_rows, res.findings);
     markWarnRows(warns, res.point_rows);   // amber under the red, both survive the run
     updateStats();
     return;
@@ -5496,6 +5533,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=069511f565"></script>
+<script src="pyodide-adapter.js?v=40a20e0ce1"></script>
 </body>
 </html>
