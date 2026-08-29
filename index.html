@@ -3329,6 +3329,23 @@ const FIX_ACTIONS = {
       ptPushState(null, "clear online freq");
       for(const p of ctx.points) p.update_freq = null;
       updateStats(); applyPointView();}},
+  "text-not-encodable": {
+    label:"swap the paste artefacts",
+    title:"Replaces only the characters that have an exact equivalent the encoding can write - a non-breaking hyphen for a hyphen, a Greek mu for the micro sign, a figure space for a space (undoable). An ohm sign, an arrow or a tick has no equivalent and is left alone: write those out in words rather than shipping a ?. Point fields only - a group alias or a state word carrying one is fixed in its own card",
+    run:(ctx)=>{if(!ctx.points.length) return;
+      /* Mirrors LOOKALIKES in validate.py. Kept in step by a test that reads both. */
+      const MAP = {"\u2010":"-","\u2011":"-","\u2012":"-","\u2212":"-",
+                   "\u03bc":"\u00b5","\u2044":"/","\u2032":"'",
+                   "\u2007":" ","\u202f":" "};
+      const fix = v => typeof v === "string"
+        ? v.replace(/[\u2010\u2011\u2012\u2212\u03bc\u2044\u2032\u2007\u202f]/g, c => MAP[c])
+        : v;
+      ptPushState(null, "swap paste artefacts");
+      for(const p of ctx.points)
+        for(const f of ["text","extra","tag","system_no","menu","element_id"]){
+          const was = p[f], now = fix(was);
+          if(now !== was){ p[f] = now; if(p._orig) p._orig[f] = fix(p._orig[f]); }}
+      updateStats(); applyPointView();}},
   "statetext-overwrites-extra": {
     label:"switch statetext_in_alias off",
     title:"Keeps the extra written on each row instead of replacing it with the flattened state list. On, every point with a state list has its extra overwritten - the note you meant the operator to read is gone from the alias. Leave it on only where no point carries an extra of its own",
@@ -3506,6 +3523,21 @@ const FIX_ACTIONS = {
     run:(ctx)=>{for(const e of ctx.errors){
         const m=e.match(/^datatypes\.(.+?): already in data/); if(m) delete dtProject[m[1]];}
       dtInvalidateKnown(); renderDatatypeCard(); applyPointView();}},
+  /* The same move datatype-name-illegal makes, one level up. Consequential, because the
+     table name is the destination: three database tables are named after it. */
+  "sys-field-space": {
+    label:"replace the spaces with underscores",
+    title:"Rewrites reg_type and order_no with underscores in place of spaces, which is the same substitution the table-name and datatype-name repairs make. IWMAC does not take a space in either field. Check the result against the delivery: the house convention populates reg_type, order_no and owner identically from the driver name",
+    run:()=>{for(const id of ["sysRegType","sysOrderNo"]){
+        const f=$(id); if(!f) continue;
+        const good=f.value.trim().replace(/\s+/g,"_");
+        if(good!==f.value){f.value=good; f.dispatchEvent(new Event("input",{bubbles:true}));}}}},
+  "table-name-illegal": {
+    label:"rename to a legal table name",
+    title:"Lowercases the name and replaces every character outside a-z, 0-9 and underscore with an underscore. This decides which three database tables the plant's list lands in, so check the result against the delivery before generating - a renamed table is a different destination, not a cosmetic fix",
+    run:()=>{const f=$("pTable"); if(!f) return;
+      const good=f.value.trim().toLowerCase().replace(/[^a-z0-9_]/g,"_");
+      if(good && good!==f.value){f.value=good; f.dispatchEvent(new Event("input",{bubbles:true}));}}},
   "datatype-name-illegal": {
     label:"rename to a legal key",
     title:"Replaces every character outside letters, digits and underscore with an underscore, and follows the points using the old name so none is left pointing at something gone",
@@ -5685,6 +5717,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=0208d550b1"></script>
+<script src="pyodide-adapter.js?v=04927a0655"></script>
 </body>
 </html>
