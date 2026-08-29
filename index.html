@@ -3320,6 +3320,51 @@ const FIX_ACTIONS = {
       ptPushState(null, "32-bit writes read-only");
       for(const p of ctx.points) p.rw = "r";
       updateStats(); applyPointView();}},
+  /* Four found on a sweep for costs nothing was reporting, 2026-08-29. Each ships
+     cleanly today; each spends something where the validator never looked. */
+  "online-never-polled": {
+    label:"clear the polling override",
+    title:"Empties update_freq on each online point (undoable), so its frequency is derived again instead of being pinned to never or once. Mark a different point online instead if this one really is polled once - the online indication is what IWMAC watches to decide the device is answering at all",
+    run:(ctx)=>{if(!ctx.points.length) return;
+      ptPushState(null, "clear online freq");
+      for(const p of ctx.points) p.update_freq = null;
+      updateStats(); applyPointView();}},
+  "statetext-overwrites-extra": {
+    label:"switch statetext_in_alias off",
+    title:"Keeps the extra written on each row instead of replacing it with the flattened state list. On, every point with a state list has its extra overwritten - the note you meant the operator to read is gone from the alias. Leave it on only where no point carries an extra of its own",
+    run:(ctx)=>ctx.setOption("statetext_in_alias", false)},
+  "group-alias-blank": {
+    label:"name them after their keys",
+    title:"Fills each empty display alias with the group's own key, so the operator's menu folder has a name at all - then rename them to the plant's own words. The key is a poor name and a better one than nothing",
+    run:(ctx)=>{const names=new Set();
+      for(const e of ctx.errors){const m=e.match(/group\(s\) (.+?) have no display alias/);
+        if(m) m[1].split(", ").forEach(n=>names.add(n.trim()));}
+      for(const row of [...document.querySelectorAll("#groups")].flatMap(g=>[...g.children])){
+        const name=row.querySelector(".g-name"), alias=row.querySelector(".g-alias");
+        if(name && alias && names.has(name.value.trim()) && !alias.value.trim())
+          alias.value = name.value.trim();}
+      refreshGroupList();}},
+  "range-inverted": {
+    label:"swap min and max on these rows",
+    title:"Exchanges range_min and range_max on each affected row (undoable). A range that runs downwards is not a range, and nothing sorts them on the way into the param row",
+    run:(ctx)=>{if(!ctx.points.length) return;
+      ptPushState(null, "swap range");
+      /* The ranges have no column in the points table, so ptOut does not write them -
+         they survive from _orig, which is where a loaded file's values live. Swapping
+         only the model fields left the payload untouched and the button did nothing
+         visible, exactly as the active-ignored repair warns. */
+      for(const p of ctx.points){
+        const lo=p.range_min; p.range_min=p.range_max; p.range_max=lo;
+        if(p._orig){const o=p._orig.range_min; p._orig.range_min=p._orig.range_max;
+                    p._orig.range_max=o;}}
+      updateStats(); applyPointView();}},
+  "bit-point-formatted": {
+    label:"clear the formatting on these rows",
+    title:"Empties unit, scale and decimals on each single-bit row (undoable). A bit is on or off, so none of the three describes anything - and all three reach the database. If the register really is a measurement, the datatype is what is wrong: a bit datatype cannot carry one",
+    run:(ctx)=>{if(!ctx.points.length) return;
+      ptPushState(null, "clear bit formatting");
+      for(const p of ctx.points){p.unit=null; p.scale=null; p.decimals=null;}
+      updateStats(); applyPointView();}},
   "group-unused": {
     label:"delete the empty groups",
     title:"Removes each group that holds no points from the Groups card. The operator loses a menu folder that opened on nothing",
@@ -3493,7 +3538,14 @@ const GOTO_DRIVER = {
             return !d.value || !!(o && o.dataset.foreign);},
   run:()=>goToField("cardProject", "pDriver"),
 };
+const GOTO_COMM = {
+  label:"set the transport",
+  title:"Opens the Units & driver card and puts the cursor in the mode field. tcp or rtu are the only two the driver has, and anything else is silently written as TCP",
+  when:()=>true,
+  run:()=>goToField("cardSys", "commMode"),
+};
 const GOTO_ACTIONS = {
+  "comm-mode-unknown": GOTO_COMM,
   "driver-swap-needs-mb-exe": GOTO_DRIVER,
   "driver-write32-needs-mb-exe": GOTO_DRIVER,
   "driver-wide64-needs-mb-exe": GOTO_DRIVER,
@@ -5633,6 +5685,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=40a20e0ce1"></script>
+<script src="pyodide-adapter.js?v=0208d550b1"></script>
 </body>
 </html>
