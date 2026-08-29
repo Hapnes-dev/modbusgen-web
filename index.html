@@ -1366,14 +1366,13 @@
           <button id="btnMorePrompt" class="ghost" style="font-size:10px;padding:2px 8px"
             title="Unfold the whole prompt, or fold it back to its first few lines">show more</button></div>
         <ol style="margin:4px 0 8px;padding-left:20px">
-          <li><b>Attach the device's register document</b> to a Copilot chat — the PDF or
-            spreadsheet from the maker. If a previous delivery for this plant exists,
-            attach that too.</li>
+          <li><b>Attach the maker's register document</b> to a Copilot chat: the PDF or
+            the spreadsheet. If this plant already has a delivery, attach that too.</li>
           <li><b>Copy the prompt below and paste it in.</b> There is nothing to fill in.
             The reference documents are already in the agent's <b>Modbus List Helper</b>
-            folder, and the prompt tells it which to read. The plant number in it is
-            <code>1234</code>; that number only ends up in the export file name, so change
-            it here or fix it on the page later.</li>
+            folder, and the prompt says which ones to read. The plant number in it is
+            <code>1234</code>. That number only shows up in the name of the file you
+            export, so change it here, or fix it on the page later.</li>
         </ol>
         <pre id="aiPrompt" class="clip">Build a modbusgen project JSON from the attached register document.
 
@@ -1486,66 +1485,73 @@ never into the file. Do not tell me it validates - JSON parse is not modbusgen
 validation. I run the validator.</pre>
         <h4>Then, in the chat</h4>
         <ol start="3" style="margin:4px 0;padding-left:20px">
-          <li><b>It asks about an older delivery first.</b> If a filled Modbustemplate
-            workbook or a generated SQL script already exists for this plant, say so and
-            stop the chat there. <b>Insert Excel</b> and <b>Import SQL</b> convert those
-            on this page, exactly and completely. Writing the list again by hand is always
-            worse than converting the one that exists.</li>
-          <li><b>Answer its questions.</b> It is meant to ask — anything the document does
-            not say, only you can answer. It should also stop and tell you if the document
-            turns out to number registers from 0, or if this plant runs the
-            <code>modbus.php</code> driver, because both change what is possible.</li>
-          <li><b>Read what it reports back.</b> Three things: the <b>table name</b> it
-            chose, the <b>coverage ledger</b> — every row of the maker's document either
-            used, covered by a bit, or skipped with a reason — and what it <b>worked out
-            rather than read</b>, so you can overrule it.</li>
-          <li><b>Bring the file here.</b> Save the <code>.json</code>, press <b>Import
-            project</b>, then <b>Validate</b>. The agent saying the file is fine counts
-            for nothing; this page decides.</li>
-          <li><b>If validation fails, paste the whole error back into the chat</b> — code,
-            advice and all — and let it fix the file. That is faster and safer than
-            editing rows by hand.</li>
+          <li><b>It asks about older files first.</b> Answer that question before
+            anything else. If someone has already made a Modbustemplate workbook or an
+            SQL script for this plant, say so and stop the chat there. Bring that file
+            here instead, with <b>Insert Excel</b> or <b>Import SQL</b>. This page copies
+            the whole list across, exactly. Writing the list again by hand is always
+            worse.</li>
+          <li><b>Answer its questions.</b> It is supposed to ask. Only you know what the
+            document leaves out. It should also stop and warn you about two things: a
+            document that numbers registers from 0, and a plant that runs the
+            <code>modbus.php</code> driver. Both change what the list can contain.</li>
+          <li><b>Check what it reports back.</b> Three things. The <b>table name</b> it
+            picked. The <b>coverage ledger</b>: every row of the maker's document is
+            either used, covered by a bit, or skipped for a stated reason. And what it
+            <b>worked out rather than read</b>, which you are free to overrule.</li>
+          <li><b>Bring the file here.</b> Save the <code>.json</code>. Press <b>Import
+            project</b>, then <b>Validate</b>. The agent saying the file is fine proves
+            nothing. This page decides.</li>
+          <li><b>If Validate fails, copy the whole error into the chat</b> — the code, the
+            advice, all of it — and let the agent fix the file. That is faster and safer
+            than editing rows yourself.</li>
         </ol>
       </div>
 
       <div class="sub">
         <div class="subhead">keyboard</div>
         <ul>
-          <li><code>Ctrl+F</code> or <code>/</code> search the points ·
-            <code>++</code> in the search starts the next word ·
-            <code>Ctrl+Z</code> undo (10 steps) ·
-            <code>Esc</code> clears search, then selection, then fullscreen</li>
-          <li><b>Click a row and drag</b> to select many; <code>Shift</code>-click extends,
-            <code>Ctrl</code>-click toggles one</li>
-          <li><code>Enter</code> in a state-text word box adds the next state</li>
+          <li><code>Ctrl+F</code> or <code>/</code> searches the points. Type
+            <code>++</code> in the search box to jump to the next word.</li>
+          <li><code>Ctrl+Z</code> undoes the last edit, up to 10 of them.</li>
+          <li><code>Esc</code> clears the search, then the selection, then fullscreen.</li>
+          <li><b>Click a row and drag</b> to select several.
+            <code>Shift</code>-click extends the selection,
+            <code>Ctrl</code>-click adds or removes one row.</li>
+          <li><code>Enter</code> in a state-text word box adds the next state.</li>
         </ul>
       </div>
 
       <div class="sub">
         <div class="subhead">tips</div>
         <ul>
-          <li><b>Start:</b> <b>New</b> · pick a saved file · <b>Import project</b> for a
-            <code>.json</code>/<code>.yaml</code> · <b>Import SQL</b> for a generated
-            script · <b>Insert Excel</b> for a filled Modbustemplate workbook.</li>
-          <li><b>Import SQL</b> brings no plant number with it — set one before
-            generating.</li>
-          <li><b>Work down the page:</b> Project · Groups · State texts · Points ·
-            Units &amp; driver, that last only for a plant with no driver yet.</li>
-          <li><b>Points:</b> <code>Ctrl+F</code> finds, drag selects, and the bar under
-            the table edits the whole selection. <b>⤓ points</b> saves the list or the
-            selection as its own file; <b>⤒ points</b> appends one.</li>
-          <li><b>Finish:</b> <b>Validate</b> — warnings do not block, failing rows go
-            red, and <b>fix:</b> buttons repair the mechanical ones — then
+          <li><b>Starting a list:</b> press <b>New</b>, or pick a saved one. To bring a
+            list in: <b>Import project</b> for a <code>.json</code> or
+            <code>.yaml</code>, <b>Import SQL</b> for a generated script,
+            <b>Insert Excel</b> for a filled Modbustemplate workbook.</li>
+          <li><b>Import SQL</b> brings no plant number with it. Set one before you
+            generate.</li>
+          <li><b>Work down the page:</b> Project, Groups, State texts, Points, then
+            Units &amp; driver. That last card is only for a plant that has no driver
+            yet.</li>
+          <li><b>Points:</b> <code>Ctrl+F</code> finds one, dragging selects several, and
+            the bar under the table edits everything selected at once.
+            <b>⤓ points</b> saves the list, or just the selection, as a file of its own.
+            <b>⤒ points</b> adds such a file to the list you have open.</li>
+          <li><b>Finishing:</b> press <b>Validate</b>. Failing rows turn red, warnings do
+            not block you, and <b>fix:</b> buttons repair the simple ones. Then press
             <b>Generate SQL</b>.</li>
-          <li><b>Save</b> keeps it in this browser. <b>Export</b> writes the real file,
-            named from the project and self-explaining (<code>$schema</code> +
-            <code>_help</code>). <code>.yaml</code> in the name box for YAML.</li>
+          <li><b>Save</b> keeps the list in this browser only. <b>Export</b> writes the
+            real file. It is named after the project and explains itself
+            (<code>$schema</code> + <code>_help</code>). For YAML, put
+            <code>.yaml</code> in the name box.</li>
           <li><b>Export Excel</b> hands the list to anyone still working in the
             workbook.</li>
           <li><b>Direct link:</b> <code>…/#example-belimo-ev.json</code>.</li>
-          <li><b>Before all of it:</b> <code>ping</code>, then <code>modpoll</code> one
-            register you know the answer to. A list built against a map the device does
-            not implement is legal, complete and wrong.</li>
+          <li><b>Before any of this:</b> <code>ping</code> the device, then
+            <code>modpoll</code> one register you already know the answer to. A list
+            built from a map the device does not implement is legal, complete and
+            wrong.</li>
         </ul>
       </div>
     </div>
