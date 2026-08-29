@@ -93,6 +93,46 @@
                  border-color:var(--accent2);color:#081120;font-weight:600}
   button.primary:hover{filter:brightness(1.1)}
   button.ghost{background:transparent}
+  /* The Generate SQL button in the Validate & generate card:
+     uiverse.io/cssbuttons-io/wonderful-baboon-62 by cssbuttons-io, MIT.
+
+     Verbatim apart from the selector. The original styles bare `button`, which on this
+     page would repaint every one of them - the toolbar, the fix buttons, the points
+     tools - so each rule is scoped to .uiv. The gradient is the author's own purple to
+     cyan rather than this page's accent: it is the button that was asked for, not a
+     recolour of it.
+
+     The header's own Generate SQL is deliberately untouched. It sits in a toolbar beside
+     eight other controls and has to stay their size; this one is alone in its card with
+     room to be the primary action it is. */
+  button.uiv{align-items:center;
+    background-image:linear-gradient(144deg,#af40ff,#5b42f3 50%,#00ddeb);
+    border:0;border-radius:8px;box-shadow:rgba(151,65,252,.2) 0 15px 30px -5px;
+    box-sizing:border-box;color:#fff;display:flex;font-size:18px;justify-content:center;
+    line-height:1em;max-width:100%;min-width:140px;padding:3px;text-decoration:none;
+    user-select:none;-webkit-user-select:none;touch-action:manipulation;
+    white-space:nowrap;cursor:pointer;transition:all .3s}
+  button.uiv:active, button.uiv:hover{outline:0}
+  button.uiv span{background-color:rgb(5,6,45);padding:16px 24px;border-radius:6px;
+    width:100%;height:100%;transition:300ms}
+  button.uiv:hover span{background:none}
+  button.uiv:active{transform:scale(.9)}
+  /* Disabled until the lookup tables arrive - btnRunGenerate is BOOT_GATED. A control
+     that still fills under the cursor while refusing to be pressed is a lie, and the
+     page's own :disabled rule only dims it. */
+  /* Validate stands beside it and has to match its box, or the row reads as one button
+     and one afterthought. Matched on metrics only - it does not take the gradient. They
+     are not the same action, and two identical buttons would claim they were. */
+  button.uiv-peer{display:flex;align-items:center;justify-content:center;
+    min-height:56px;padding:0 27px;font-size:18px;line-height:1em;border-radius:8px}
+  /* Equal width as well as equal height: "Validate" is four characters shorter than
+     "Generate SQL", so matching only the box left them 119px and 163px side by side.
+     Raised here rather than in the author's block above, which keeps its own 140px, so
+     the deviation is visible as a deviation. Wide enough that neither label reaches it. */
+  button.uiv, button.uiv-peer{min-width:180px}
+  button.uiv:disabled{cursor:default;box-shadow:none}
+  button.uiv:disabled:hover span{background-color:rgb(5,6,45)}
+  button.uiv:disabled:active{transform:none}
   /* transient result shown on the button itself - the Result card is far below
      the toolbar, so a confirmation down there is easy to miss entirely */
   button.okflash{border-color:var(--green);color:var(--green)}
@@ -1201,10 +1241,10 @@
   <div class="card" id="cardRun">
     <h2>Validate &amp; generate</h2>
     <div class="row" style="gap:8px;align-items:center">
-      <button id="btnRunValidate"
+      <button id="btnRunValidate" class="uiv-peer"
               title="Check the project without producing SQL: unknown table keys, duplicate ids, undefined groups, unresolved state refs, no online point. Warnings do not block">Validate</button>
-      <button id="btnRunGenerate" class="primary"
-              title="Validate, then render the SQL import script into the Result card below. Nothing is written to disk">Generate SQL</button>
+      <button id="btnRunGenerate" class="uiv"
+              title="Validate, then render the SQL import script into the Result card below. Nothing is written to disk"><span>Generate SQL</span></button>
     </div>
     <p style="margin:9px 0 0;font-size:12px;color:#8b93a3;line-height:1.55;max-width:820px">
       <b style="color:#dde1e8">Validate</b> runs every check and produces nothing — run it
@@ -4052,7 +4092,31 @@ function markValStale() {
   const s = $("valStatus");
   if (!s.hidden) s.classList.add("stale");
 }
-$("valStatus").onclick = () => $("out").scrollIntoView({block:"start", behavior:"smooth"});
+/* Bring the Result card to you rather than leave it below the fold. It is the last card
+   but one, so pressing Generate SQL from the header - which is sticky, and therefore
+   usually pressed from wherever you happen to be - used to put the script somewhere you
+   then had to go looking for.
+
+   Unfolds it first: scrolling to a folded card lands you on a heading with nothing under
+   it, which reads as the run having produced nothing. Shared with the verdict chip, whose
+   tooltip has always promised exactly this. */
+function revealResult() {
+  const card = $("cardResult");
+  if (!card) return;
+  if (card.classList.contains("collapsed")) {
+    card.classList.remove("collapsed");
+    foldWrite();
+  }
+  /* Not scrollIntoView({block:"start"}): the header is sticky, so the top of the
+     viewport is ~99px of chrome and block:"start" parks the card's heading and its
+     first message underneath it. Same correction wizFocus makes, and for the same
+     reason. Scrolled to the card rather than to #out, so the heading is what you land
+     on and the result reads as belonging to something. */
+  const head = document.querySelector("header").getBoundingClientRect().height;
+  const top = window.scrollY + card.getBoundingClientRect().top;
+  window.scrollTo({behavior:"smooth", top: Math.max(0, top - head - 8)});
+}
+$("valStatus").onclick = revealResult;
 
 function showResult(res, sqlWanted) {
   setValStatus(res);
@@ -5188,6 +5252,11 @@ async function runValidate() {
 async function runGenerate() {
   try { showResult(await api("/api/generate", {project: collectProject()}), true); }
   catch (e) { showError(e); }
+  /* Generate is the one action whose whole point is what the Result card then holds -
+     the script, or the errors that stopped it - so it takes you there either way.
+     Validate deliberately does not: it is run while still editing the points, and being
+     thrown to the bottom of the page mid-edit is worse than the chip you can click. */
+  revealResult();
 }
 $("btnValidate").onclick = runValidate;
 $("btnGenerate").onclick = runGenerate;
