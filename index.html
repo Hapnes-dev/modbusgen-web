@@ -258,9 +258,9 @@
   .points tr.flash.pinwarn > td{animation:ptflashwarn .28s ease-in-out 3}
   @media (prefers-reduced-motion: reduce){ .points tr.flash > td{animation:none} }
   /* a message that knows which rows it is about says so, and takes you there */
-  .msg .jump{cursor:pointer;border-radius:4px;padding:1px 3px;margin:0 -3px}
-  .msg .jump:hover{background:rgba(77,163,255,.12);color:var(--text)}
-  .msg .jump .to{color:inherit;opacity:.72;white-space:nowrap}
+  .msg .jump, .message-box .jump{cursor:pointer;border-radius:4px;padding:1px 3px;margin:0 -3px}
+  .msg .jump:hover, .message-box .jump:hover{background:rgba(77,163,255,.12);color:var(--text)}
+  .msg .jump .to, .message-box .jump .to{color:inherit;opacity:.72;white-space:nowrap}
   /* only while a drag has actually crossed rows - otherwise selecting text
      inside a single input would stop working */
   body.rowdrag,body.rowdrag .points{user-select:none}
@@ -366,6 +366,45 @@
   .msg.err .fixbtn, .msg.warn .fixbtn{font-size:11px;padding:1px 8px;margin-left:2px;
       border-color:#2f4d70;color:#a9cbef;white-space:nowrap}
   .msg.err .fixbtn:hover, .msg.warn .fixbtn:hover{border-color:var(--accent)}
+
+  /* ---------- message boxes ----------
+     After codepen.io/prallen/pen/BaLYwQ ("Message Boxes", Patrick Allen): one box per
+     message rather than one box holding all of them, a tone icon on the left, a bold
+     label, and a 2px border a shade stronger than the fill.
+
+     The pen is a light design - pastel fills, dark text - and this page is not, so its
+     four tones are taken from the four this page already had (.msg.err/.warn/.ok/.fix)
+     rather than from its pastels. What is the pen's is the anatomy: icon, label, 6px
+     radius, and the border carrying the tone rather than a hairline. Its 440px centred
+     width is dropped, because these sit in a card that is already the right width, and
+     so is its dismiss ✖ - a validation finding cannot be dismissed, it comes back on
+     the next Validate.
+
+     Padding is tighter than the pen's 20px on purpose. A real delivery throws 58 errors
+     and each is now its own box; at the pen's spacing that is three screens of scroll
+     before the first remedy. */
+  .message-box{display:flex;gap:9px;align-items:flex-start;border-radius:6px;
+      border:2px solid;padding:7px 10px;margin-top:6px;
+      font-family:inherit;font-size:13px;line-height:1.5}
+  .message-box .mb-icon{flex:none;width:17px;height:17px;margin-top:2px;opacity:.95}
+  .message-box .mb-body{min-width:0;max-width:92ch}
+  .message-box .mb-head{font-weight:600}
+  .message-box .mb-head strong{font-weight:700;letter-spacing:.01em}
+  .message-box .advice{font-weight:400;font-size:12px;opacity:.82;
+      margin:4px 0 0 2px;padding-left:9px;border-left:2px solid currentColor}
+  .message-box .where{color:var(--dim);font-size:11.5px;margin-top:2px}
+  .message-box .fixbtn{font-size:11px;padding:1px 8px;margin-left:2px;
+      border-color:#2f4d70;color:#a9cbef;white-space:nowrap}
+  .message-box .fixbtn:hover{border-color:var(--accent)}
+  .message-box pre{white-space:pre-wrap;font-family:Consolas,monospace;
+      font-size:12px;margin:0}
+  .message-box-error{background:#3a2126;color:var(--red);border-color:#7a3a44}
+  .message-box-warn{background:#33290f;color:var(--amber);border-color:#6d5415}
+  .message-box-info{background:#262b35;color:var(--dim);border-color:#3a4152}
+  .message-box-success{background:#1e3328;color:var(--green);border-color:#37734f}
+  /* the remedy panel keeps its own blue, and takes the border weight and radius so it
+     does not read as a hairline oddity among the boxes it sits under */
+  .msg.fix{border-width:2px}
   .sqlbar{display:flex;gap:8px;align-items:center;margin-top:10px}
   /* match the row-count chip rather than the page's full-size buttons */
   .sqlbar button{font-size:12px;padding:3px 10px;line-height:1.5}
@@ -1237,7 +1276,7 @@
         Norwegian text survives.</p>
       </div>
     </details>
-    <div id="out"><div class="msg note">Validate or generate to see results.</div></div>
+    <div id="out"><div class="message-box message-box-info"><svg viewBox="0 0 16 16" class="mb-icon" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.6"/><path d="M8 7.3v4.1"/><path d="M8 4.6v.1"/></svg><div class="mb-body"><div class="mb-head"><strong>Note:</strong> Validate or generate to see results.</div></div></div></div>
   </div>
 
   <div class="card" id="cardTips">
@@ -1825,7 +1864,7 @@ function bootstrapFailed(e, replied) {
     ? "The in-browser Python runtime could not be loaded - check the internet connection."
     : "The modbusgen server behind this page did not answer - check the window it runs in.";
   $("out").replaceChildren(
-    el("div",{class:"msg err"},
+    messageBox("error", "Error:",
       "modbusgen could not load its lookup tables, so no project can be opened or " +
       "imported. " + cause),
     el("div",{class:"msg fix"},
@@ -1834,7 +1873,7 @@ function bootstrapFailed(e, replied) {
       el("button",{class:"ghost fixbtn",
                    title:"Reload this page and try the startup request again",
                    onclick:()=>location.reload()}, "reload the page")),
-    el("div",{class:"msg note"}, "Technical detail: " + (e && e.message || e)));
+    messageBox("info", "Technical detail:", String(e && e.message || e)));
   $("out").scrollIntoView({block:"center"});
 }
 
@@ -3362,6 +3401,49 @@ const FIX_ACTIONS = {
       dtInvalidateKnown(); renderDatatypeCard(); ptMarkUnknownDatatypes();
       applyPointView();}},
 };
+
+/* Navigation, not repair - and deliberately not a FIX_ACTIONS entry. A fix button
+   re-validates on click and has to clear the warning it hangs off; one whose warning
+   survives it reads as the fix having failed silently, which is the whole point of
+   test_the_repair_clears_the_warning_it_hangs_off. Some findings have no mechanical
+   remedy because nothing is computable: what is missing is a fact only the person at the
+   keyboard has. Those still have somewhere to go, so they get a way to the field instead
+   of a button that would answer on their behalf. */
+const GOTO_DRIVER = {
+  label:"set the driver",
+  title:"Opens the Project card and puts the cursor in the driver field. It decides nothing - which driver the plant runs is yours to answer, and leaving it unstated stays a legal answer",
+  /* Only while the field still needs one: empty, or holding a spelling the page does not
+     offer, which showProject keeps rather than drops. Pointing at a field that has been
+     answered is noise. */
+  when:()=>{const d=$("pDriver"); if(!d) return false;
+            const o=d.selectedOptions[0];
+            return !d.value || !!(o && o.dataset.foreign);},
+  run:()=>goToField("cardProject", "pDriver"),
+};
+const GOTO_ACTIONS = {
+  "driver-swap-needs-mb-exe": GOTO_DRIVER,
+  "driver-write32-needs-mb-exe": GOTO_DRIVER,
+  "driver-unknown": GOTO_DRIVER,
+};
+/* Unfold, scroll and outline - wizFocus already does all three - then put the cursor in
+   the field. The outline is cleared afterwards rather than left standing: it is saying
+   "here", not marking a state, the same reason flashPoints blinks three times and stops. */
+let goToTimer = null;
+function goToField(cardId, fieldId) {
+  wizFocus(cardId);
+  const f = $(fieldId);
+  if (f) f.focus({preventScroll:true});
+  clearTimeout(goToTimer);
+  goToTimer = setTimeout(() => document.querySelectorAll(".wizfocus")
+    .forEach(e => e.classList.remove("wizfocus")), 2400);
+}
+function gotoButton(code) {
+  const go = GOTO_ACTIONS[code];
+  if (!go || !go.when()) return null;
+  return el("button",{class:"ghost fixbtn", title:go.title, onclick:go.run},
+            "→ " + go.label);
+}
+
 function adviseOn(findings) {
   const byCode = new Map();            // code -> {advice, points, suggestions, fix}
   for (const f of findings || []) {
@@ -3457,15 +3539,62 @@ function flashPoints(points) {
 
 /* One message, clickable when it knows where it happened. Not clickable when it does not
    - a project-wide error has no row, and a control that goes nowhere is worse than text. */
-function findingLine(text, f, pointRows, style, kind) {
+/* `text` is a string, or a list of nodes when the line needs its own markup - a message
+   box puts a bold label in front of the message, and that label has to sit inside the
+   clickable region rather than beside it. */
+function findingLine(text, f, pointRows, style, kind, cls) {
+  const kids = Array.isArray(text) ? text : [text];
   const pts = pointsOfFinding(f, pointRows);
-  if (!pts.length) return el("div", {class:"finding", style: style || ""}, text);
+  const base = cls || "finding";
+  if (!pts.length) return el("div", {class:base, style: style || ""}, ...kids);
   const n = pts.length;
-  return el("div", {class:"finding jump", style: style || "",
+  return el("div", {class:base + " jump", style: style || "",
                     title:`Show ${n === 1 ? "this row" : "these " + n + " rows"} in the Points card`,
                     onclick:() => pinPoints(pts, kind)},
-    text, el("span",{class:"to"}, n === 1 ? "  → show the row" : `  → show ${n} rows`));
+    ...kids, el("span",{class:"to"}, n === 1 ? "  → show the row" : `  → show ${n} rows`));
 }
+
+/* The pen's four icons - fa-info-circle, fa-warning, fa-ban, fa-check - drawn as paths
+   rather than pulled from Font Awesome. This page is one self-contained file that has to
+   work with no network (the browser build runs Python in the tab), so a webfont is not
+   available to it; the Wizard button already carries its own inline SVG for the same
+   reason. Stroked, so one colour follows the tone through `currentColor`.
+
+   The paths live inside the function rather than in a `const` beside it, for the reason
+   spelled out on outNote: these helpers are declared well below the startup code that
+   calls them, so a module-scope `const` here is still in its temporal dead zone when the
+   first message is rendered and boot dies with "Cannot access MB_ICONS before
+   initialization" - which it did. A hoisted declaration cannot be got wrong that way. */
+function mbIcon(kind) {
+  const MB_ICONS = {
+    info:    '<circle cx="8" cy="8" r="6.6"/><path d="M8 7.3v4.1"/><path d="M8 4.6v.1"/>',
+    warn:    '<path d="M8 1.9 15.1 14H.9z"/><path d="M8 6.3v3.3"/><path d="M8 11.3v.1"/>',
+    error:   '<circle cx="8" cy="8" r="6.6"/><path d="M3.3 3.3l9.4 9.4"/>',
+    success: '<path d="M2.6 8.3 6.3 12 13.4 4.3"/>',
+  };
+  const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  s.setAttribute("viewBox", "0 0 16 16");
+  s.setAttribute("class", "mb-icon");
+  s.setAttribute("aria-hidden", "true");
+  s.setAttribute("fill", "none");
+  s.setAttribute("stroke", "currentColor");
+  s.setAttribute("stroke-width", "1.6");
+  s.setAttribute("stroke-linecap", "round");
+  s.setAttribute("stroke-linejoin", "round");
+  s.innerHTML = MB_ICONS[kind] || MB_ICONS.info;
+  return s;
+}
+/* One message, one box. `f` and `pointRows` are optional: with a finding the head
+   becomes the clickable "→ show N rows" line, without one it is plain text. Anything
+   further - advice, a fix button, a note's own detail - is appended to `.mb-body`. */
+function messageBox(kind, label, text, f, pointRows, jumpKind) {
+  const head = findingLine(
+    label ? [el("strong",{}, label), " " + text] : [text],
+    f, pointRows, "", jumpKind || kind, "mb-head");
+  return el("div", {class:"message-box message-box-" + kind},
+            mbIcon(kind), el("div",{class:"mb-body"}, head));
+}
+function mbBody(box) { return box.querySelector(".mb-body"); }
 
 function renderAdvice(findings, pointRows) {
   const advice = adviseOn(findings);
@@ -3496,6 +3625,8 @@ function renderAdvice(findings, pointRows) {
       line.append(" ", el("button",{class:"ghost fixbtn", title:group.fix.title,
         onclick:()=>applyAdviceFix(group.fix, group, pointRows)},
         "fix: " + group.fix.label));
+    const go = gotoButton(code);
+    if (go) line.append(" ", go);
     box.append(line);
   }
   const unmatched = (findings || []).filter(f => !f.advice).length;
@@ -3622,14 +3753,14 @@ function importNoteMsgs(res) {
   const notes = res.import_notes
     || (res.notes || []).map(n => ({message: String(n), kind: "info", advice: ""}));
   const rank = {dropped: 0, action: 1, repaired: 2, info: 3};
-  const cls = {dropped: "msg err", action: "msg warn"};
+  const tone = {dropped: "error", action: "warn"};
+  const label = {dropped: "Dropped:", action: "Do this:", repaired: "Repaired:"};
   return [...notes].sort((a, b) => (rank[a.kind] ?? 3) - (rank[b.kind] ?? 3))
     .map(n => {
-      const box = el("div",{class: cls[n.kind] || "msg note"},
-        (n.kind === "dropped" ? "✕ dropped: " : n.kind === "action" ? "⚠ do this: " : "")
-        + n.message);
+      const box = messageBox(tone[n.kind] || "info", label[n.kind] || "Note:",
+                             String(n.message));
       if (n.advice && (n.kind === "dropped" || n.kind === "action"))
-        box.append(el("div",{class:"where", style:"margin-top:2px"}, n.advice));
+        mbBody(box).append(el("div",{class:"where"}, n.advice));
       return box;
     });
 }
@@ -3705,8 +3836,8 @@ async function dtPromote(name) {
     if (res.error) throw new Error(res.error);
     BOOT.datatypes = res.datatypes;
     dtInvalidateKnown(); renderDatatypeCard();
-    $("out").replaceChildren(el("div",{class:"msg ok"},
-      `✓ ${name} appended to data/tables/datatypes.csv. Every project on this machine ` +
+    $("out").replaceChildren(messageBox("success", "Success:",
+      `${name} appended to data/tables/datatypes.csv. Every project on this machine ` +
       `can use it now; other people get it when that file is committed. It stays in ` +
       `this project too, which is harmless and keeps the file working elsewhere.`));
   } catch (e) { showError(e); }
@@ -3806,8 +3937,8 @@ $("btnAddDatatype").onclick = () => dtDialogOpen();
 
 function dtUnknownMsgs(map) {           // spread into a message list; empty when clean
   if (!map.size) return [];
-  return [el("div",{class:"msg warn"},
-    `⚠ ${dtUnknownSummary(map)} - not in the datatype table. Those rows are marked `
+  return [messageBox("warn", "Warning:",
+    `${dtUnknownSummary(map)} - not in the datatype table. Those rows are marked `
     + `red. Validation rejects the list and Export Excel refuses it: pick a key from `
     + `the datatype dropdown, or add the row to data/tables/datatypes.csv.`)];
 }
@@ -3898,39 +4029,48 @@ function showResult(res, sqlWanted) {
     || (res.notes || []).filter(n => n.startsWith("warning:"))
                         .map(n => ({message: n, advice: "", code: ""}));
   const infos = (res.notes || []).filter(n => !n.startsWith("warning:"));
-  if (infos.length) out.append(el("div",{class:"msg note"}, infos.join("\n")));
-  if (warns.length) {
-    const box = el("div",{class:"msg warn"});
-    for (const w of warns) {
-      box.append(findingLine("⚠ " + String(w.message || "").replace(/^warning:\s*/, ""),
-                             w, res.point_rows, "margin-top:4px", "warn"));
-      if (w.advice) {
-        const line = el("div",{class:"advice"}, w.advice);
-        /* A warning with a mechanical remedy gets the same button an error does. It
-           never blocked anything, so the button is the only thing that makes the
-           difference between a remark and a repair. */
-        const fix = FIX_ACTIONS[w.code];
-        if (fix)
-          line.append(" ", el("button",{class:"ghost fixbtn", title:fix.title,
-            onclick:()=>applyAdviceFix(fix, {points: w.points || [], findings:[w],
-                                             errors:[w.message]}, res.point_rows)},
-            "fix: " + fix.label));
-        box.append(line);
-      }
+  for (const n of infos) out.append(messageBox("info", "Note:", String(n)));
+  /* One box per warning. A warning already covers a whole set of rows - it is one per
+     code, not one per point - so its advice sits inside its own box and is said once. */
+  for (const w of warns) {
+    const box = messageBox("warn", "Warning:",
+                           String(w.message || "").replace(/^warning:\s*/, ""),
+                           w, res.point_rows, "warn");
+    if (w.advice) {
+      const line = el("div",{class:"advice"}, w.advice);
+      /* A warning with a mechanical remedy gets the same button an error does. It
+         never blocked anything, so the button is the only thing that makes the
+         difference between a remark and a repair. */
+      const fix = FIX_ACTIONS[w.code];
+      if (fix)
+        line.append(" ", el("button",{class:"ghost fixbtn", title:fix.title,
+          onclick:()=>applyAdviceFix(fix, {points: w.points || [], findings:[w],
+                                           errors:[w.message]}, res.point_rows)},
+          "fix: " + fix.label));
+      /* A warning whose blocker is an unanswered field gets a way to that field. Both
+         driver warnings can carry one and only one of them can carry a repair, so the
+         two affordances are independent and a line can show either, both or neither. */
+      const go = gotoButton(w.code);
+      if (go) line.append(" ", go);
+      mbBody(box).append(line);
     }
     out.append(box);
   }
   if (res.errors && res.errors.length) {
-    /* One element per error rather than one joined string, so each can carry its own
-       finding and take you to its rows. webapi builds `errors` and `findings` from the
-       same list, so they are index-aligned; a cached older adapter sending only strings
-       falls back to plain, unclickable lines. */
+    /* One box per error, so each can carry its own finding and take you to its rows.
+       webapi builds `errors` and `findings` from the same list, so they are
+       index-aligned; a cached older adapter sending only strings falls back to plain,
+       unclickable lines.
+
+       The advice deliberately does NOT go in these boxes, unlike the warnings above.
+       Errors are one per *point*: a datatype typo across 50 rows is 50 findings of one
+       code, and repeating the remedy 50 times would bury it. It is said once, per code,
+       in the panel renderAdvice builds underneath. */
     const fs = Array.isArray(res.findings) && res.findings.length === res.errors.length
              ? res.findings : null;
-    const box = el("div",{class:"msg err"});
     res.errors.forEach((e, i) =>
-      box.append(findingLine("✕ " + e, fs ? fs[i] : null, res.point_rows, "", "err")));
-    out.append(box);
+      out.append(messageBox("error", "Error:", e, fs ? fs[i] : null,
+                            res.point_rows, "err")));
     const advice = renderAdvice(res.findings, res.point_rows);
     if (advice) out.append(advice);
     markBadRows(res.errors, res.point_rows);
@@ -3943,13 +4083,12 @@ function showResult(res, sqlWanted) {
   updateStats();
   const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
   if (!sqlWanted) {
-    out.append(el("div",{class:"msg ok verdict"}, "Valid",
-      el("span",{class:"n"}, `${plural(res.points, "point")} · ${plural(res.groups, "group")}`)));
+    out.append(messageBox("success", "Valid:",
+      `${plural(res.points, "point")} · ${plural(res.groups, "group")}`));
     return;
   }
   if (res.written)
-    out.append(el("div",{class:"msg ok verdict"}, "Written",
-      el("span",{class:"n"}, res.written)));
+    out.append(messageBox("success", "Written:", String(res.written)));
   const pre = el("pre",{class:"sql"}, res.sql || "");
   // Count records, not one format's keyword: legacy writes one INSERT per record,
   // modern writes multi-row REPLACE INTO blocks, so counting "INSERT" reported 0 for
@@ -3990,7 +4129,7 @@ function showResult(res, sqlWanted) {
                  onclick:saveSqlFile},"save file")), pre);
 }
 function showError(e) {
-  $("out").replaceChildren(el("div",{class:"msg err"}, String(e.message || e)));
+  $("out").replaceChildren(messageBox("error", "Error:", String(e.message || e)));
 }
 
 /* ---------- wiring ---------- */
@@ -4447,7 +4586,7 @@ $("btnNew").onclick = () => {
     localStorage.removeItem(AUTOSAVE_KEY);
     $("fileName").value = "new-project.json";
     showProject({points:[]});
-    $("out").replaceChildren(el("div",{class:"msg note"}, "New empty project."));
+    $("out").replaceChildren(messageBox("info", "Note:", "New empty project."));
   } catch (e) { showError(e); }
 };
 $("btnImportJson").onclick = () => $("jsonFile").click();
@@ -4463,8 +4602,8 @@ $("jsonFile").onchange = async e => {
     $("fileName").value = file.name;
     // the SQL and workbook importers report their own unknown datatypes from the
     // backend; a hand-written or hand-edited JSON has nobody to do that for it
-    $("out").replaceChildren(el("div",{class:"msg note"},
-      `Imported ${file.name} - review, then Validate and Save/Export.`),
+    $("out").replaceChildren(messageBox("info", "Imported:",
+      `${file.name} - review, then Validate and Save/Export.`),
       ...dtUnknownMsgs(ptUnknownDatatypes()));
     queueAutosave();
   } catch (err) { showError(new Error(`could not import ${file.name}: ${err.message}`)); }
@@ -4484,9 +4623,9 @@ $("sqlFile").onchange = async e => {
     showProject(res.project);
     $("fileName").value = (res.project.table || file.name.replace(/\.[^.]*$/, "")) + ".json";
     $("out").replaceChildren(
-      el("div",{class:"msg ok"},
-        `✓ Converted ${file.name} - review (plant number!), then Validate and Export for the .json file.`),
-      ...res.notes.map(n => el("div",{class:"msg note"}, n)));
+      messageBox("success", "Converted:",
+        `${file.name} - review (plant number!), then Validate and Export for the .json file.`),
+      ...res.notes.map(n => messageBox("info", "Note:", String(n))));
     queueAutosave();
   } catch (err) { showError(new Error(`could not convert ${file.name}: ${err.message}`)); }
   e.target.value = "";
@@ -4511,8 +4650,8 @@ $("xlsmFile").onchange = async e => {
     showProject(res.project);
     $("fileName").value = (res.project.table || file.name.replace(/\.[^.]*$/, "")) + ".json";
     $("out").replaceChildren(
-      el("div",{class:"msg ok"},
-        `✓ Converted ${file.name} - review (plant number!), then Validate and Export for the .json file.`),
+      messageBox("success", "Converted:",
+        `${file.name} - review (plant number!), then Validate and Export for the .json file.`),
       ...importNoteMsgs(res));
     btnFlash(btn, "converted ✓", "ok");
     queueAutosave();
@@ -4589,8 +4728,8 @@ $("btnExport").onclick = async () => {
     }
     // Export is the save-your-work button, so an undescribed datatype is said, not
     // blocked - the file is the record of where you got to, warts included
-    $("out").replaceChildren(el("div",{class:"msg ok"},
-      `✓ Exported ${name} - import it later to continue where you left off.`),
+    $("out").replaceChildren(messageBox("success", "Exported:",
+      `${name} - import it later to continue where you left off.`),
       ...dtUnknownMsgs(ptMarkUnknownDatatypes()));
     btnFlash(btn, "exported ✓", "ok");
   } catch (e) { btnFlash(btn, "export failed", "bad", 2600); showError(e); }
@@ -4657,15 +4796,15 @@ async function ptExportPoints(points, suffix) {
   const proj = ptSubsetProject(points);
   downloadTextFile(name, await canonicalJson(proj));
   const nG = Object.keys(proj.groups).length, nS = Object.keys(proj.statetexts).length;
-  const out = [el("div",{class:"msg ok"},
-    `✓ Exported ${name} — ${proj.points.length} point(s), ${nG} group(s), ` +
+  const out = [messageBox("success", "Exported:",
+    `${name} — ${proj.points.length} point(s), ${nG} group(s), ` +
     `${nS} state-text list(s), carrying only what these points reference.`)];
   /* Online indication is a whole-project requirement, not a per-point one: validation
      fails unless some point is marked. A subset that happens to miss the one or three
      marked points is therefore legal JSON that will not validate on its own - say so
      here rather than let it be discovered after the file has been handed on. */
   if (!proj.points.some(p => p.online))
-    out.push(el("div",{class:"msg warn"},
+    out.push(messageBox("warn", "Warning:",
       "None of these points is marked online, so this file will not validate on its " +
       "own - at least one online-indication point is required. Tick onl on a reliable, " +
       "always-readable point, or treat this export as a fragment to merge into a list " +
@@ -4792,8 +4931,8 @@ $("btnXlsm").onclick = async () => {
      message names them. */
   const unknown = ptMarkUnknownDatatypes();
   if (unknown.size) {
-    $("out").replaceChildren(el("div",{class:"msg err"},
-      `✕ Export Excel refused: ${dtUnknownSummary(unknown)} - not in the datatype `
+    $("out").replaceChildren(messageBox("error", "Export Excel refused:",
+      `${dtUnknownSummary(unknown)} - not in the datatype `
       + `table. The workbook's macro derives every generated column from that table, `
       + `so a spelling nothing describes produces a broken list rather than an error. `
       + `Pick a key from the datatype dropdown, or add the row to `
@@ -4809,8 +4948,8 @@ $("btnXlsm").onclick = async () => {
     downloadBytes(name, res.b64,
                   "application/vnd.ms-excel.sheet.macroEnabled.12");
     $("out").replaceChildren(
-      el("div",{class:"msg ok"},
-        `✓ Exported ${name} - the template's macros and its INAS Modbus tab come `
+      messageBox("success", "Exported:",
+        `${name} - the template's macros and its INAS Modbus tab come `
         + `with it. Open the file and hit Run Application to fill the generated `
         + `columns. A workbook downloaded from a browser is marked as coming from `
         + `the internet, and Excel blocks macros in such a file until you either `
@@ -4947,8 +5086,16 @@ function syncDeleteButton() {
     ? `Delete "${v.slice(LOCAL_PREFIX.length)}" from this browser. Asks once first; files in the projects folder are never touched`
     : "Select a project saved in this browser to delete it. Files in the projects folder cannot be deleted from here";
 }
+/* `kind` is the old .msg vocabulary - note/ok/err/warn - kept because a dozen callers
+   speak it; the boxes use the pen's, so it is translated here rather than at each.
+   The table is inside the function on purpose: outNote is a hoisted declaration and is
+   called during startup, so a `const` beside it is still in its temporal dead zone at
+   that point and boot dies with "Cannot access OUT_TONE before initialization". */
 function outNote(text, kind = "note") {
-  $("out").replaceChildren(el("div",{class:"msg " + kind}, text));
+  const tones = {note:["info","Note:"], ok:["success","Done:"],
+                 err:["error","Error:"], warn:["warn","Warning:"]};
+  const [tone, label] = tones[kind] || tones.note;
+  $("out").replaceChildren(messageBox(tone, label, text));
 }
 
 $("btnSave").onclick = () => {
@@ -5303,8 +5450,8 @@ async function init() {
     showProject(restored.project);
     $("fileName").value = restored.file || "";
     const when = fmtStamp(restored.when, true);
-    $("out").replaceChildren(el("div",{class:"msg note"},
-      `Restored unsaved work from ${when}. "New" discards it; Save keeps it in this browser under a name, Export writes a file.`));
+    $("out").replaceChildren(messageBox("info", "Restored:",
+      `unsaved work from ${when}. "New" discards it; Save keeps it in this browser under a name, Export writes a file.`));
   } else {
     showProject({points:[]});
   }
@@ -5349,6 +5496,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=34c46fa5a2"></script>
+<script src="pyodide-adapter.js?v=069511f565"></script>
 </body>
 </html>
