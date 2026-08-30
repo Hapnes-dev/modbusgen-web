@@ -576,7 +576,7 @@
       <div class="row">
         <label class="f f-lg" title="Names the three tables the script fills: iw_par_<name>_param, iw_par_<name>_groups, iw_set_<name>. Lowercase letters and digits">table name<input id="pTable" placeholder="kjol" title="Names the three tables the script fills: iw_par_<name>_param, iw_par_<name>_groups, iw_set_<name>. Lowercase letters and digits"></label>
         <label class="f f-sm" title="Identifies the plant. Used only in the generated file name, never in the SQL itself">plant number<input id="pPlant" placeholder="12345" title="Identifies the plant. Used only in the generated file name, never in the SQL itself"></label>
-        <label class="f f-sm" title="Which IWMAC Modbus driver this plant runs. Written into no SQL column - it decides what validation can conclude about swapped word order and 32-bit writes. mb.exe carries both, modbus.php neither and silently. Leave it unstated if you do not know: validation then asks rather than assumes">driver<select id="pDriver" title="Which IWMAC Modbus driver this plant runs. Written into no SQL column - it decides what validation can conclude about swapped word order and 32-bit writes. mb.exe carries both, modbus.php neither and silently. Leave it unstated if you do not know: validation then asks rather than assumes"><option value="">not stated</option><option value="mb.exe">mb.exe</option><option value="modbus.php">modbus.php</option></select></label>
+        <label class="f f-sm" title="Which IWMAC Modbus driver this plant runs. Written into no SQL column - it decides what validation can conclude about swapped word order and 32-bit writes. mb.exe carries both, modbus.php neither and silently. mb.exe is the house standard and where a new list starts; set modbus.php for a plant known to run it, and not stated only when nobody knows, which makes validation ask rather than assume">driver<select id="pDriver" title="Which IWMAC Modbus driver this plant runs. Written into no SQL column - it decides what validation can conclude about swapped word order and 32-bit writes. mb.exe carries both, modbus.php neither and silently. mb.exe is the house standard and where a new list starts; set modbus.php for a plant known to run it, and not stated only when nobody knows, which makes validation ask rather than assume"><option value="">not stated</option><option value="mb.exe">mb.exe</option><option value="modbus.php">modbus.php</option></select></label>
       </div>
     </div>
 
@@ -604,12 +604,14 @@
         documentation cannot settle depend on it: <code>mb.exe</code> supports a swapped
         word order (<code>_R</code>, <code>_W</code>) and 32-bit writes, and
         <code>modbus.php</code> supports neither — silently, so a swapped point there
-        reads a plausible wrong number and a 32-bit write simply never happens. Leave it
-        <b>not stated</b> if you do not know: validation warns and asks you to confirm,
-        which is what it did before this field existed. Say <code>mb.exe</code> and those
-        warnings stop, because there is nothing left to confirm. Say
-        <code>modbus.php</code> and they stop asking and start telling you what the list
-        will do on the bus.</p>
+        reads a plausible wrong number and a 32-bit write simply never happens.
+        <b><code>mb.exe</code> is the house standard</b>, so <b>New</b> starts a list
+        there and those warnings never appear; there is nothing left to confirm. Set
+        <code>modbus.php</code> for a plant known to run it, and the same checks stop
+        asking and start telling you what the list will do on the bus. <b>not stated</b>
+        is for when nobody knows: validation then warns and asks you to confirm, which is
+        what it did before this field existed. An imported file that says nothing stays
+        <b>not stated</b> — absence means nobody said, not <code>mb.exe</code>.</p>
 
         <p>Below, the badge after each option is its default; hovering a checkbox shows
         the same summary.</p>
@@ -4800,7 +4802,10 @@ $("btnNew").onclick = () => {
   try {
     localStorage.removeItem(AUTOSAVE_KEY);
     $("fileName").value = "new-project.json";
-    showProject({points:[]});
+    // mb.exe is the house standard (docs/15 section 1), so a list starts there rather
+    // than at "not stated". Only New does this: showProject leaves an imported file's
+    // absent driver empty, because absence means nobody said, not mb.exe.
+    showProject({points:[], driver:"mb.exe"});
     $("out").replaceChildren(messageBox("info", "Note:", "New empty project."));
   } catch (e) { showError(e); }
 };
@@ -5680,7 +5685,8 @@ async function init() {
     $("out").replaceChildren(messageBox("info", "Restored:",
       `unsaved work from ${when}. "New" discards it; Save keeps it in this browser under a name, Export writes a file.`));
   } else {
-    showProject({points:[]});
+    // nothing to restore, so this is a new list too - same house standard as New
+    showProject({points:[], driver:"mb.exe"});
   }
 }
 /* live stat chips while editing (debounced, delegated).
@@ -5723,6 +5729,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=04927a0655"></script>
+<script src="pyodide-adapter.js?v=1eef2032a6"></script>
 </body>
 </html>

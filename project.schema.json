@@ -54,7 +54,7 @@
         null
       ],
       "default": "",
-      "description": "Which IWMAC Modbus driver the plant runs (docs/15 section 1). Written into no SQL column - it decides what validation can conclude about word order and 32-bit writes, which the vendor document cannot settle. mb.exe supports word/byte swaps and FC16; modbus.php supports neither, so on it only _N datatypes read correctly and a writable 32-bit point cannot be written at all - both fail silently. Absent or empty means not stated, and leaves those checks as warnings that ask you to confirm. Ask the user; do not guess.",
+      "description": "Which IWMAC Modbus driver the plant runs (docs/15 section 1). Written into no SQL column - it decides what validation can conclude about word order and 32-bit writes, which the vendor document cannot settle. mb.exe supports word/byte swaps and FC16; modbus.php supports neither, so on it only _N datatypes read correctly and a writable 32-bit point cannot be written at all - both fail silently. mb.exe is the house standard and what a new project in the GUI starts with, so most files state it outright; modbus.php belongs in the file whenever the plant is known to run it. Absent or empty still means not stated - nobody said, not mb.exe - and leaves those checks as warnings that ask you to confirm.",
       "examples": [
         "mb.exe"
       ]
