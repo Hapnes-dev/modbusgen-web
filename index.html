@@ -3584,7 +3584,14 @@ const GOTO_COMM = {
   when:()=>true,
   run:()=>goToField("cardSys", "commMode"),
 };
+const GOTO_PLANT = {
+  label:"set the plant number",
+  title:"Opens the Project card and puts the cursor in the plant number field. 1234 is the number the starter prompt writes into the file it asks an agent for, so it arrives in lists nobody set a number on - and it is a legal plant number, so nothing else can tell",
+  when:()=>true,
+  run:()=>goToField("cardProject", "pPlant"),
+};
 const GOTO_ACTIONS = {
+  "plant-is-a-placeholder": GOTO_PLANT,
   "comm-mode-unknown": GOTO_COMM,
   "driver-swap-needs-mb-exe": GOTO_DRIVER,
   "driver-write32-needs-mb-exe": GOTO_DRIVER,
@@ -5729,6 +5736,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=1eef2032a6"></script>
+<script src="pyodide-adapter.js?v=35e93cb58e"></script>
 </body>
 </html>
