@@ -1048,8 +1048,14 @@
             every other column alone.</li>
           <li><b>duplicate</b> copies each selected row with <span class="ex">addr + 1</span>;
             <b>delete</b> removes them all.</li>
-          <li><i>addr</i> and <i>bit</i> are deliberately missing from the column list —
-            writing one address across many rows would produce duplicate
+          <li><b>addr ±</b> is the one entry that adds rather than writes: it moves every
+            selected address by a signed number, so <span class="ex">-2</span> takes two
+            off each of them and <span class="ex">3</span> adds three, and the distances
+            between the rows are kept. That is the fix when a whole block was read off the
+            wrong base. Nothing moves at all if the shift would take any selected row
+            outside 0–65535, and <b>fill down</b> is off while it is chosen.</li>
+          <li>Plain <i>addr</i> and <i>bit</i> are deliberately missing from the column
+            list — writing one address across many rows would produce duplicate
             <code>driver_id</code>s and fail validation. Use ⧉ or <b>duplicate</b>, which
             step the address for you.</li>
           <li>Selection follows what is on screen: rows hidden by search or a filter drop
@@ -1118,11 +1124,11 @@
     <div class="bulkbar" id="bulkBar" hidden>
       <span class="chip" id="bulkCount"
             title="Rows currently selected. Drag across rows to change the range, Esc to clear"></span>
-      <span class="lbl">set</span>
-      <select id="bulkCol" title="Which column the value below is written to"></select>
+      <span class="lbl" id="bulkVerb">set</span>
+      <select id="bulkCol" title="Which column the value below is written to. addr ± is the one that adds rather than writes: it moves every selected address by a signed number, so no two rows can end up sharing one"></select>
       <span id="bulkValueSlot"></span>
       <button id="bulkApply" class="primary"
-              title="Write that value into this column on every selected row">apply</button>
+              title="Write that value into this column on every selected row - or, for addr ±, add it to every selected address">apply</button>
       <button id="bulkFill"
               title="Copy this column's value from the topmost selected row down into the rest - leaves the other columns alone">fill down</button>
       <span class="h2fill"></span>
@@ -3060,11 +3066,24 @@ function ptPaintSelection() {
 function ptClearSelection() { ptSel.clear(); ptSelAnchor = null; ptPaintSelection(); }
 
 /* Columns worth setting in bulk. bit and addr are excluded on purpose: writing
-   one address to many rows would guarantee duplicate driver_ids. */
+   one address to many rows would guarantee duplicate driver_ids.
+
+   ADDR_SHIFT is the one address operation that cannot do that. It adds a signed
+   number to every selected address instead of writing one, so the distances between
+   the rows - and therefore their driver_ids - survive. It is a separate entry rather
+   than `addr` in the list above precisely so that "set" never becomes possible for
+   an address by a dropdown change nobody meant. */
+const ADDR_SHIFT = "addr±";
 const BULK_COLS = ["group","datatype","system_no","tag","text","extra","alarm","unit",
-                   "scale","rw","update_freq","online","decimals","statetext","no_group"];
+                   "scale","rw","update_freq","online","decimals","statetext","no_group",
+                   ADDR_SHIFT];
 const BULK_LABEL = {system_no:"system no", update_freq:"freq", online:"onl",
-                    decimals:"dec", statetext:"state", no_group:"no grp"};
+                    decimals:"dec", statetext:"state", no_group:"no grp",
+                    [ADDR_SHIFT]:"addr ±"};
+const ADDR_SHIFT_HELP = "Move every selected address by this many registers, keeping " +
+  "the distances between them: -2 subtracts two, 3 adds three. A whole block that was " +
+  "read off the wrong base is what this is for. Nothing is written if the shift would " +
+  "take any selected row below 0 or past 65535";
 function bulkValueControl(col) {
   const mk = items => pick("bulk-val", "", items, COL_HELP[col]);
   switch (col) {
@@ -3078,11 +3097,25 @@ function bulkValueControl(col) {
     case "group":      return el("input",{class:"bulk-val", list:"dlGroups", title:COL_HELP[col]});
     case "unit":       return el("input",{class:"bulk-val", list:"dlUnits", title:COL_HELP[col]});
     case "statetext":  return el("input",{class:"bulk-val", type:"number", style:"width:70px", title:COL_HELP[col]});
+    case ADDR_SHIFT:   return el("input",{class:"bulk-val", type:"number", step:1, placeholder:"-2",
+                                          style:"width:70px", title:ADDR_SHIFT_HELP});
     default:           return el("input",{class:"bulk-val", title:COL_HELP[col]});
   }
 }
+/* The bar says "set" for every column that is written and "shift" for the one that is
+   added to, because "set addr ± -2" would read as an address of -2 on every row - the
+   exact operation the column list exists to prevent. fill down goes with it: copying one
+   address into the rest is the duplicate-driver_id case by another route. */
 function bulkRefreshValue() {
-  $("bulkValueSlot").replaceChildren(bulkValueControl($("bulkCol").value));
+  const col = $("bulkCol").value, shifting = col === ADDR_SHIFT;
+  $("bulkValueSlot").replaceChildren(bulkValueControl(col));
+  $("bulkVerb").textContent = shifting ? "shift" : "set";
+  const fill = $("bulkFill");
+  fill.disabled = shifting;
+  fill.title = shifting
+    ? "Not available for a shift: copying one address into the other rows is the "
+      + "duplicate driver_id this column list exists to prevent"
+    : "Copy this column's value from the topmost selected row into the rest";
 }
 /* The bulk bar's "on"/"off" is its own vocabulary for the two checkbox columns;
    everything else is the value as typed, normalised by ptWriteField like any edit. */
@@ -3097,9 +3130,46 @@ function bulkRead(p, col) {
 function bulkTargets() {                       // view order, so "topmost" means what you see
   return ptView.filter(p => ptSel.has(p));
 }
+/* Shift every selected address by a signed number: -2 subtracts two, 3 adds three.
+   Checked before anything is written, and refused whole. A half-applied shift is the
+   worst outcome available here - the block that was one contiguous run becomes two, the
+   rows still validate, and nothing on screen says which half moved. Rows with no address
+   are passed over rather than counted as a failure: a blank row inside a selection is
+   ordinary, and there is nothing to move. */
+function bulkShiftAddr(raw) {
+  const delta = Number(String(raw).trim());
+  if (!Number.isInteger(delta) || delta === 0) {
+    $("out").replaceChildren(messageBox("info", "Nothing shifted:",
+      "give a whole number of registers to move by - for example -2 or 3."));
+    return;
+  }
+  const rows = bulkTargets().filter(p => typeof p.addr === "number");
+  if (!rows.length) {
+    $("out").replaceChildren(messageBox("info", "Nothing shifted:",
+      "none of the selected rows has an address."));
+    return;
+  }
+  const outside = rows.filter(p => p.addr + delta < 0 || p.addr + delta > 65535);
+  if (outside.length) {
+    const worst = outside[0].addr + delta;
+    $("out").replaceChildren(messageBox("warn", "Nothing shifted:",
+      `${outside.length} of the ${rows.length} addressed rows would land outside `
+      + `0-65535 (the first at ${worst}), so no row was moved. A Modbus request `
+      + `addresses a register with two bytes; there is nothing past 65535 to point at.`));
+    return;
+  }
+  ptPushState(null, `shift addr by ${delta > 0 ? "+" : ""}${delta}`);
+  markValStale();
+  for (const p of rows) p.addr += delta;
+  updateStats(); applyPointView(); ptPaintSelection();
+  $("out").replaceChildren(messageBox("info", "Shifted:",
+    `${rows.length} address${rows.length === 1 ? "" : "es"} moved by `
+    + `${delta > 0 ? "+" : ""}${delta}. Ctrl+Z puts them back.`));
+}
 function bulkApply() {
   const col = $("bulkCol").value, ctrl = document.querySelector(".bulk-val");
   if (!ctrl) return;
+  if (col === ADDR_SHIFT) return bulkShiftAddr(ctrl.value);
   ptPushState(null, "apply " + col);
   markValStale();
   for (const p of bulkTargets()) bulkWrite(p, col, ctrl.value);
@@ -3107,6 +3177,7 @@ function bulkApply() {
 }
 function bulkFillDown() {
   const col = $("bulkCol").value, rows = bulkTargets();
+  if (col === ADDR_SHIFT) return;             // the button is disabled; this is the guard
   if (rows.length < 2) return;
   ptPushState(null, "fill down " + col);
   markValStale();
