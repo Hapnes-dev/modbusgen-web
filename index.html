@@ -470,6 +470,9 @@
   .sqlbar{display:flex;gap:8px;align-items:center;margin-top:10px}
   /* match the row-count chip rather than the page's full-size buttons */
   .sqlbar button{font-size:12px;padding:3px 10px;line-height:1.5}
+  /* the same bar, above the messages instead of under the script: it carries the one
+     control that acts on the whole panel, so it goes where the panel starts */
+  .reportbar{margin:0 0 10px}
   pre.sql{background:#0d0f14;border:1px solid var(--line);border-radius:6px;
           padding:10px;max-height:45vh;overflow:auto;font-size:12px;color:#b9e0a5;
           margin:6px 0 0}
@@ -1329,6 +1332,12 @@
             in the Points table — a <i>failing</i> chip up there shows only those rows.</li>
           <li>Amber warnings (missing motherwords, blank alias texts) do not block, but
             deserve a look before delivery.</li>
+          <li><b>copy report</b>, above the messages, puts every finding on the
+            clipboard as text — each one's code, message, the addresses it hit and its
+            fix, in the same shape <code>modbusgen validate</code> prints on the
+            command line. It is the panel written out for somewhere else: paste it to
+            Copilot to have the list repaired, or into a message to ask about one. The
+            bar is absent when a run has nothing to report.</li>
         </ul>
 
         <h4>How to fix</h4>
@@ -4312,6 +4321,111 @@ function revealResult() {
 }
 $("valStatus").onclick = revealResult;
 
+/* `addr 100, 101, 102 (+57 more)`, the JS half of notes.where - the same sentence the
+   CLI and the message boxes already print, so a pasted report and a screenshot of the
+   panel name the rows the same way. The limit is generous rather than absent: a 1619
+   point list can fail on every row, and a report nobody can read is not a better one. */
+function reportWhere(addrs, limit = 40) {
+  const a = (addrs || []).filter(x => x !== null && x !== undefined);
+  if (!a.length) return "";
+  if (a.length <= limit) return `addr ${a.join(", ")}`;
+  return `addr ${a.slice(0, limit).join(", ")} (+${a.length - limit} more)`;
+}
+
+/* Everything the panel just said, as plain text on the clipboard.
+
+   The shape is the CLI's - `FAIL [code] message` with a `fix:` line under it and a
+   `codes:` summary at the end - because that is the form docs/14 already teaches the
+   authoring agent to read, so a report pasted into a chat arrives in a format the
+   agent on the other end has been told about.
+
+   Built from `res`, not scraped from the DOM. The boxes up there carry "→ show 13
+   rows" affordances that mean nothing in a chat window, they truncate addresses at
+   eight for the eye, and the advice sits in a sibling panel on the error path - all
+   three are wrong to hand on, and all three are right on screen. */
+function reportText(res, warns, infos) {
+  const errs = res.errors || [];
+  const fs = Array.isArray(res.findings) && res.findings.length === errs.length
+           ? res.findings : null;
+  const table = ($("pTable").value || "").trim();
+  const plant = ($("pPlant").value || "").trim();
+  const where = [table && `table ${table}`, plant && `plant ${plant}`]
+                  .filter(Boolean).join(", ");
+  const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+  const size = typeof res.points === "number"
+             ? `${plural(res.points, "point")} · ${plural(res.groups, "group")}` : "";
+
+  const L = [];
+  L.push(["modbusgen validate", where, size].filter(Boolean).join(" — "));
+  L.push(`${plural(errs.length, "error")}, ${plural(warns.length, "warning")}.` +
+         (errs.length ? " Errors block generation; warnings do not."
+                      : " Warnings do not block generation."));
+  L.push("");
+
+  const codes = [];
+  /* Errors first and warnings second, the order of the panel and of the CLI: what
+     stops the delivery is read before what merely costs something. */
+  errs.forEach((e, i) => {
+    const f = fs ? fs[i] : null;
+    const code = f && f.code ? f.code : "";
+    if (code) codes.push(code);
+    L.push(`FAIL ${code ? `[${code}] ` : ""}${String(e).replace(/^warning:\s*/, "")}`);
+    const at = f ? reportWhere(f.addrs && f.addrs.length ? f.addrs
+                                : (f.addr === null || f.addr === undefined ? [] : [f.addr]))
+                 : "";
+    if (at) L.push(`     at:  ${at}`);
+    if (f && f.advice) L.push(`     fix: ${f.advice}`);
+    /* The near key from the same table. docs/06 §6.5.1 is emphatic that it is a
+       candidate and not a verdict, so the line says so rather than reading as one. */
+    if (f && f.suggestion)
+      L.push(`     nearest key: ${f.suggestion} — check it against the vendor document before taking it.`);
+    L.push("");
+  });
+
+  warns.forEach(w => {
+    const code = w.code || "";
+    if (code) codes.push(code);
+    L.push(`WARN ${code ? `[${code}] ` : ""}${String(w.message || "").replace(/^warning:\s*/, "")}`);
+    const at = reportWhere(w.addrs);
+    if (at) L.push(`     at:  ${at}`);
+    if (w.advice) L.push(`     fix: ${w.advice}`);
+    L.push("");
+  });
+
+  for (const n of infos) L.push(`note: ${String(n)}`);
+  if (infos.length) L.push("");
+
+  const uniq = [...new Set(codes)];
+  if (uniq.length) L.push(`codes: ${uniq.join(", ")}`);
+  return L.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
+}
+
+/* The bar sits above the messages rather than under them. On a failing list the panel
+   runs long, and a control you have to scroll past every error to reach is one nobody
+   finds. Absent when there is nothing to carry: a clean run's "Valid:" line copies to
+   nothing worth pasting. */
+function reportBar(res, warns, infos) {
+  const errs = res.errors || [];
+  if (!errs.length && !warns.length && !infos.length) return null;
+  const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+  const counts = [errs.length && plural(errs.length, "error"),
+                  warns.length && plural(warns.length, "warning"),
+                  !errs.length && !warns.length && infos.length
+                    && plural(infos.length, "note")].filter(Boolean).join(" · ");
+  return el("div", {class:"sqlbar reportbar"},
+    el("span",{class:"chip", title:"What the button below puts on the clipboard"}, counts),
+    el("button",{title:"Copy every finding above as text — code, message, the rows it "
+                     + "hit and the fix — in the same shape the CLI prints, ready to "
+                     + "paste to Copilot or into a chat",
+                 onclick:async e => {
+      const btn = e.currentTarget;
+      try { await navigator.clipboard.writeText(reportText(res, warns, infos)); }
+      catch (err) { btn.textContent = "copy blocked"; setTimeout(()=>btn.textContent = "copy report", 1500); return; }
+      btn.textContent = "copied ✓";
+      setTimeout(()=>btn.textContent = "copy report", 1500);
+    }},"copy report"));
+}
+
 function showResult(res, sqlWanted) {
   setValStatus(res);
   const out = $("out");
@@ -4324,6 +4438,11 @@ function showResult(res, sqlWanted) {
     || (res.notes || []).filter(n => n.startsWith("warning:"))
                         .map(n => ({message: n, advice: "", code: ""}));
   const infos = (res.notes || []).filter(n => !n.startsWith("warning:"));
+  /* Before the messages, so it is in reach on a panel too long to scroll. Built once
+     here rather than in each of the three exits below, which is also why it precedes
+     the early `return` on the error path. */
+  const bar = reportBar(res, warns, infos);
+  if (bar) out.append(bar);
   for (const n of infos) out.append(messageBox("info", "Note:", String(n)));
   /* One box per warning. A warning already covers a whole set of rows - it is one per
      code, not one per point - so its advice sits inside its own box and is said once. */
@@ -5807,6 +5926,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=35e93cb58e"></script>
+<script src="pyodide-adapter.js?v=a11c4cf455"></script>
 </body>
 </html>

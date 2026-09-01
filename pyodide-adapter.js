@@ -44,7 +44,7 @@ window.PYODIDE_READY = (async () => {
   _overlay("Loading YAML support…");
   await py.loadPackage("pyyaml");
   _overlay("Loading modbusgen…");
-  const buf = await (await fetch("modbusgen-src.zip?v=7106c867db")).arrayBuffer();
+  const buf = await (await fetch("modbusgen-src.zip?v=197fe0413b")).arrayBuffer();
   py.unpackArchive(buf, "zip");
   py.runPython("import sys; sys.path.insert(0, 'src')");
   const glue = py.pyimport("modbusgen.webapi");
