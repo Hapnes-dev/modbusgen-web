@@ -450,7 +450,7 @@
       font-family:inherit;font-size:13px;line-height:1.5}
   .message-box .mb-icon{flex:none;width:17px;height:17px;margin-top:2px;opacity:.95}
   .message-box .mb-body{min-width:0;max-width:92ch}
-  .message-box .mb-head{font-weight:600}
+  .message-box .mb-head{font-weight:600;white-space:pre-line}
   .message-box .mb-head strong{font-weight:700;letter-spacing:.01em}
   .message-box .advice{font-weight:400;font-size:12px;opacity:.82;
       margin:4px 0 0 2px;padding-left:9px;border-left:2px solid currentColor}
@@ -1401,10 +1401,34 @@ READ FIRST, from Modbus List Helper
   16-modbus-commissioning.md     proving the link, and the import after
   datatypes.csv, units.csv, scaling.csv   the only legal datatype, unit and
                                  scale keys - a key not in these does not exist
-Search these phrases and read the sections they land on: Template
-checkpoint · Reuse shape, re-prove semantics · Source-defined groups outrank
-default groups · Source-row coverage vs project point count · JSON parse is not
-modbusgen validation.
+Search these phrases and read the sections they land on: Project shape
+checkpoint · Template checkpoint · Reuse shape, re-prove semantics ·
+Source-defined groups outrank default groups · Source-row coverage vs project
+point count · JSON parse is not modbusgen validation.
+
+THE CONTAINER, BEFORE ANY REGISTER FACT
+Do the Project shape checkpoint (docs/11): the file's shape comes from a
+working project if one is supplied, else from the schema - never from memory.
+This is the whole container. Copy it, then fill it:
+{
+  "$schema": "https://hapnes-dev.github.io/modbusgen-web/project.schema.json",
+  "table": "device_rtu", "plant": "1234", "driver": "mb.exe",
+  "options": {"subtract_one": false},
+  "groups": {"main": "Section heading as the document prints it"},
+  "statetexts": {"1": {"0": "Off", "1": "Auto"}},
+  "points": [
+    {"group": "main", "datatype": "A_Hold_I16_N", "addr": 5, "text": "Setpoint",
+     "unit": "C", "scale": "x0.1", "decimals": 1, "rw": "rw"},
+    {"group": "main", "datatype": "I_Hold_I16_N", "addr": 9, "text": "Mode",
+     "statetext": 1, "online": true}
+  ]
+}
+Never: groups as a list; points nested under a group; subtract_one at the top
+level; "address" or "name" on a point; "states" on a point; rw as true/false;
+view_order. The loader refuses each of those by name, and none is translated.
+Before reading every row, load a version of this with ONE real source row and
+see one point in modbusgen - a file that parses and shows zero points is the
+failure this guards against.
 
 FIRST MESSAGE, BEFORE READING THE DATASHEET
 Do the Template checkpoint: ask me whether a filled Modbustemplate workbook, a
@@ -5012,9 +5036,20 @@ $("jsonFile").onchange = async e => {
   if (!file) return;
   try {
     const text = await file.text();
-    const data = /\.ya?ml$/i.test(file.name)
-      ? await api("/api/parse", {text})
-      : JSON.parse(text);
+    let data;
+    if (/\.ya?ml$/i.test(file.name)) {
+      data = await api("/api/parse", {text});
+    } else {
+      data = JSON.parse(text);            // syntax, in the browser's own words
+      /* The shape is the loader's call, not the page's. A .json file used to go from
+         JSON.parse straight to the screen, so a file that parsed and was not a project
+         - points nested under groups, rows keyed address and name - showed one blank
+         row under a green "Imported" and left the person to notice that 117 points
+         were nowhere. Re-serialised rather than sent raw, because the parser behind
+         /api/parse is YAML's and a tab-indented JSON file is not YAML. */
+      const chk = await api("/api/parse", {text: JSON.stringify(data)});
+      if (chk && chk.error) throw new Error(chk.error);
+    }
     showProject(data);
     $("fileName").value = file.name;
     // the SQL and workbook importers report their own unknown datatypes from the
@@ -5926,6 +5961,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=854cdd2a2e"></script>
+<script src="pyodide-adapter.js?v=8596d7a03c"></script>
 </body>
 </html>
