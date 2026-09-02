@@ -1464,8 +1464,10 @@ datatype: {A|I}_{Hold|Input}_{I16|U16|I32|U32|F}_{N|R|W}, plus Bit_Hold,
   integral one. _N is normal order and dominates the fleet - reach for _R or
   _W only when the document or a live read proves the swap.
 scale: a printed factor is inverted - "factor 10" or "x10" means x0.1. Only a
-  document defining "actual = register x factor" is used as printed. No factor
-  stated means no scale key at all.
+  document defining "actual = register x factor" is used as printed. A unit
+  column written as a number and a unit states the resolution - what one count
+  is worth - and is used as printed too: "10 MWh" is unit MWh at scale x10,
+  "0,1 C" is x0.1. No factor stated means no scale key at all.
 unit: the fleet spellings - C (never °C), %, sec, V, %RH, ppm, m3/h, Pa, kWh.
   No key fits: omit unit, keep the value raw, report the gap. Do not reach for
   a neighbour - kVAh is not VAh, sek is not ms.
@@ -1476,15 +1478,22 @@ ALWAYS
   heading as the group alias. aio/dio/alm/misc/sch are the fallback for a
   document with no structure of its own.
 - Point order as printed - it becomes the operator's menu (view_order).
-- A bit row carries only its Bit_/Coil_ datatype and bit number.
+- A bit row carries only its Bit_/Coil_ datatype and bit number. The row that
+  allocates the bits fixes how many there are and what they are called; a fault
+  list printed elsewhere in the manual is a different table, and numbers that
+  line up are not a cross-reference. Author every allocated bit, including the
+  ones no prose describes.
 - Every point the document identifies as an alarm, fault or trip gets alarm A.
   N for a note; B and C are effectively unused. A row stating its own letter
   keeps it. Omit alarm everywhere else, and never infer alarm-hood from a
   section or tag name that merely has the word in it.
-- Keep vendor enum numbers exactly, gaps and all, and its words as printed.
+- Keep vendor enum numbers exactly, gaps and all, and its words as printed. A
+  documented readback sentinel is a separate fact and never cancels the write
+  enum: 0 = Stopp, 1 = Start keeps both words where reading returns 999.
 - Mark 3-4 online points and say why each was picked. A live measurement or
   status register, never a firmware version or serial number - those answer
-  even when the device is dead.
+  even when the device is dead - and never a row the document marks as optional
+  equipment.
 - update_freq slow on energy totals, counters and configuration values.
 - Write canonical, not exhaustive: leave out every field at its default.
 - Prefer a deliberate subset - the driver sends one Modbus request per point.
