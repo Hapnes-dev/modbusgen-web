@@ -824,7 +824,7 @@
 
         <h4>When to make one</h4>
         <ul>
-          <li><b>Only when no shipped key fits.</b> 135 come with the tool and cover
+          <li><b>Only when no shipped key fits.</b> 136 come with the tool and cover
             nearly everything; the datatype dropdown lists them all.</li>
           <li>A new variable is a <b>new combination of parts already in service</b> —
             clone the nearest key and change the one field that differs. The dialog
@@ -4092,7 +4092,7 @@ function renderDatatypeCard() {
   const names = Object.keys(dtProject);
   if (!names.length) {
     box.replaceChildren(el("div",{class:"sub"},
-      "None. The 135 shipped datatypes need nothing here - add one only when no key " +
+      "None. The 136 shipped datatypes need nothing here - add one only when no key " +
       "in the datatype dropdown fits the register you are describing."));
     return;
   }
@@ -5762,9 +5762,9 @@ const WIZARD = [
      command to send, whether the value is a whole number or has decimals, whether it can
      be negative, whether it spans two registers, and in what order the bytes arrive.
      <code>A_Hold_I16_N</code> is one of them.</p>
-     <p>135 datatypes ship with this tool and they cover almost every device. You pick one
+     <p>136 datatypes ship with this tool and they cover almost every device. You pick one
      per row on the Points card, from a dropdown — you do not write them.</p>
-     <p>This card exists only for the rare register that none of the 135 describes. If you
+     <p>This card exists only for the rare register that none of the 136 describes. If you
      think you need one, <b>ask someone first</b>: a wrong datatype does not fail, it
      quietly reads a believable wrong number.</p>`,
    skip:"Most lists never touch this card. Skipping it is the normal answer."},
@@ -5984,6 +5984,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=92ba2fa312"></script>
+<script src="pyodide-adapter.js?v=04ffb47098"></script>
 </body>
 </html>
