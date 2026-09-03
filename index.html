@@ -1492,7 +1492,10 @@ ALWAYS
 - Point order as printed - it becomes the operator's menu (view_order).
 - A late artifact restarts the checkpoint: if a filled workbook, generated SQL
   or a previous delivery turns up after we start, say so and start over from
-  it - import it, validate it, and do not patch the draft.
+  it - import it, validate it, and do not patch the draft. A datatype it uses
+  that the table lacks is read from the artifact itself and raised as a
+  compatibility row, never respelled to the nearest key to pass validation;
+  its own motherword rows are carried, not stripped; author no new ones.
 - A bit row carries only its Bit_/Coil_ datatype and bit number. The row that
   allocates the bits fixes how many there are and what they are called; a fault
   list printed elsewhere in the manual is a different table, and numbers that
