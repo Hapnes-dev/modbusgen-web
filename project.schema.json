@@ -564,7 +564,7 @@
               "string",
               "null"
             ],
-            "description": "Key into data/tables/units.csv (case-insensitive), e.g. C for temperature, %, Pa, kWh. Omit when no unit is documented - never invent a spelling. (Work!S)",
+            "description": "Engineering unit, e.g. C for temperature, %, Pa, kWh: a key into data/tables/units.csv (case-insensitive), or a unit the table lacks written as the document prints it - that ships into eng_unit exactly as typed under a warning, 20 characters at most. Never a near-miss spelling of a key; omit when no unit is documented. (Work!S)",
             "examples": [
               "C",
               "%",
