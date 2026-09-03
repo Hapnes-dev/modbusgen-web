@@ -1406,7 +1406,7 @@ READ FIRST, from Modbus List Helper
   datatypes.csv, units.csv, scaling.csv   the legal datatype and scale keys, and
                                  the shared unit keys - a datatype or scale
                                  not in these does not exist; a unit not in
-                                 units.csv ships as typed, under a warning
+                                 units.csv is custom and ships as typed
 Search these phrases and read the sections they land on: Project shape
 checkpoint · Template checkpoint · Reuse shape, re-prove semantics ·
 Source-defined groups outrank default groups · Source-row coverage vs project
@@ -1477,8 +1477,8 @@ scale: a printed factor is inverted - "factor 10" or "x10" means x0.1. Only a
   "0,1 C" is x0.1. No factor stated means no scale key at all.
 unit: the fleet spellings - C (never °C), %, sec, V, %RH, ppm, m3/h, Pa, kWh.
   No key fits: write the unit as the document prints it - it ships as a custom
-  eng_unit under a warning, 20 characters at most - and report it. Do not
-  reach for a neighbour - kVAh is not VAh, sek is not ms.
+  eng_unit, nothing flagged, 20 characters at most - and say so in the notes.
+  Do not reach for a neighbour - kVAh is not VAh, sek is not ms.
 decimals: match the scale - x0.1 gives 1, x0.01 gives 2.
 
 ALWAYS
@@ -1715,7 +1715,7 @@ const COL_HELP = {
   text:"The name the operator reads, in the maker's own wording and language - the only alias part always included. 'Reserve.' marks a spare row, written inactive",
   extra:"Alias suffix in parentheses. Overwritten on generate when statetext_in_alias is on and the row has a state list",
   alarm:"Alarm priority written to plant_pri: A alarm (fleet default), B/C lower, N note. Moves the row to the alm group only when auto_groups and alarms_to_alm are both on",
-  unit:"Engineering unit - becomes eng_unit. A key from the unit table, or a unit the table lacks written as the document prints it (ships as typed, under a warning, 20 characters at most); never a near-miss spelling of a key",
+  unit:"Engineering unit - becomes eng_unit. A key from the unit table, or a custom unit the table lacks written as the document prints it (ships as typed, nothing flagged; the column holds 20 characters); never a near-miss spelling of a key",
   scale:"Scaling key - supplies the scale factor plus raw and engineering min/max in one block. x0.1 dominates the real fleet",
   rw:"r read-only, rw writable (setpoints, commands). Bit rows are promoted to vr/vrw automatically; rw also emits the write half of the driver id",
   update_freq:"Polling override. Blank derives it: analog and integral values norm read-only / slow writable, digital IO slow. Use slow for energy totals",
@@ -1786,7 +1786,7 @@ const COL_DOC = {
   unit:{
     what:"The engineering unit, as a key in the unit table. The field autocompletes from it.",
     use:"It becomes `eng_unit`, the unit shown after the number.",
-    when:"On every measured value; leave it empty on digital states and status words, where a unit makes the display say something untrue. If the unit is missing from the table, write it as the document prints it - it ships into eng_unit exactly as typed, under a warning, 20 characters at most - or add it to `data/tables/units.csv`, which is also where `override_decimal` finds the decimals; never a near-miss spelling of an existing key.",
+    when:"On every measured value; leave it empty on digital states and status words, where a unit makes the display say something untrue. If the unit is missing from the table, write it as the document prints it - a custom unit ships into eng_unit exactly as typed, nothing flagged, and the column holds 20 characters - or add it to `data/tables/units.csv`, which is also where `override_decimal` finds the decimals; never a near-miss spelling of an existing key.",
   },
   scale:{
     what:"A key in the scaling table. One key supplies the scale factor together with the raw and engineering minimum and maximum.",
@@ -3602,23 +3602,6 @@ const FIX_ACTIONS = {
       for(const r of usable) r.p.datatype = r.f.suggestion;
       dtInvalidateKnown(); ptMarkUnknownDatatypes(); updateStats(); applyPointView();}},
 
-  /* Since 2026-09-03 an unmatched unit is a warning, not a blocker (docs/04
-     "eng_unit (BK)"): it ships into eng_unit exactly as typed, the way Excel wrote
-     XL-ERROR and warned rather than refusing. Clearing is therefore no longer the
-     documented remedy - the advice now leads with the table's own key - so this reads
-     ctx.rows and applies each row's own suggestion, same shape as datatype-unknown
-     above and unlike every other warning here, because each finding covers exactly one
-     point: two custom units on one project can need two different suggestions, or
-     none, and a shared ctx.points (empty for a per-point warning) could not drive a
-     "clear them all" button anyway. */
-  "unit-unknown": {
-    label:"use the suggested key on these rows",
-    title:"Replaces each unmatched unit with the near key the tables offer - row by row, each with its own. A custom unit is not blocked and ships into eng_unit exactly as typed, so this only helps a genuine misspelling - check the suggestion against the device document before taking it",
-    run:(ctx)=>{const usable = ctx.rows.filter(r => r.f.suggestion);
-      if(!usable.length) return;
-      ptPushState(null, "apply unit suggestion");
-      for(const r of usable) r.p.unit = r.f.suggestion;
-      updateStats(); applyPointView();}},
   /* Clearing is still the documented remedy here: docs/11 says an unmatched scale
      means omit `scale`, keep the point and say so - never an invented spelling. Scale
      stays a hard error, unlike its neighbour above. */
@@ -5997,6 +5980,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=55d9b1a1e7"></script>
+<script src="pyodide-adapter.js?v=92ba2fa312"></script>
 </body>
 </html>
