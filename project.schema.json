@@ -615,7 +615,7 @@
               "null"
             ],
             "default": false,
-            "description": "Online-indication point - IWMAC uses these to see the unit is alive. Mark 1-3 reliable, always-readable points; validation fails with none. (Work!V)"
+            "description": "Online-indication point - IWMAC uses these to see the unit is alive. Mark 3-4 reliable, always-readable points; validation fails with none. (Work!V)"
           },
           "active": {
             "type": [
