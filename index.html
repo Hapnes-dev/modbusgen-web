@@ -1387,11 +1387,13 @@
           <button id="btnMorePrompt" class="ghost" style="font-size:10px;padding:2px 8px"
             title="Unfold the whole prompt, or fold it back to its first few lines">show more</button></div>
         <ol style="margin:4px 0 8px;padding-left:20px">
-          <li><b>Attach the maker's register document</b> to a Copilot chat: the PDF or
-            the spreadsheet. If this plant already has a delivery, attach that too; if one
-            turns up later, say so - the agent starts over from it rather than patching
-            the draft. A file from another plant or device is not that: the agent may copy
-            its shape, never its registers, and should say so.</li>
+          <li><b>Attach the maker's register document</b> to a Copilot chat: the PDF or the
+            spreadsheet. If this plant already has a delivery, attach that too; if one
+            turns up later, say so - the agent starts over from it rather than patching the
+            draft. A file from another plant or device is not that: the agent may copy its
+            shape, never its registers, and should say so. A reference file that looks
+            right is not proof it is this plant's own - the agent should say what produced
+            it before reading its fields as this plant's pattern.</li>
           <li><b>Copy the prompt below and paste it in.</b> There is nothing to fill in.
             The reference documents are already in the agent's <b>Modbus List Helper</b>
             folder, and the prompt says which ones to read. The plant number in it is
@@ -1414,10 +1416,11 @@ READ FIRST, from Modbus List Helper
                                  units.csv is custom and ships as typed
 Search these phrases and read the sections they land on: Project shape
 checkpoint · Template checkpoint · Reuse shape, re-prove semantics ·
-Source-defined groups outrank default groups · Source-row coverage vs
-project point count · JSON parse is not modbusgen validation ·
-Style evidence, not semantic truth ·
-Subset scope must be approved before omission.
+Provenance before pattern · Source-defined groups outrank default groups ·
+Source-row coverage vs project point count · One duplicated row shifts
+every row after it · JSON parse is not modbusgen validation · Style
+evidence, not semantic truth · Subset scope must be approved before
+omission.
 
 THE CONTAINER, BEFORE ANY REGISTER FACT
 Do the Project shape checkpoint (docs/11): the file's shape comes from a
@@ -1499,6 +1502,16 @@ ALWAYS
   that the table lacks is read from the artifact itself and raised as a
   compatibility row, never respelled to the nearest key to pass validation;
   its own motherword rows are carried, not stripped; author no new ones.
+- Provenance before pattern: before a reference file's serialisation is read as
+  this plant's pattern, establish what produced it - modbusgen import-xlsm on
+  the plant's workbook, then modbusgen compare, where identical: yes proves the
+  reference is the workbook, so its field presence (active: 1, explicit x1,
+  groups, options) is the workbook's columns and toggles, and its register
+  facts are still one untested transcription.
+- One duplicated row shifts every row after it: compare source row N with
+  project address N and stop at the first drift - a row transcribed twice moves
+  every later text onto its neighbour's register, and validate sees only
+  alias-duplicate on the pair, never the shift itself.
 - A file for another device or plant that turns up later is
   Style evidence, not semantic truth: copy its container and serialisation
   habits, never an address, datatype, scale, unit, group, option or point
@@ -1507,7 +1520,10 @@ ALWAYS
   allocates the bits fixes how many there are and what they are called; a fault
   list printed elsewhere in the manual is a different table, and numbers that
   line up are not a cross-reference. Author every allocated bit, including the
-  ones no prose describes.
+  ones no prose describes. A printed value is not a bit number: "1 (low byte) -
+  Sensor is fault, 256 (high byte) - Load ON" names three register states, not
+  bits 0 and 8; the register ships whole with those states, and the unprinted
+  combination goes on the commissioning list.
 - Every point the document identifies as an alarm, fault or trip gets alarm A.
   N for a note; B and C are effectively unused. A row stating its own letter
   keeps it. Omit alarm everywhere else, and never infer alarm-hood from a
@@ -1586,7 +1602,9 @@ validation. I run the validator.</pre>
             <b>worked out rather than read</b>, which you are free to overrule.</li>
           <li><b>Bring the file here.</b> Save the <code>.json</code>. Press <b>Import
             project</b>, then <b>Validate</b>. The agent saying the file is fine proves
-            nothing. This page decides.</li>
+            nothing. This page decides. Validate cannot catch a row copied twice on its own
+            either: it reports only alias-duplicate on the pair, so check a source row
+            against its project address yourself before trusting the count.</li>
           <li><b>If Validate fails, copy the whole error into the chat</b> — the code, the
             advice, all of it — and let the agent fix the file. That is faster and safer
             than editing rows yourself.</li>
