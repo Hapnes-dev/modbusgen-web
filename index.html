@@ -1390,7 +1390,8 @@
           <li><b>Attach the maker's register document</b> to a Copilot chat: the PDF or
             the spreadsheet. If this plant already has a delivery, attach that too; if one
             turns up later, say so - the agent starts over from it rather than patching
-            the draft.</li>
+            the draft. A file from another plant or device is not that: the agent may copy
+            its shape, never its registers, and should say so.</li>
           <li><b>Copy the prompt below and paste it in.</b> There is nothing to fill in.
             The reference documents are already in the agent's <b>Modbus List Helper</b>
             folder, and the prompt says which ones to read. The plant number in it is
@@ -1580,7 +1581,8 @@ validation. I run the validator.</pre>
             <code>modbus.php</code> driver. Both change what the list can contain.</li>
           <li><b>Check what it reports back.</b> Three things. The <b>table name</b> it
             picked. The <b>coverage ledger</b>: every row of the maker's document is
-            either used, covered by a bit, or skipped for a stated reason. And what it
+            either used, covered by a bit, or skipped for a stated reason - and it must
+            have asked you before leaving any readable row out. And what it
             <b>worked out rather than read</b>, which you are free to overrule.</li>
           <li><b>Bring the file here.</b> Save the <code>.json</code>. Press <b>Import
             project</b>, then <b>Validate</b>. The agent saying the file is fine proves
