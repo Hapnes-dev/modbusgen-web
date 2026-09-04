@@ -1413,8 +1413,10 @@ READ FIRST, from Modbus List Helper
                                  units.csv is custom and ships as typed
 Search these phrases and read the sections they land on: Project shape
 checkpoint · Template checkpoint · Reuse shape, re-prove semantics ·
-Source-defined groups outrank default groups · Source-row coverage vs project
-point count · JSON parse is not modbusgen validation.
+Source-defined groups outrank default groups · Source-row coverage vs
+project point count · JSON parse is not modbusgen validation ·
+Style evidence, not semantic truth ·
+Subset scope must be approved before omission.
 
 THE CONTAINER, BEFORE ANY REGISTER FACT
 Do the Project shape checkpoint (docs/11): the file's shape comes from a
@@ -1496,6 +1498,10 @@ ALWAYS
   that the table lacks is read from the artifact itself and raised as a
   compatibility row, never respelled to the nearest key to pass validation;
   its own motherword rows are carried, not stripped; author no new ones.
+- A file for another device or plant that turns up later is
+  Style evidence, not semantic truth: copy its container and serialisation
+  habits, never an address, datatype, scale, unit, group, option or point
+  count. It restarts nothing and makes nothing in this list wrong.
 - A bit row carries only its Bit_/Coil_ datatype and bit number. The row that
   allocates the bits fixes how many there are and what they are called; a fault
   list printed elsewhere in the manual is a different table, and numbers that
@@ -1543,7 +1549,10 @@ DECIDE ONCE, WRITE IT DOWN
   family for the whole file, and say which.
 - Register column or address column, where both are printed and differ by one:
   one column for the whole file, and say which.
-- Scope, if not everything goes in: agree it with me before picking a subset.
+- Scope, if not everything goes in:
+  Subset scope must be approved before omission. Agree the criterion with me
+  before any readable row is left out, then class every omission in the
+  ledger.
 - An example project and the vendor document disagreeing on a register fact:
   that is a question for me, never a preference to settle quietly.
 
