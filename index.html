@@ -1063,6 +1063,14 @@
             step the address for you.</li>
           <li>Selection follows what is on screen: rows hidden by search or a filter drop
             out of it, so a bulk edit can never change a row you cannot see.</li>
+          <li><b>Ctrl+C</b> copies the selected rows; <b>Ctrl+V</b> pastes them as new rows
+            right after the selection (at the bottom when nothing is selected), addresses
+            as copied - unlike ⧉, which steps the address. The copy is also plain
+            tab-separated text, so it pastes into a spreadsheet as well.</li>
+          <li>A row you just added or pasted stays on screen under a search or a filter
+            until you change the search, a filter or the sort. A sorted column re-sorts
+            when you leave the row, not on every keystroke, so the row you are typing in
+            stays where it is.</li>
         </ul>
 
         <h4>Undo</h4>
@@ -1619,6 +1627,9 @@ validation. I run the validator.</pre>
           <li><code>Ctrl+F</code> or <code>/</code> searches the points. Type
             <code>++</code> in the search box to jump to the next word.</li>
           <li><code>Ctrl+Z</code> undoes the last edit, up to 10 of them.</li>
+          <li><code>Ctrl+C</code> / <code>Ctrl+V</code> copies the selected rows and pastes
+            them as new rows after the selection, addresses exactly as copied. With text
+            selected inside a cell the keys copy that text instead.</li>
           <li><code>Esc</code> clears the search, then the selection, then fullscreen.</li>
           <li><b>Click a row and drag</b> to select several.
             <code>Shift</code>-click extends the selection,
@@ -2606,6 +2617,7 @@ function ptAdd(src = {}) {            // appended at the bottom, as the table sh
   const p = ptNew(src);
   ptModel.push(p);
   p._seq = ptModel.length - 1;
+  ptFresh.add(p);                     // shown whatever the search and filters say
   return p;
 }
 function ptSetModel(points) {
@@ -2615,6 +2627,7 @@ function ptSetModel(points) {
   ptOrder = ptModel; ptView = ptModel;
   ptSel.clear(); ptSelAnchor = null;
   ptBad.clear();
+  ptFresh.clear(); ptSortCache = null;
   ptFilters.delete("failing");        // nothing is marked, so the filter has no rows
   ptReseq();
   ptEnsurePool();
@@ -2637,14 +2650,22 @@ const ptPin = new Set();              // points the message you last clicked is 
 let ptPinKind = "err";                // and whether that message was an error or a warning
 const ptFlash = new Set();            // and the same rows for the length of three blinks
 let ptFlashTimer = null;
+/* Rows the user just made - + point, ⧉, a paste that ran past the table, Ctrl+V -
+   stay in the view whatever the search and the filters say, until the search text,
+   a filter or the sort is changed, or a project is loaded. Without this, "+ point"
+   under a filter appended a row nobody could see or type into. */
+const ptFresh = new Set();
+let ptViewKey = "";                   // search + filters + sort, to notice a change
+let ptSortCache = null;               // the sorted order, held while a row is typed in
 
 const PT_NUMERIC = new Set(["addr","bit","statetext","decimals"]);
 function ptSortKey(d, col) {
   const v = d[col === "online" ? "online" : col === "no_group" ? "no_group" : col];
   if (typeof v === "boolean") return v ? 0 : 1;         // ticked rows first
   if (PT_NUMERIC.has(col)) {
+    if (v == null || v === "") return Infinity;         // blanks last - Number(null) is 0
     const n = Number(v);
-    return Number.isFinite(n) ? n : Infinity;           // blanks last
+    return Number.isFinite(n) ? n : Infinity;
   }
   return String(v ?? "").toLowerCase();
 }
@@ -2757,23 +2778,44 @@ function ptPassesBadFilter(p) {
 }
 function applyPointView() {
   const needle = ($("ptSearch").value || "").trim().toLowerCase();
+  // a changed search, filter or sort is the user asking for a fresh view: the rows
+  // that were exempt because they had just been made stop being exempt
+  const key = JSON.stringify([needle, [...ptFilters].sort(), ptSort.col, ptSort.dir]);
+  if (key !== ptViewKey) { ptViewKey = key; ptFresh.clear(); ptSortCache = null; }
+  const editing = ptEditingPoint();
 
   // sorted order first, filtered order out of it: "keep this order" commits the
   // whole sorted list, rows the filter is hiding included, so the two cannot be
   // collapsed into one pass
   ptOrder = ptModel;
   if (ptSort.col && ptSort.dir) {
-    const sign = ptSort.dir === "asc" ? 1 : -1;
-    ptOrder = ptModel.slice().sort((a,b) => {
-      const ka = ptSortKey(a, ptSort.col), kb = ptSortKey(b, ptSort.col);
-      if (ka < kb) return -sign;
-      if (ka > kb) return sign;
-      return a._seq - b._seq;                            // stable within ties
-    });
+    /* While a cell has the focus the order is frozen. Re-sorting on every keystroke
+       moved the row being typed in out from under the caret: a new row's blank addr
+       sorts last, and "4", "40", "400" put it in three places within a second. The
+       table's focusout listener re-sorts once the user leaves the row. */
+    const reuse = editing && ptSortCache && ptSortCache.length === ptModel.length
+                  && ptSortCache.every(p => ptModel[p._seq] === p);
+    if (reuse) {
+      ptOrder = ptSortCache;
+    } else {
+      const sign = ptSort.dir === "asc" ? 1 : -1;
+      ptOrder = ptModel.slice().sort((a,b) => {
+        const ka = ptSortKey(a, ptSort.col), kb = ptSortKey(b, ptSort.col);
+        if (ka < kb) return -sign;
+        if (ka > kb) return sign;
+        return a._seq - b._seq;                            // stable within ties
+      });
+      ptSortCache = ptOrder;
+    }
+  } else {
+    ptSortCache = null;
   }
   const {terms, fuzzable} = ptParseSearch(needle);
-  const others = p => ptPassesFilters(p) && ptPassesBadFilter(p);
-  ptView = ptOrder.filter(p => ptStrictMatch(p, terms) && others(p));
+  // the row being typed in and the rows just made are shown whatever the search and
+  // the filters say - a filter that hid a row mid-edit swallowed the keystrokes
+  const exempt = p => p === editing || ptFresh.has(p);
+  const others = p => exempt(p) || (ptPassesFilters(p) && ptPassesBadFilter(p));
+  ptView = ptOrder.filter(p => (exempt(p) || ptStrictMatch(p, terms)) && others(p));
   // relaxed only when exact found nothing - a search that works keeps its results
   let approx = false;
   if (!ptView.length && terms.length && fuzzable) {
@@ -3067,6 +3109,7 @@ function ptDelete(p) {
   const i = ptModel.indexOf(p);
   if (i >= 0) ptModel.splice(i, 1);
   ptSel.delete(p); ptBad.delete(p); ptWarn.delete(p); ptPin.delete(p); ptFlash.delete(p);
+  ptFresh.delete(p);
   if (ptSelAnchor === p) ptSelAnchor = null;
   renumber();
 }
@@ -4648,6 +4691,14 @@ function ptEventPoint(e) {
   const tr = e.target.closest?.("tr");
   return tr && tr.parentElement === $("points") ? tr._pt : null;
 }
+/* The point whose cell has the focus - a field, not a row button, which follows the
+   slot rather than the point. */
+function ptEditingPoint() {
+  const a = document.activeElement;
+  const tr = a && a.closest ? a.closest("#points tr") : null;
+  if (!tr || !tr._pt) return null;
+  return [...a.classList].some(c => c.startsWith("p-")) ? tr._pt : null;
+}
 /* points multi-select: press anywhere on a row and drag across rows.
    Deliberately no preventDefault - the cell under the cursor must still take
    focus so the row stays editable by clicking straight into it. */
@@ -4909,7 +4960,11 @@ $("points").addEventListener("change", ptOnFieldEdit);
 $("points").addEventListener("focusin", () => { if (!ptPreEdit) ptPreEdit = ptCapture(); });
 $("points").addEventListener("change", ptCommitPendingEdit);
 $("points").addEventListener("focusout", e => {
-  if (!e.relatedTarget || !$("points").contains(e.relatedTarget)) ptCommitPendingEdit();
+  if (!e.relatedTarget || !$("points").contains(e.relatedTarget)) {
+    ptCommitPendingEdit();
+    // the sort and the filters were held off while the row was being typed in
+    if (ptSort.col || ptFilters.size || $("ptSearch").value) ptQueueRefresh();
+  }
 });
 
 /* Which values a column's control will take. Paste has to honour it by hand now
@@ -4933,6 +4988,7 @@ function ptColChoices(col) {
    runs past the table; a column backed by a list only takes a value it offers;
    checkbox columns are left alone. The whole paste is one undo step. */
 $("points").addEventListener("paste", e => {
+  if (ptPastePoints(e)) return;                  // rows copied with Ctrl+C, below
   if (!e.target.matches("input, select")) return;
   const text = (e.clipboardData || window.clipboardData).getData("text");
   if (!text) return;
@@ -4967,13 +5023,86 @@ $("points").addEventListener("paste", e => {
   queueAutosave();           // no input event was raised; reach the hook directly
   ptReveal(last);
 });
+/* Ctrl+C / Ctrl+V on rows. Copy takes the selected points, in view order, twice
+   over: as the page's own type, for a paste back into this table, and as
+   tab-separated text in the table's column order, for a spreadsheet. Paste inserts
+   them as NEW rows after the last selected row - or at the bottom - with their
+   addresses exactly as copied; the cell-fill paste above is for spreadsheet blocks
+   and is untouched. Inside a cell with text selected the keys keep their ordinary
+   meaning, so a word can still be copied out of a text field. */
+const PT_CLIP_MIME = "application/x-modbusgen-points";
+let ptClipPayload = null, ptClipText = null;   // for a browser that drops the custom type
+function ptClipCell(p, col) {
+  const v = p[col];
+  if (col === "online" || col === "no_group") return v ? "1" : "";
+  return v == null ? "" : String(v);
+}
+function ptCopySelection(e) {
+  const a = document.activeElement;
+  if (a && /^(INPUT|TEXTAREA)$/.test(a.tagName) && a.selectionStart !== a.selectionEnd) return false;
+  if (!ptSel.size || !e.clipboardData) return false;
+  const pts = bulkTargets();
+  if (!pts.length) return false;
+  const payload = pts.map(p => { const d = ptOut(p); delete d.element_id; return d; });
+  const cols = PT_COLS.filter(Boolean);
+  const tsv = pts.map(p => cols.map(c => ptClipCell(p, c)).join("\t")).join("\n");
+  e.clipboardData.setData(PT_CLIP_MIME, JSON.stringify(payload));
+  e.clipboardData.setData("text/plain", tsv);
+  ptClipPayload = payload; ptClipText = tsv;
+  e.preventDefault();
+  const tip = $("ptTip");
+  if (tip) tip.textContent = `${pts.length} row${pts.length === 1 ? "" : "s"} copied - Ctrl+V pastes `
+    + (pts.length === 1 ? "it as a new row" : "them as new rows") + " after the selection";
+  return true;
+}
+function ptPastePoints(e) {
+  const cd = e.clipboardData || window.clipboardData;
+  if (!cd) return false;
+  let payload = null;
+  const own = cd.getData(PT_CLIP_MIME);
+  if (own) { try { payload = JSON.parse(own); } catch { payload = null; } }
+  if (!payload && ptClipPayload && cd.getData("text") === ptClipText) payload = ptClipPayload;
+  if (!Array.isArray(payload) || !payload.length) return false;
+  e.preventDefault();
+  ptCommitPendingEdit();
+  ptPushState(null, `paste ${payload.length} row${payload.length === 1 ? "" : "s"}`);
+  const sel = repSourceRows();                    // project order decides "after"
+  let at = sel.length ? sel[sel.length - 1]._seq + 1 : ptModel.length;
+  const added = [];
+  for (const d of payload) {
+    const src = Object.assign({}, d);
+    delete src.element_id;                        // a copy must not inherit an explicit id
+    const p = ptNew(src);
+    ptModel.splice(at++, 0, p);
+    ptFresh.add(p);
+    added.push(p);
+  }
+  ptSel.clear();
+  for (const p of added) ptSel.add(p);
+  ptSelAnchor = added[0];
+  renumber();
+  ptPreEdit = ptCapture();   // typing after the paste diffs against the pasted state
+  queueAutosave();           // no input event was raised; reach the hook directly
+  ptReveal(added[0]);
+  ptPaintSelection();
+  return true;
+}
+document.addEventListener("copy", ptCopySelection);
+document.addEventListener("paste", e => {
+  // a cell's own listener ran already; a text field elsewhere on the page keeps its
+  // ordinary paste; anywhere else the rows take a points paste
+  const t = e.target;
+  if (t && t.closest && t.closest("#points")) return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName)) return;
+  ptPastePoints(e);
+});
 $("btnPtUndo").onclick = ptDoUndo;
 ptUpdateUndoButton();
 
 /* ---------- contextual tip line under the points table ----------
    Follows what is being edited. Column text is the first sentence of COL_HELP,
    so the tip and the tooltips share one source and cannot disagree. */
-const PT_TIP_DEFAULT = "tip: ⧉ duplicates a row with addr + 1";
+const PT_TIP_DEFAULT = "tip: ⧉ duplicates a row with addr + 1 · Ctrl+C / Ctrl+V copies the selected rows as new rows";
 function updatePointTip() {
   const tip = $("ptTip");
   if (!tip) return;
@@ -4994,7 +5123,7 @@ function updatePointTip() {
     }
   }
   if (ptSel.size > 1) {
-    tip.textContent = `${ptSel.size} rows selected - pick a column in the bar below to set them together; addr and bit stay per-row`;
+    tip.textContent = `${ptSel.size} rows selected - pick a column in the bar below to set them together; addr and bit stay per-row; Ctrl+C copies them`;
     return;
   }
   if (ptSort.col && ptSort.dir) {
