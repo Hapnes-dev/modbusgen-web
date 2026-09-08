@@ -538,6 +538,8 @@
   <button id="btnLoad" title="Open the selected project - replaces everything on this page">Load</button>
   <button id="btnNew" class="ghost"
           title="Start an empty project - clears the page, so export first if the current work matters">New</button>
+  <button id="btnDelete" class="ghost" disabled
+          title="Select a project saved in this browser to delete it (the button, or the Delete key on the list)">Delete</button>
   <span class="sep" aria-hidden="true"></span>
   <button id="btnImportJson" class="ghost"
           title="Load a project file from disk - Copilot-generated JSON or an exported YAML">Import project</button>
@@ -555,9 +557,6 @@
           title="Download the project as a file to continue later. Named plant_table_dd.mm.yyyy_HH.MM - e.g. 10225_spar_hansnes_vent_25.08.2026_14.32.json. Put a .yaml in the name box to get YAML instead">Export</button>
   <button id="btnXlsm" class="ghost"
           title="Download this project as a filled Modbustemplate workbook (.xlsm), for anyone still working in the old Excel tool. It carries the INAS Modbus tab and macros of the template - open it, unblock it if Windows says it came from the internet, and hit Run Application to fill the generated columns">Export Excel</button>
-  <span class="sep" aria-hidden="true"></span>
-  <button id="btnDelete" class="ghost" disabled
-          title="Select a project saved in this browser to delete it">Delete</button>
   <span class="sep" aria-hidden="true"></span>
   <button id="btnFoldAll" class="ghost"
           title="Fold every card to its heading, or unfold them all. Each heading also folds its own card; what is folded is remembered in this browser">collapse all</button>
@@ -5686,7 +5685,11 @@ function refreshFileSelect(select) {
   const sel = $("fileSelect");
   const want = select ?? sel.value;
   const saved = savedAll();
-  const cached = Object.keys(saved).sort();
+  // Newest first, in both groups: the picker is where yesterday's work is found
+  // again, and alphabetical order put today's list under a plant number from June.
+  // Entries with no time sort last, by name.
+  const newest = at => (a, b) => (at(b) || 0) - (at(a) || 0) || a.localeCompare(b);
+  const cached = Object.keys(saved).sort(newest(n => saved[n]?.when));
   sel.replaceChildren(el("option",{value:""},"- project file -"));
   // Saved-in-this-browser entries have carried `when` since they were introduced;
   // the projects folder's times come from the server (BOOT.project_times, Unix
@@ -5706,7 +5709,8 @@ function refreshFileSelect(select) {
   if (BOOT?.projects?.length) {
     const g = el("optgroup",{label:"projects folder"});
     const times = BOOT.project_times || {};
-    for (const p of BOOT.projects) g.append(stamped(p, p, times[p], "changed"));
+    for (const p of BOOT.projects.slice().sort(newest(n => times[n])))
+      g.append(stamped(p, p, times[p], "changed"));
     sel.append(g);
   }
   sel.value = want;
@@ -5721,8 +5725,8 @@ function syncDeleteButton() {
   if (btn._armed) { btn._armed = false; btnReset(btn, "Delete"); }
   btn.disabled = !local;
   btn.title = local
-    ? `Delete "${v.slice(LOCAL_PREFIX.length)}" from this browser. Asks once first; files in the projects folder are never touched`
-    : "Select a project saved in this browser to delete it. Files in the projects folder cannot be deleted from here";
+    ? `Delete "${v.slice(LOCAL_PREFIX.length)}" from this browser - or press Delete on the list. Asks once first; files in the projects folder are never touched`
+    : "Select a project saved in this browser to delete it (the button, or the Delete key on the list). Files in the projects folder cannot be deleted from here";
 }
 /* `kind` is the old .msg vocabulary - note/ok/err/warn - kept because a dozen callers
    speak it; the boxes use the pen's, so it is translated here rather than at each.
@@ -5779,6 +5783,12 @@ $("btnDelete").onclick = () => {
   outNote(`Removed "${name}" from this browser. The editor still holds it - Save puts it back.`);
 };
 $("fileSelect").addEventListener("change", syncDeleteButton);
+// Delete on the list itself, for whoever looks for the delete where the entries are
+$("fileSelect").addEventListener("keydown", e => {
+  if (e.key !== "Delete" || !$("fileSelect").value.startsWith(LOCAL_PREFIX)) return;
+  e.preventDefault();
+  $("btnDelete").onclick();
+});
 /* Two buttons each, header and the Validate & generate card, one implementation. Called
    bare from re-validate paths too (`$("btnValidate").onclick()`), so neither may depend
    on being handed an event. */
