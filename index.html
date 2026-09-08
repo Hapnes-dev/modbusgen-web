@@ -528,13 +528,48 @@
      long project name cannot stretch the header; the open popup is sized by the
      browser from the options themselves and still shows each label in full */
   #fileSelect{max-width:270px}
+  #fileSelect[hidden]{display:none}
+  /* The project picker: a button that reads like the <select> it replaced, and the
+     panel it opens - search, sort, the two groups, a line of facts and the actions
+     on each row. The <select> stays in the DOM, hidden, as the selection's model. */
+  .picker{display:inline-flex;align-items:center;justify-content:space-between;gap:10px;
+          min-width:250px;max-width:340px;text-align:left}
+  .picker #pickerName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .picker .caret{color:var(--dim);font-size:11px;flex:none}
+  .projpanel{position:fixed;z-index:60;width:700px;max-width:calc(100vw - 16px);
+             background:var(--panel2);border:1px solid var(--line2);border-radius:var(--radius);
+             box-shadow:0 12px 34px rgba(0,0,0,.55);display:flex;flex-direction:column;
+             overflow:hidden}
+  .projpanel[hidden]{display:none}
+  .projpanel .phead{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 12px;
+                    border-bottom:1px solid var(--line)}
+  .projpanel .phead input{flex:1 1 220px;min-width:160px}
+  .projpanel .pinfo{font-size:11px;color:var(--dim);white-space:nowrap;margin-left:auto}
+  .projpanel .plist{overflow:auto;padding:6px 0}
+  .projpanel .pgroup{padding:8px 12px 4px;font-size:10px;text-transform:uppercase;
+                     letter-spacing:.09em;color:var(--dim)}
+  .projpanel .pempty{padding:14px 12px;color:var(--dim);font-size:12.5px}
+  .projpanel .prow{display:flex;align-items:center;gap:10px;padding:6px 12px;cursor:pointer;
+                   border-left:3px solid transparent}
+  .projpanel .prow:hover{background:rgba(255,255,255,.04)}
+  .projpanel .prow.hi{background:rgba(77,163,255,.12);border-left-color:var(--accent)}
+  .projpanel .prow.current .pmain b::after{content:" · selected";color:var(--green);
+                                            font-weight:400;font-size:11px}
+  .projpanel .pmain{flex:1;min-width:0}
+  .projpanel .pmain b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .projpanel .pmeta{font-size:11.5px;color:var(--dim);white-space:nowrap;overflow:hidden;
+                    text-overflow:ellipsis}
+  .projpanel .pacts{display:flex;gap:6px;flex:none}
+  .projpanel .pacts button{padding:2px 9px;font-size:12px}
 </style>
 </head>
 <body>
 <header>
   <div class="title">modbus<span>gen</span><small>IWMAC Modbus lists</small></div>
-  <select id="fileSelect"
+  <select id="fileSelect" hidden
           title="Projects saved in this browser and files in the projects folder, each with when it was last written (24-hour, dd.mm.yyyy)"></select>
+  <button id="btnProjects" class="picker" aria-haspopup="dialog" aria-expanded="false"
+          title="The project list: search by name, plant or table; sort by newest, oldest, name or plant; Load or Delete on each row"><span id="pickerName">- project file -</span><span class="caret" aria-hidden="true">▾</span></button>
   <button id="btnLoad" title="Open the selected project - replaces everything on this page">Load</button>
   <button id="btnNew" class="ghost"
           title="Start an empty project - clears the page, so export first if the current work matters">New</button>
@@ -1630,6 +1665,9 @@ validation. I run the validator.</pre>
             them as new rows after the selection, addresses exactly as copied. With text
             selected inside a cell the keys copy that text instead.</li>
           <li><code>Esc</code> clears the search, then the selection, then fullscreen.</li>
+          <li>In the project list: type to search, <code>↑</code>/<code>↓</code> to move,
+            <code>Enter</code> loads, <code>Delete</code> removes a browser-saved project
+            (asks once), <code>Esc</code> closes.</li>
           <li><b>Click a row and drag</b> to select several.
             <code>Shift</code>-click extends the selection,
             <code>Ctrl</code>-click adds or removes one row.</li>
@@ -5727,6 +5765,15 @@ function syncDeleteButton() {
   btn.title = local
     ? `Delete "${v.slice(LOCAL_PREFIX.length)}" from this browser - or press Delete on the list. Asks once first; files in the projects folder are never touched`
     : "Select a project saved in this browser to delete it (the button, or the Delete key on the list). Files in the projects folder cannot be deleted from here";
+  projSyncLabel();
+}
+/* One implementation of "forget this browser copy", for the header button, the Delete
+   key and the row button in the panel. */
+function savedDelete(name) {
+  const all = savedAll();
+  delete all[name];
+  savedWrite(all);
+  refreshFileSelect("");
 }
 /* `kind` is the old .msg vocabulary - note/ok/err/warn - kept because a dozen callers
    speak it; the boxes use the pen's, so it is translated here rather than at each.
@@ -5775,12 +5822,10 @@ $("btnDelete").onclick = () => {
     return;
   }
   btn._armed = false;
-  const all = savedAll();
-  delete all[name];
-  savedWrite(all);
-  refreshFileSelect("");
+  savedDelete(name);
   btnFlash(btn, "deleted ✓", "ok", 1800, syncDeleteButton);   // re-disable once the flash ends
   outNote(`Removed "${name}" from this browser. The editor still holds it - Save puts it back.`);
+  if (projPanel && !projPanel.hidden) projRender();
 };
 $("fileSelect").addEventListener("change", syncDeleteButton);
 // Delete on the list itself, for whoever looks for the delete where the entries are
@@ -5789,6 +5834,188 @@ $("fileSelect").addEventListener("keydown", e => {
   e.preventDefault();
   $("btnDelete").onclick();
 });
+
+/* ---------- the project picker ----------
+   The header's dropdown was a native <select>: one line per project, no search, the
+   one order it was built in, and Delete five controls away. This is a panel over the
+   same <select>, now hidden, which stays the selection's model so Load, Delete and
+   the boot gate keep their one implementation. Search over name, plant and table;
+   newest, oldest, name or plant; the browser-saved and the folder groups; a line of
+   facts per row (plant · table · points · groups · saved/changed); Load and Delete on
+   the row; arrows, Enter, Delete and Esc from the search box. The folder's facts come
+   from the bootstrap's project_meta, which the browser build cannot supply. */
+let projPanel = null, projSort = "newest", projHi = -1, projShown = [];
+const PROJ_SORTS = [["newest","newest"],["oldest","oldest"],["name","name"],["plant","plant"]];
+const projStr = v => v == null ? "" : String(v);
+function projEntries() {
+  const saved = savedAll();
+  const times = BOOT?.project_times || {}, meta = BOOT?.project_meta || {};
+  const rows = [];
+  for (const [n, rec] of Object.entries(saved)) {
+    const pr = rec?.project || {};
+    rows.push({value: LOCAL_PREFIX + n, name: n, where: "browser", at: rec?.when || null,
+               plant: projStr(pr.plant), table: projStr(pr.table),
+               points: Array.isArray(pr.points) ? pr.points.length : null,
+               groups: pr.groups && typeof pr.groups === "object" ? Object.keys(pr.groups).length : null});
+  }
+  for (const n of (BOOT?.projects || [])) {
+    const m = meta[n] || {};
+    rows.push({value: n, name: n, where: "folder", at: times[n] ? times[n] * 1000 : null,
+               plant: projStr(m.plant), table: projStr(m.table),
+               points: m.points ?? null, groups: m.groups ?? null});
+  }
+  return rows;
+}
+function projOrder(rows) {
+  const byName = (a, b) => a.name.localeCompare(b.name);
+  const cmp = {
+    newest: (a, b) => (b.at || 0) - (a.at || 0) || byName(a, b),                 // undated last
+    oldest: (a, b) => (a.at || Infinity) - (b.at || Infinity) || byName(a, b),   // undated last
+    name:   byName,
+    plant:  (a, b) => (a.plant || "￿").localeCompare(b.plant || "￿", undefined, {numeric: true})
+                      || byName(a, b),                                          // no plant last
+  }[projSort] || ((a, b) => (b.at || 0) - (a.at || 0) || byName(a, b));
+  return rows.slice().sort(cmp);
+}
+function projMatches(e, words) {
+  const hay = `${e.name} ${e.plant} ${e.table}`.toLowerCase();
+  return words.every(w => hay.includes(w));
+}
+function projMeta(e) {
+  const bits = [];
+  if (e.plant) bits.push(`plant ${e.plant}`);
+  if (e.table) bits.push(e.table);
+  if (e.points != null) bits.push(`${e.points} point${e.points === 1 ? "" : "s"}`);
+  if (e.groups != null) bits.push(`${e.groups} group${e.groups === 1 ? "" : "s"}`);
+  const when = fmtStamp(e.at);
+  if (when) bits.push(`${e.where === "browser" ? "saved" : "changed"} ${when}`);
+  return bits.join(" · ");
+}
+function projRender() {
+  if (!projPanel) return;
+  const q = $("projSearch").value.trim().toLowerCase();
+  const words = q ? q.split(/\s+/) : [];
+  const all = projEntries();
+  const list = $("projList");
+  const current = $("fileSelect").value;
+  list.replaceChildren();
+  projShown = [];
+  for (const [where, label] of [["browser", "saved in this browser"], ["folder", "projects folder"]]) {
+    const rows = projOrder(all.filter(e => e.where === where && projMatches(e, words)));
+    if (!rows.length) continue;
+    list.append(el("div", {class: "pgroup"}, `${label} · ${rows.length}`));
+    for (const e of rows) {
+      const i = projShown.length;
+      projShown.push(e);
+      const acts = el("div", {class: "pacts"},
+        el("button", {class: "ghost", title: "Open this project - replaces everything on the page",
+                      onclick: ev => { ev.stopPropagation(); projLoad(e); }}, "Load"));
+      if (e.where === "browser")
+        acts.append(el("button", {class: "ghost", title: "Delete this copy from this browser - asks once first",
+                                  onclick: ev => { ev.stopPropagation(); projDelete(e, ev.currentTarget); }}, "Delete"));
+      list.append(el("div", {class: "prow" + (e.value === current ? " current" : "") + (i === projHi ? " hi" : ""),
+                             role: "option", "aria-selected": String(i === projHi),
+                             onclick: () => projSelect(i), ondblclick: () => projLoad(e)},
+        el("div", {class: "pmain"}, el("b", {}, e.name),
+           el("div", {class: "pmeta"}, projMeta(e) || (e.where === "folder" ? "in the projects folder" : "saved in this browser"))),
+        acts));
+    }
+  }
+  if (!projShown.length)
+    list.append(el("div", {class: "pempty"}, all.length ? "nothing matches - clear the search"
+      : "nothing saved in this browser yet, and no projects folder - Save keeps a copy here"));
+  $("projInfo").textContent = !all.length ? "" : projShown.length === all.length
+    ? `${all.length} project${all.length === 1 ? "" : "s"}` : `${projShown.length} of ${all.length} shown`;
+  for (const b of $("projSorts").children) b.classList.toggle("on", b.dataset.sort === projSort);
+  if (projHi >= projShown.length) projHi = -1;
+}
+function projSelect(i) {
+  projHi = i;
+  const e = projShown[i];
+  if (e) { $("fileSelect").value = e.value; syncDeleteButton(); }
+  projRender();
+  $("projList").querySelector(".prow.hi")?.scrollIntoView({block: "nearest"});
+}
+function projLoad(e) {
+  $("fileSelect").value = e.value;
+  syncDeleteButton();
+  projClose();
+  $("btnLoad").onclick();
+}
+function projDelete(e, btn) {
+  if (e.where !== "browser") return;
+  if (btn && !btn._armed) {              // deleting someone's work deserves a second press
+    btn._armed = true;
+    btnFlash(btn, "delete?", "bad", 3000, () => { btn._armed = false; });
+    outNote(`Press Delete again to remove "${e.name}" from this browser. Nothing has been deleted yet.`, "warn");
+    return;
+  }
+  savedDelete(e.name);
+  outNote(`Removed "${e.name}" from this browser. The editor still holds it - Save puts it back.`);
+  projRender();
+}
+function projKeys(e) {
+  const n = projShown.length;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    if (n) projSelect(e.key === "ArrowDown" ? Math.min(n - 1, projHi + 1) : Math.max(0, projHi - 1));
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    const pick = projShown[projHi >= 0 ? projHi : 0];
+    if (pick) projLoad(pick);
+  } else if (e.key === "Delete") {
+    const pick = projShown[projHi];
+    if (pick && pick.where === "browser") {
+      e.preventDefault();
+      $("projList").querySelectorAll(".prow")[projHi]?.querySelector(".pacts button:last-child")?.click();
+    }
+  } else if (e.key === "Escape") {
+    e.preventDefault(); e.stopPropagation();
+    projClose();
+    $("btnProjects").focus();
+  }
+}
+function projOpen() {
+  if (!projPanel) {
+    projPanel = el("div", {class: "projpanel", role: "dialog", "aria-label": "projects", hidden: ""});
+    const search = el("input", {id: "projSearch", type: "search", autocomplete: "off",
+                                placeholder: "search name, plant or table"});
+    search.addEventListener("input", () => { projHi = -1; projRender(); });
+    search.addEventListener("keydown", projKeys);
+    const sorts = el("div", {id: "projSorts", class: "chips"});
+    for (const [key, label] of PROJ_SORTS)
+      sorts.append(el("button", {class: "chip toggle", "data-sort": key, title: `Sort both groups by ${label}`,
+                                 onclick: () => { projSort = key; projRender(); }}, label));
+    projPanel.append(el("div", {class: "phead"}, search, sorts, el("span", {id: "projInfo", class: "pinfo"})),
+                     el("div", {id: "projList", class: "plist", role: "listbox"}));
+    document.body.append(projPanel);
+    document.addEventListener("mousedown", ev => {
+      if (!projPanel.hidden && !projPanel.contains(ev.target) && !$("btnProjects").contains(ev.target)) projClose();
+    });
+  }
+  projHi = -1;
+  projPanel.hidden = false;
+  const r = $("btnProjects").getBoundingClientRect();
+  projPanel.style.left = `${Math.max(8, Math.min(r.left, innerWidth - projPanel.offsetWidth - 8))}px`;
+  projPanel.style.top = `${r.bottom + 6}px`;
+  projPanel.style.maxHeight = `${Math.max(160, innerHeight - r.bottom - 14)}px`;
+  $("btnProjects").setAttribute("aria-expanded", "true");
+  const s = $("projSearch");
+  s.value = "";
+  projRender();
+  s.focus();
+}
+function projClose() {
+  if (!projPanel || projPanel.hidden) return;
+  projPanel.hidden = true;
+  $("btnProjects").setAttribute("aria-expanded", "false");
+}
+function projSyncLabel() {
+  const v = $("fileSelect").value;
+  $("pickerName").textContent = v ? (v.startsWith(LOCAL_PREFIX) ? v.slice(LOCAL_PREFIX.length) : v)
+                                  : "- project file -";
+}
+$("btnProjects").onclick = () => { projPanel && !projPanel.hidden ? projClose() : projOpen(); };
 /* Two buttons each, header and the Validate & generate card, one implementation. Called
    bare from re-validate paths too (`$("btnValidate").onclick()`), so neither may depend
    on being handed an event. */
@@ -6157,6 +6384,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=04ffb47098"></script>
+<script src="pyodide-adapter.js?v=fec5eb7dd5"></script>
 </body>
 </html>
