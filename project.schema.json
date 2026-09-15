@@ -26,7 +26,7 @@
     "table": {
       "type": "string",
       "pattern": "^[a-z0-9_]+$",
-      "description": "Table name <t> for iw_par_<t>_param / iw_par_<t>_groups / iw_set_<t>. Lowercase letters, digits, underscore. Ask the user - never invent it.",
+      "description": "Table name <t> for iw_par_<t>_param / iw_par_<t>_groups / iw_set_<t>. Lowercase letters, digits, underscore. An authoring agent derives it from the documentation and says what it chose - never asks for it (since 2026-09-15); the user renames it on the page.",
       "examples": [
         "kjol",
         "maskin_foredamper"
@@ -37,7 +37,7 @@
         "string",
         "integer"
       ],
-      "description": "Plant number, used only in the output file name. Prefer a string. Ask the user.",
+      "description": "Plant number, used only in the output file name. Prefer a string. An authoring agent ships it empty and says so - never asks for it (since 2026-09-15); the user adds it on the page, and validation flags an empty one until then.",
       "examples": [
         "12345"
       ]

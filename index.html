@@ -1430,7 +1430,9 @@
             title="Unfold the whole prompt, or fold it back to its first few lines">show more</button></div>
         <ol style="margin:4px 0 8px;padding-left:20px">
           <li><b>Attach the maker's register document</b> to a Copilot chat: the PDF or the
-            spreadsheet. If this plant already has a delivery, attach that too; if one
+            spreadsheet - or, for a CAREL controller, the boss device file from KSA
+            (<code>*_mb.xml</code>), which the agent converts with a script from its
+            folder that you upload beside it. If this plant already has a delivery, attach that too; if one
             turns up later, say so - the agent starts over from it rather than patching the
             draft. A file from another plant or device is not that: the agent may copy its
             shape, never its registers, and should say so. A reference file that looks
@@ -1438,9 +1440,10 @@
             it before reading its fields as this plant's pattern.</li>
           <li><b>Copy the prompt below and paste it in.</b> There is nothing to fill in.
             The reference documents are already in the agent's <b>Modbus List Helper</b>
-            folder, and the prompt says which ones to read. The plant number in it is
-            <code>1234</code>. That number only shows up in the name of the file you
-            export, so change it here, or fix it on the page later.</li>
+            folder, and the prompt says which ones to read. The agent asks for nothing
+            but the addressing base and the driver: it names the table itself and
+            leaves the plant number empty - add that on the page after importing (it
+            only reaches the name of the file you export).</li>
         </ol>
         <pre id="aiPrompt" class="clip">Build a modbusgen project JSON from the attached register document.
 
@@ -1490,16 +1493,24 @@ Before reading every row, load a version of this with ONE real source row and
 see one point in modbusgen - a file that parses and shows zero points is the
 failure this guards against.
 
-FIRST MESSAGE, BEFORE READING THE DATASHEET
-Do the Template checkpoint: ask me whether a filled Modbustemplate workbook, a
-generated SQL script or a previous delivery exists for this plant. Those convert
+FIRST, ABOUT WHAT IS ATTACHED
+Do the Template checkpoint on the attachments alone - do not ask me for a
+workbook. A filled Modbustemplate workbook, a generated SQL script or a
+previous delivery counts only if I attached or named it; those convert
 losslessly, and hand-authoring instead of converting once put a 21-point
-skeleton where a 1619-point delivery existed. Do not start until I answer.
+skeleton where a 1619-point delivery existed. With none attached, convert the
+datasheet and label the file a Provisional project - without asking.
+If the attachment is a vendor's own device file rather than a datasheet - a
+CAREL boss *_mb.xml from KSA - that converts too: hand me
+scripts/carel_devxml_to_modbusgen.py.txt from your knowledge, I upload it
+beside the XML, you run it and validate what it wrote (docs/13, CAREL). Never
+transcribe such a file by hand.
 
 FIXED FOR THIS JOB
 table: derive it from the attached documentation - lowercase letters, digits
-and underscore only - and tell me what you chose.
-plant: 1234
+and underscore only - and tell me what you chose. Do not ask me for it.
+plant: leave it "" and do not ask me for it - I add the plant number on the
+page myself; the tool flags an empty one until I do.
 Addressing: subtract_one true - the document numbers registers from 1. If the
 document proves it is 0-based - a protocol-address column, an address 0000, or
 a worked request that names the register (a hex table like Dixell's 0100,
@@ -3827,7 +3838,7 @@ const GOTO_COMM = {
 };
 const GOTO_PLANT = {
   label:"set the plant number",
-  title:"Opens the Project card and puts the cursor in the plant number field. 1234 is the number the starter prompt writes into the file it asks an agent for, so it arrives in lists nobody set a number on - and it is a legal plant number, so nothing else can tell",
+  title:"Opens the Project card and puts the cursor in the plant number field. 1234 is the number the starter prompt wrote into the file it asked an agent for until 2026-09-15, so it arrives in lists nobody set a number on - and it is a legal plant number, so nothing else can tell",
   when:()=>true,
   run:()=>goToField("cardProject", "pPlant"),
 };
@@ -6384,6 +6395,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=fec5eb7dd5"></script>
+<script src="pyodide-adapter.js?v=b8cc1510d2"></script>
 </body>
 </html>
