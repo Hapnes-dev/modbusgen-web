@@ -26,7 +26,8 @@
     "table": {
       "type": "string",
       "pattern": "^[a-z0-9_]+$",
-      "description": "Table name <t> for iw_par_<t>_param / iw_par_<t>_groups / iw_set_<t>. Lowercase letters, digits, underscore. An authoring agent derives it from the documentation and says what it chose - never asks for it (since 2026-09-15); the user renames it on the page.",
+      "maxLength": 25,
+      "description": "Table name <t> for iw_par_<t>_param / iw_par_<t>_groups / iw_set_<t>. Lowercase letters, digits, underscore - no spaces, and at most 25 characters, because the same name is the grp_name value in iw_sys_plant_units and that column holds 25 (docs/16 section 16.7). A longer name still builds a legal identifier, so the tool warns (table-name-too-long) rather than refusing; a space or a capital is the error table-name-illegal. An authoring agent derives it from the documentation and says what it chose - never asks for it (since 2026-09-15); the user renames it on the page.",
       "examples": [
         "kjol",
         "maskin_foredamper"

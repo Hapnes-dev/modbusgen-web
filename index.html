@@ -611,7 +611,7 @@
     <div class="sub" style="margin-top:4px">
       <div class="subhead">destination</div>
       <div class="row">
-        <label class="f f-lg" title="Names the three tables the script fills: iw_par_<name>_param, iw_par_<name>_groups, iw_set_<name>. Lowercase letters and digits">table name<input id="pTable" placeholder="kjol" title="Names the three tables the script fills: iw_par_<name>_param, iw_par_<name>_groups, iw_set_<name>. Lowercase letters and digits"></label>
+        <label class="f f-lg" title="Names the three tables the script fills: iw_par_<name>_param, iw_par_<name>_groups, iw_set_<name>. Lowercase letters, digits and underscore, up to 25 characters - a space you type becomes an underscore, because the same name is grp_name in iw_sys_plant_units and IWMAC takes neither a space nor a 26th character there">table name<input id="pTable" placeholder="kjol" maxlength="25" title="Names the three tables the script fills: iw_par_<name>_param, iw_par_<name>_groups, iw_set_<name>. Lowercase letters, digits and underscore, up to 25 characters - a space you type becomes an underscore, because the same name is grp_name in iw_sys_plant_units and IWMAC takes neither a space nor a 26th character there"></label>
         <label class="f f-sm" title="Identifies the plant. Used only in the generated file name, never in the SQL itself">plant number<input id="pPlant" placeholder="12345" title="Identifies the plant. Used only in the generated file name, never in the SQL itself"></label>
         <label class="f f-sm" title="Which IWMAC Modbus driver this plant runs. Written into no SQL column - it decides what validation can conclude about swapped word order and 32-bit writes. mb.exe carries both, modbus.php neither and silently. mb.exe is the house standard and where a new list starts; set modbus.php for a plant known to run it, and not stated only when nobody knows, which makes validation ask rather than assume">driver<select id="pDriver" title="Which IWMAC Modbus driver this plant runs. Written into no SQL column - it decides what validation can conclude about swapped word order and 32-bit writes. mb.exe carries both, modbus.php neither and silently. mb.exe is the house standard and where a new list starts; set modbus.php for a plant known to run it, and not stated only when nobody knows, which makes validation ask rather than assume"><option value="">not stated</option><option value="mb.exe">mb.exe</option><option value="modbus.php">modbus.php</option></select></label>
       </div>
@@ -632,8 +632,15 @@
       <div class="helpbody">
         <b>table name</b> decides what the three database tables are called —
         <code>iw_par_&lt;name&gt;_param</code>, <code>iw_par_&lt;name&gt;_groups</code> and
-        <code>iw_set_&lt;name&gt;</code>. Lowercase letters and digits, e.g.
-        <span class="ex">kjol</span>. <b>plant number</b> is used only in the SQL file's
+        <code>iw_set_&lt;name&gt;</code>. Lowercase letters, digits and underscore, e.g.
+        <span class="ex">kjol</span> or <span class="ex">maskin_foredamper</span> —
+        a space you type becomes an underscore, and the field stops at
+        <b>25 characters</b>, because the same name is also written into
+        <code>grp_name</code> in <code>iw_sys_plant_units</code> and that column holds 25.
+        An imported project is left exactly as it arrived: a longer name is a warning
+        (<code>table-name-too-long</code>) rather than something this page silently
+        rewrites, because renaming it means a different set of database tables.
+        <b>plant number</b> is used only in the SQL file's
         name; it is not written into the database.
 
         <p><b>driver</b> is which of IWMAC's two Modbus drivers the plant runs, and it
@@ -1533,7 +1540,11 @@ has no sections of its own.
 PICKING KEYS
 datatype: {A|I}_{Hold|Input}_{I16|U16|I32|U32|F}_{N|R|W}, plus Bit_Hold,
   Bit_Input, Coil_X_*, Digital_X_*. A_ presents as an analog value, I_ as an
-  integral one. _N is normal order and dominates the fleet - reach for _R or
+  integral one. A row the document itself calls Boolean takes I_ - or a Bit/Coil
+  key where the document puts it there - never A_: a 0..1 range on an A_ key
+  parses, loads and validates clean, and the point still cannot be operated from
+  IWMAC, because application and parameter type decide that, not the function
+  code (docs/15). _N is normal order and dominates the fleet - reach for _R or
   _W only when the document or a live read proves the swap.
 scale: a printed factor is inverted - "factor 10" or "x10" means x0.1. Only a
   document defining "actual = register x factor" is used as printed. A unit
@@ -2501,6 +2512,18 @@ for (const id of Object.keys(ownerMirror))
     normaliseField(e.target, idText);
     ownerMirror[id] = false;
   });
+
+/* The table name is the fourth identifier field and takes the same shape, so typing
+   normalises it the same way - a space becomes "_" rather than an error nobody sees
+   until Validate. maxlength="25" on the input is the other half: grp_name in
+   iw_sys_plant_units holds 25 (docs/16 16.7).
+
+   Deliberately NOT applied when a project loads. This name decides which three database
+   tables the list lands in, so a file that arrives with `Kjol Anlegg` must keep it and
+   earn table-name-illegal - a page that quietly rewrote the destination on import would
+   be choosing it for the reader. maxlength does not truncate a value set from script
+   either, which is the same distinction in the browser's own behaviour. */
+$("pTable").addEventListener("input", e => normaliseField(e.target, idText));
 
 $("btnAddUnit").onclick = () => { addUnitRow(); renumberUnits(); };
 for (const id of ["commMode","sysUnits","sysSettings"]) $(id).addEventListener("change", syncSysUi);
@@ -6129,7 +6152,8 @@ const WIZARD = [
    body:`<p>Press <b>Import project</b> and pick the <code>.json</code> the agent wrote —
      or <b>New</b> to start from nothing and type it yourself.</p>
      <p>Then check the three things nobody but you knows. <b>Table name</b> is a short
-     lowercase word naming the three database tables this plant's list lands in. <b>Plant
+     lowercase word — letters, digits and underscore, 25 characters at most — naming the
+     three database tables this plant's list lands in. <b>Plant
      number</b> identifies the site in IWMAC. <b>Driver</b> is which of IWMAC's two Modbus
      drivers this plant runs, which decides whether a swapped word order and a 32-bit
      write are possible there at all. None of the three can be guessed from a datasheet,
@@ -6395,6 +6419,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=b8cc1510d2"></script>
+<script src="pyodide-adapter.js?v=45c9a64d1f"></script>
 </body>
 </html>
