@@ -789,6 +789,10 @@
           <li>The key becomes the first part of the point's <code>element_id</code>
             (<span class="ex">aio_0_3_100</span>) — pick keys before generating, not
             after; renaming later changes every id in the group.</li>
+          <li><b>Renaming a key here moves its points with it</b> — every point that
+            used the old key takes the new one when you leave the field, so Save,
+            Export and Export Excel carry it on the points as well as in this card. A
+            key another row already has is refused rather than merged.</li>
           <li><i>auto_groups</i> in the Project card fills empty group cells from the
             datatype's default, and with <i>alarms_to_alm</i> moves lettered rows to
             <code>alm</code>.</li>
@@ -1849,7 +1853,7 @@ const COL_DOC = {
   group:{
     what:"The display group this point belongs to - a short key defined in the Groups card, such as `aio`, `dio`, `alm`, `misc` or `sch`. The key is internal; the operator sees the group's alias.",
     use:"It orders the operator's menu - each group's `view_order` follows the order its points are written in - and it builds the point's key: `element_id = <group>_<driver_id>`.",
-    when:"On every row. The key has to exist in the Groups card first or validation stops, and changing it later changes every element_id it built. Group by what the operator is looking for rather than by register type. Leave it empty only with `auto_groups` on, where the datatype's own default fills it - `aio` for analog, `dio` for digital.",
+    when:"On every row. The key has to exist in the Groups card first or validation stops, and changing it later changes every element_id it built. Renaming a key in the Groups card moves every point that uses it, so a whole group is renamed there rather than row by row. Group by what the operator is looking for rather than by register type. Leave it empty only with `auto_groups` on, where the datatype's own default fills it - `aio` for analog, `dio` for digital.",
   },
   datatype:{
     what:"The register's type, width and word order, chosen from the datatype table. The most consequential column on the row.",
@@ -2178,15 +2182,73 @@ function collectOptions() {
 
 /* ---------- groups ---------- */
 function addGroupRow(name="", alias="") {
-  $("groups").append(el("div",{class:"grp-row"},
+  const row = el("div",{class:"grp-row"},
     el("input",{class:"g-name", placeholder:"name (e.g. zone1)", value:name,
-                title:"The short key you type in a point's group column. Every group a point uses must exist here or validation stops",
-                oninput:refreshGroupList}),
+                title:"The short key you type in a point's group column. Every group a point uses must exist here or validation stops. Renaming the key moves every point that uses it",
+                oninput:refreshGroupList,
+                onchange:e=>groupKeyChanged(row, e.target)}),
     el("input",{class:"g-alias", placeholder:"display alias (e.g. Zone 1)", value:alias,
                 title:"The name the operator sees for this group in IWMAC. Blank falls back to the key itself",
                 style:"width:260px"}),
     el("button",{class:"ghost rowbtn", title:"delete this group - points still referencing it will fail validation",
-                 onclick:e=>{e.target.parentNode.remove();refreshGroupList();}},"✕")));
+                 onclick:e=>{e.target.parentNode.remove();refreshGroupList();}},"✕"));
+  row._key = String(name ?? "").trim();   // the key its points hold - see groupKeyChanged
+  $("groups").append(row);
+}
+/* Renaming a group key takes its points with it. A point holds the key, not the row,
+   so until 2026-09-23 a rename changed the card and nothing else: Save, Export and
+   Export Excel all carried the new key in the groups while every point still named the
+   old one - the workbook's Work column A kept the old keys - and Validate called the
+   old keys undefined and the new ones unused, with fix buttons that would have put the
+   old keys back and deleted the new ones. Reported on a real list, all nine keys of it
+   renamed from lower case.
+
+   Committed on change - Tab, Enter, or a click anywhere else, Save and Export Excel
+   included - never per keystroke: "alarm2" passes through "alarm" on its way to
+   "alarm3", and moving points on input would have merged two groups for good on the
+   way. What the change cannot do is decide a merge, so a key another row already holds
+   is refused rather than joined. The undo snapshots are whole point lists, and are
+   rewritten with the model: left alone, Ctrl+Z after a rename would put points back on
+   a key no row defines. */
+function groupKeyChanged(row, input) {
+  const was = row._key || "", now = input.value.trim();
+  if (now === was) return;
+  if (!now) return;          // cleared: remember the old key, so the next name still moves its points
+  if (!was) { row._key = now; return; }            // a new row being named - nothing uses it yet
+  const others = [...$("groups").children].filter(r => r !== row)
+                   .map(r => r.querySelector(".g-name").value.trim());
+  if (others.includes(now)) {
+    input.value = was;
+    refreshGroupList();
+    outNote(`"${now}" is already a group, so this row keeps the key "${was}" and no point `
+          + `moved. To merge the two, set the group of the "${was}" points to "${now}" `
+          + `(select them, bulk edit) and delete this row.`, "warn");
+    return;
+  }
+  row._key = now;
+  if (others.includes(was)) {    // another row still defines the old key: its points stay valid there
+    outNote(`"${was}" is still defined on another row, so its points stay in it; `
+          + `"${now}" is a new, empty group.`);
+    return;
+  }
+  let moved = 0, derived = 0;
+  for (const p of ptModel) {
+    if (p.group !== was) continue;
+    ptWriteField(p, "group", now);
+    moved++;
+    if (!(p._orig && p._orig.element_id)) derived++;
+  }
+  const rekey = list => { for (const q of list || []) if (q && ptStr(q.group) === was) q.group = now; };
+  for (const step of ptUndo) rekey(step.points);
+  rekey(ptPreEdit);
+  refreshGroupList();
+  if (moved) { updateStats(); applyPointView(); }
+  outNote(moved
+    ? `Renamed group "${was}" to "${now}" - ${moved} point${moved === 1 ? "" : "s"} moved with it.`
+      + (derived ? ` ${derived === moved ? "Their element ids are" : derived + " of their element ids are"} `
+                 + `built from the key, so those change too (${was}_… becomes ${now}_…) - `
+                 + `harmless before the list is imported into IWMAC, a new set of ids after.` : "")
+    : `Renamed group "${was}" to "${now}" - no point used it.`, "ok");
 }
 function collectGroups() {
   const out = {};
@@ -6419,6 +6481,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=45c9a64d1f"></script>
+<script src="pyodide-adapter.js?v=2227fe98c7"></script>
 </body>
 </html>
