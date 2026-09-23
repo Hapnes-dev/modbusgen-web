@@ -669,7 +669,12 @@
             <span class="ex">40101</span> is entered as
             <span class="ex">101</span> and polled as <span class="ex">100</span>. Turn it
             <b>off</b> only when the documentation already gives zero-based protocol
-            addresses. If any address would end up below 0, validation stops you.</li>
+            addresses. If any address would end up below 0, validation stops you. A
+            controller's own numbering is neither: the SAIA <code>F</code>/<code>R</code>
+            numbers of a partner Modbusprotokoll sit where its Modbus server puts them, and
+            plant 2313 answered at the printed number + 1 — which this switch cannot
+            express, so the proved addresses are typed with it <b>off</b>. A printed register
+            is not a proved address; one live read settles it.</li>
         </ul>
 
         <h4>Script shape</h4>
@@ -952,7 +957,9 @@
             prints it (strip a <code>4xxxx</code>/<code>3xxxxx</code> prefix:
             <span class="ex">40101 → 101</span>). The <i>subtract_one</i> option handles
             the 1-based offset globally — never subtract yourself. Address and datatype
-            together give <code>driver_id = 0_&lt;readfunc&gt;_&lt;addr&gt;</code>.</li>
+            together give <code>driver_id = 0_&lt;readfunc&gt;_&lt;addr&gt;</code>. A SAIA
+            controller's <code>F</code>/<code>R</code> numbers are not Modbus addresses: prove
+            the base live before trusting any of them.</li>
           <li><b>bit</b> — 0–31 for one bit inside the word, or nibble syntax
             <span class="ex">5#4</span>; the bit is appended to the driver id
             (<span class="ex">0_3_100.4</span>). Use a <code>Bit_*</code> datatype, and
@@ -1528,6 +1535,12 @@ a worked request that names the register (a hex table like Dixell's 0100,
 with letters in other cells) - set it false, keep every row, and tell me you
 overrode this line. Never ship an empty list because the base was in doubt:
 ship the rows and the question.
+A printed register is not a proved address: a controller's own numbering -
+the SAIA F/R numbers of a partner Modbusprotokoll sheet - sits where its
+Modbus server puts it, and the line above does not apply to it. Plant 2313
+answered at the printed number + 1: write addr + 1 with subtract_one false,
+label the file Provisional, and list the sheet's := defaults as anchors I can
+modpoll (docs/13 section 2, docs/16).
 Driver: mb.exe - write it into the file, "driver": "mb.exe" beside plant. If
 this is an existing plant on modbus.php, say so: "driver": "modbus.php", and
 then no _R or _W datatypes and no 32-bit writes. Leave the field out only if
@@ -1820,7 +1833,7 @@ const OPT_HELP = {
 const COL_HELP = {
   group:"Display group key - must exist in the Groups card. Also builds the key: element_id = <group>_<driver_id>",
   datatype:"Register type, width and word order. Supplies the read/write function codes, raw type, swap, application class and parameter type. Has to be a key the datatype table describes - a spelling that arrives from an import without being in the table marks the row red and makes Export Excel refuse. If no shipped key fits, make one in the Modbus variables card",
-  addr:"Register number exactly as the documentation prints it - subtract_one handles 1-based docs. Gives driver_id = 0_<readfunc>_<addr>",
+  addr:"Register number exactly as the documentation prints it - subtract_one handles 1-based docs. Gives driver_id = 0_<readfunc>_<addr>. A controller's own numbering (SAIA F/R) is not a Modbus address - prove the base live",
   bit:"Bit 0-31 inside the word, or nibble syntax 5#4. Needs a Bit_* datatype; the motherword row is synthesized for you",
   system_no:"Alias part 1: the plant system number, e.g. 360.001. Switched off wholesale by use_system_no",
   tag:"Alias part 2: the short component tag, e.g. RT401. Switched off wholesale by use_tag",
@@ -1863,7 +1876,7 @@ const COL_DOC = {
   addr:{
     what:"The register number, exactly as the vendor's document prints it.",
     use:"With the datatype it forms `driver_id = 0_<readfunc>_<addr>`, the address the driver actually polls.",
-    when:"On every row. Strip a `4xxxx` or `3xxxxx` prefix - `40101` is address `101` - but never take off the 1-based offset by hand: the `subtract_one` option does that for the whole project, and doing both shifts every point by one. A table that starts at 1 is a hint that the option is needed, not proof; a live read settles it. Use the ⧉ button or duplicate for a run of consecutive registers rather than retyping, since every driver_id has to stay unique.",
+    when:"On every row. Strip a `4xxxx` or `3xxxxx` prefix - `40101` is address `101` - but never take off the 1-based offset by hand: the `subtract_one` option does that for the whole project, and doing both shifts every point by one. A table that starts at 1 is a hint that the option is needed, not proof; a live read settles it. A printed register is not a proved address: a SAIA controller's `F`/`R` numbers in a partner Modbusprotokoll land where its Modbus server puts them - plant 2313 answered at the printed number + 1, which the option cannot express, so there the proved protocol address is typed (number + 1) with `subtract_one` off, and the sheet's `:=` defaults are the anchors that prove it. Use the ⧉ button or duplicate for a run of consecutive registers rather than retyping, since every driver_id has to stay unique.",
   },
   bit:{
     what:"Which bit inside the word this row reads: `0`-`31`, or nibble syntax such as `5#4`.",

@@ -68,7 +68,7 @@
         "subtract_one": {
           "type": "boolean",
           "default": true,
-          "description": "Subtract 1 from every Modbus address before building driver ids. true when the documentation numbers registers from 1 (most vendor docs, and all 4xxxx-style lists); false for zero-based protocol addresses. Never pre-subtract per point."
+          "description": "Subtract 1 from every Modbus address before building driver ids. true when the documentation numbers registers from 1 (most vendor docs, and all 4xxxx-style lists); false for zero-based protocol addresses. Never pre-subtract per point. A controller's own numbering (SAIA F/R in a partner Modbusprotokoll) is neither: its base is set in the controller and proved live - plant 2313 answered at the printed number + 1, written as the proved protocol address (number + 1) with subtract_one false."
         },
         "truncate": {
           "type": "boolean",
@@ -488,7 +488,7 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 65535,
-            "description": "Register/coil address exactly as the documentation prints it (strip 4xxxx/3xxxxx prefixes). Where a document prints both a Modicon-style register and an explicit protocol-address column, take the explicit one as printed and set subtract_one false - do not also strip a prefix or subtract again. options.subtract_one is the ONLY global offset conversion; never subtract per point. (Work!E)"
+            "description": "Register/coil address exactly as the documentation prints it (strip 4xxxx/3xxxxx prefixes). Where a document prints both a Modicon-style register and an explicit protocol-address column, take the explicit one as printed and set subtract_one false - do not also strip a prefix or subtract again. options.subtract_one is the ONLY global offset conversion; never subtract per point. A printed register is not a proved address: where a live read proves the device answers at an offset the option cannot express (a SAIA controller at the printed number + 1, plant 2313), addr is that proved protocol address with subtract_one false. (Work!E)"
           },
           "bit": {
             "description": "Bit number inside the register for Bit_* datatypes. 0-15 normally: the synthesized motherword is 16-bit and is never widened, because a 32-bit one would have to guess the word order. A bit of 16-31 is therefore a validation error UNLESS an explicit 32-bit point is authored at the same address, which commits to a word order and serves as the motherword. String form '5#4' = legacy nibble start#length. Do not author a motherword row otherwise - the tool synthesizes it. (Work!F)",
