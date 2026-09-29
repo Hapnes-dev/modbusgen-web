@@ -210,7 +210,8 @@
         },
         "reg_type": {
           "type": "string",
-          "description": "Registration type recorded against the units. Usually blank."
+          "pattern": "^[^_]*$",
+          "description": "Registration type recorded against the units (regulator_type). Usually blank. Never an underscore: the driver reads each point's unit address back out of an underscore-delimited key built from this value, and on plant 3694 one here made every point time out while modpoll read the device fine - validate refuses it as reg-type-underscore (docs/16 section 16.7). The table name and order_no are not in that key."
         },
         "order_no": {
           "type": "string",

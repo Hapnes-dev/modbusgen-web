@@ -943,9 +943,13 @@
             <code>I_Hold_U16_N</code> plain integer/counter ·
             <code>Digital_X_N</code> discrete input · <code>Coil_X_N</code> coil ·
             <code>Bit_Hold</code>/<code>Bit_Input</code> one bit inside a word ·
-            <code>…_I32/U32/F</code> for 32-bit values. If the doc says the word order is
-            reversed (LSW first — energy meters often do), use the <code>_W</code> or <code>_R</code>
-            variants. <b>The key has to exist in the datatype table.</b> The dropdown
+            <code>…_I32/U32/F</code> for 32-bit values. Word order is measured, not named:
+            on <code>iw_mb.exe</code> an unsigned 32-bit <code>_N</code> reads the first register
+            as the low word and <code>_W</code> as the high word (docs/15 §2.1), floats and
+            signed 32-bit the same (plant 3694), so a low-word-first meter is
+            <code>_N</code>; <code>_R</code> swaps bytes. Confirm every
+            32-bit point in an IWMAC parameter export - a swapped one shows first register
+            × 65536 + second. <b>The key has to exist in the datatype table.</b> The dropdown
             only offers keys that do, but a loaded project, a converted workbook or an
             imported SQL script can carry a spelling nothing describes: those rows are
             marked red the moment the list loads, Validate rejects them and
@@ -1263,7 +1267,9 @@
         owner, the driver_type and the process name in one
         (<span class="ex">EM270</span>, <span class="ex">GRUNDFOS</span>), and both
         blocks use it. <b>reg.type</b> and <b>order no</b> stay blank unless the
-        delivery specifies them. <b>addr prefix</b>: <code>0_</code> for the first
+        delivery specifies them, and <b>reg.type</b> never takes an underscore: the
+        driver reads each point's unit address back out of a key built from it, and on
+        plant 3694 one there stopped every point answering. <b>addr prefix</b>: <code>0_</code> for the first
         driver on the plant, <code>1_</code> for the second — it is put in front of
         every device address for you.</p>
 
@@ -1294,7 +1300,7 @@
       <div class="subhead">driver identity</div>
       <div class="row">
         <label class="f f-lg gated" title="Ties the whole block together: it is the settings owner, the driver_type and the process name. Uppercase, no spaces, and IWMAC documents a maximum of 10 characters, capitals and digits only - Validate warns rather than blocks, because the fleet carries an 11-character owner. e.g. EM270 or GRUNDFOS Both boxes write it - driver_type on the units, process_name on the driver - so either one keeps it live.">owner / driver name<input id="sysOwner" placeholder="EM270" title="Ties the whole block together: it is the settings owner, the driver_type and the process name. Uppercase, no spaces, and IWMAC documents a maximum of 10 characters, capitals and digits only - Validate warns rather than blocks, because the fleet carries an 11-character owner. e.g. EM270 or GRUNDFOS Both boxes write it - driver_type on the units, process_name on the driver - so either one keeps it live."></label>
-        <label class="f f-sm gated sysUnitField" title="Registration type recorded against the units. Lowercase, no spaces. Mirrors the owner / driver name until you type your own value here - clear it if the delivery wants it blank Written by 'add the devices'.">reg.type<input id="sysRegType" title="Registration type recorded against the units. Lowercase, no spaces. Mirrors the owner / driver name until you type your own value here - clear it if the delivery wants it blank Written by 'add the devices'."></label>
+        <label class="f f-sm gated sysUnitField" title="Registration type recorded against the units. Lowercase, no spaces and no underscore: the driver reads each point's unit address back out of a key built from this value, so an underscore stops every point of the unit answering (docs/16 16.7). Mirrors the owner / driver name, underscores dropped, until you type your own value here - clear it if the delivery wants it blank Written by 'add the devices'.">reg.type<input id="sysRegType" title="Registration type recorded against the units. Lowercase, no spaces and no underscore: the driver reads each point's unit address back out of a key built from this value, so an underscore stops every point of the unit answering (docs/16 16.7). Mirrors the owner / driver name, underscores dropped, until you type your own value here - clear it if the delivery wants it blank Written by 'add the devices'."></label>
         <label class="f f-sm gated sysUnitField" title="Order number linked to the units in iw_sys_order_no. Lowercase, no spaces. Mirrors the owner / driver name until you type your own value here Written by 'add the devices'.">order no<input id="sysOrderNo" title="Order number linked to the units in iw_sys_order_no. Lowercase, no spaces. Mirrors the owner / driver name until you type your own value here Written by 'add the devices'."></label>
         <label class="f f-xs gated sysUnitField" title="Prefix put in front of every device address. Follows the comm mode - 1_ for tcp, 0_ for rtu - until you pick one yourself Written by 'add the devices'.">addr prefix<select id="sysPrefix" title="Prefix put in front of every device address. Follows the comm mode - 1_ for tcp, 0_ for rtu - until you pick one yourself Written by 'add the devices'."><option>0_</option><option>1_</option></select></label>
       </div>
@@ -1561,8 +1567,12 @@ datatype: {A|I}_{Hold|Input}_{I16|U16|I32|U32|F}_{N|R|W}, plus Bit_Hold,
   key where the document puts it there - never A_: a 0..1 range on an A_ key
   parses, loads and validates clean, and the point still cannot be operated from
   IWMAC, because application and parameter type decide that, not the function
-  code (docs/15). _N is normal order and dominates the fleet - reach for _R or
-  _W only when the document or a live read proves the swap.
+  code (docs/15). Word order is measured, not named: on iw_mb.exe an unsigned
+  32-bit _N reads the first register as the low word and _W as the high word
+  (docs/15 2.1), and floats and signed 32-bit the same (plant 3694), so a
+  low-word-first U32, I32 or F is _N. Take the device's order only from the
+  document or a live read, proved per family - one device mixed them - and say
+  the suffix is provisional until an IWMAC parameter export shows the value.
 scale: a printed factor is inverted - "factor 10" or "x10" means x0.1. Only a
   document defining "actual = register x factor" is used as printed. A unit
   column written as a number and a unit states the resolution - what one count
@@ -2504,8 +2514,10 @@ function showSystem(s) {
   $("sysSettings").checked = !!s.settings;
   $("sysOwner").value = ownerText(s.owner || "");
   // Normalised on the way in too: an imported list carrying "KAMSTRUP801" here
-  // would otherwise keep a value the field is not allowed to hold.
-  $("sysRegType").value = idText(s.reg_type || "");
+  // would otherwise keep a value the field is not allowed to hold. reg.type loses
+  // its spaces but keeps an underscore it arrives with, so reg-type-underscore
+  // names it: the value keys every parameter, and changing it is the reader's call.
+  $("sysRegType").value = String(s.reg_type || "").replace(/\s+/g, "").toLowerCase();
   $("sysOrderNo").value = idText(s.order_no || "");
   const c = s.comm || {};
   $("commMode").value = c.mode || "tcp";
@@ -2548,14 +2560,24 @@ const ownerMirror = {sysRegType: true, sysOrderNo: true};
    Every route into them normalises - the mirror, typing, and loading a project.
    Whitespace becomes "_" rather than vanishing, matching the [a-z0-9_] shape
    `table` already uses: "canes hyco" reads better as CANES_HYCO / canes_hyco
-   than CANESHYCO / caneshyco. */
+   than CANESHYCO / caneshyco.
+
+   reg.type is the exception, and drops both instead. It lands in regulator_type,
+   and the driver reads each point's unit address back out of an underscore-
+   delimited key built from it, so an underscore there stops every point of the
+   unit answering (reg-type-underscore, docs/16 16.7 - plant 3694). Typing and the
+   mirror take it out; loading does not, because the value is part of every
+   parameter's key and changing it is the reader's call - the error and its
+   repair put that call in front of them. */
 const squash = v => String(v ?? "").replace(/\s+/g, "_");
 const ownerText = v => squash(v).toUpperCase();
 const idText = v => squash(v).toLowerCase();
+const regTypeText = v => String(v ?? "").replace(/[\s_]+/g, "").toLowerCase();
+const MIRROR_TEXT = {sysRegType: regTypeText, sysOrderNo: idText};
 
 /* Rewrite a field in place, leaving the caret where the typist left it. A run of
-   whitespace collapses to one "_", so shift by the delta rather than assuming the
-   length held. */
+   whitespace collapses to one "_" (in reg.type it vanishes), so shift by the delta
+   rather than assuming the length held. */
 function normaliseField(el, fn) {
   const before = el.value, after = fn(before);
   if (after !== before) {
@@ -2567,24 +2589,25 @@ function normaliseField(el, fn) {
 }
 
 function sysRelink() {
-  const owner = idText($("sysOwner").value.trim());
+  const owner = $("sysOwner").value.trim();
   prefixLinked = $("sysPrefix").value === PREFIX_FOR_MODE[$("commMode").value];
   // Exact match, so an empty field only stays linked while the owner is empty too:
   // a loaded project whose reg.type is blank against a real owner meant it blank.
   for (const id of Object.keys(ownerMirror))
-    ownerMirror[id] = $(id).value.trim() === owner;
+    ownerMirror[id] = $(id).value.trim() === MIRROR_TEXT[id](owner);
 }
 $("commMode").addEventListener("change", () => {
   if (prefixLinked) $("sysPrefix").value = PREFIX_FOR_MODE[$("commMode").value];
 });
 $("sysPrefix").addEventListener("change", () => { prefixLinked = false; });
 $("sysOwner").addEventListener("input", e => {
-  const owner = idText(normaliseField(e.target, ownerText).trim());
-  for (const id of Object.keys(ownerMirror)) if (ownerMirror[id]) $(id).value = owner;
+  const owner = normaliseField(e.target, ownerText).trim();
+  for (const id of Object.keys(ownerMirror))
+    if (ownerMirror[id]) $(id).value = MIRROR_TEXT[id](owner);
 });
 for (const id of Object.keys(ownerMirror))
   $(id).addEventListener("input", e => {
-    normaliseField(e.target, idText);
+    normaliseField(e.target, MIRROR_TEXT[id]);
     ownerMirror[id] = false;
   });
 
@@ -3881,15 +3904,25 @@ const FIX_ACTIONS = {
     run:(ctx)=>{for(const e of ctx.errors){
         const m=e.match(/^datatypes\.(.+?): already in data/); if(m) delete dtProject[m[1]];}
       dtInvalidateKnown(); renderDatatypeCard(); applyPointView();}},
-  /* The same move datatype-name-illegal makes, one level up. Consequential, because the
-     table name is the destination: three database tables are named after it. */
+  /* The same move datatype-name-illegal makes, one level up - except in reg_type, where
+     the underscore is the one character the driver cannot parse (reg-type-underscore),
+     so the spaces there are dropped rather than replaced. */
   "sys-field-space": {
-    label:"replace the spaces with underscores",
-    title:"Rewrites reg_type and order_no with underscores in place of spaces, which is the same substitution the table-name and datatype-name repairs make. IWMAC does not take a space in either field. Check the result against the delivery: the house convention populates reg_type, order_no and owner identically from the driver name",
-    run:()=>{for(const id of ["sysRegType","sysOrderNo"]){
+    label:"take the spaces out",
+    title:"Drops the spaces from reg_type and replaces them with underscores in order_no. IWMAC does not take a space in either field, and reg_type cannot take an underscore either: the driver reads each point's unit address back out of a key built from it. Check the result against the delivery: the house convention populates reg_type, order_no and owner identically from the driver name",
+    run:()=>{for(const [id,fix] of [["sysRegType",regTypeText],["sysOrderNo",idText]]){
         const f=$(id); if(!f) continue;
-        const good=f.value.trim().replace(/\s+/g,"_");
+        const good=fix(f.value.trim());
         if(good!==f.value){f.value=good; f.dispatchEvent(new Event("input",{bubbles:true}));}}}},
+  /* reg_type keys every parameter of the unit, so taking the underscores out moves them
+     all to a new key - which costs nothing, because with the underscore in the driver
+     never reached the device and nothing was filed under the old one (docs/16 16.7). */
+  "reg-type-underscore": {
+    label:"take the underscores out",
+    title:"Removes the underscores (and any spaces) from reg_type. It becomes regulator_type, and the driver reads each point's unit address back out of an underscore-delimited key built from it - on plant 3694 every point timed out until the underscores were taken out. The table name and order_no keep theirs. Check the result against the delivery",
+    run:()=>{const f=$("sysRegType"); if(!f) return;
+      const good=regTypeText(f.value.trim());
+      if(good!==f.value){f.value=good; f.dispatchEvent(new Event("input",{bubbles:true}));}}},
   "table-name-illegal": {
     label:"rename to a legal table name",
     title:"Lowercases the name and replaces every character outside a-z, 0-9 and underscore with an underscore. This decides which three database tables the plant's list lands in, so check the result against the delivery before generating - a renamed table is a different destination, not a cosmetic fix",
@@ -6494,6 +6527,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=2227fe98c7"></script>
+<script src="pyodide-adapter.js?v=582cea1c5e"></script>
 </body>
 </html>
