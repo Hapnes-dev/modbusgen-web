@@ -1301,7 +1301,7 @@
     <div class="sub">
       <div class="subhead">driver identity</div>
       <div class="row">
-        <label class="f f-lg gated" title="Ties the whole block together: it is the settings owner, the driver_type and the process name. Uppercase, no spaces, and IWMAC documents a maximum of 10 characters, capitals and digits only - Validate warns rather than blocks, because the fleet carries an 11-character owner. e.g. EM270 or GRUNDFOS Both boxes write it - driver_type on the units, process_name on the driver - so either one keeps it live.">owner / driver name<input id="sysOwner" placeholder="EM270" title="Ties the whole block together: it is the settings owner, the driver_type and the process name. Uppercase, no spaces, and IWMAC documents a maximum of 10 characters, capitals and digits only - Validate warns rather than blocks, because the fleet carries an 11-character owner. e.g. EM270 or GRUNDFOS Both boxes write it - driver_type on the units, process_name on the driver - so either one keeps it live."></label>
+        <label class="f f-lg gated" title="Ties the whole block together: it is the settings owner, the driver_type and the process name. Uppercase, no spaces, and IWMAC documents a maximum of 10 characters, capitals and digits only, but 11 is proven to run (TIANJINEX32 on plant 3694) - Validate warns past 11 rather than blocks. e.g. EM270 or GRUNDFOS Both boxes write it - driver_type on the units, process_name on the driver - so either one keeps it live.">owner / driver name<input id="sysOwner" placeholder="EM270" title="Ties the whole block together: it is the settings owner, the driver_type and the process name. Uppercase, no spaces, and IWMAC documents a maximum of 10 characters, capitals and digits only, but 11 is proven to run (TIANJINEX32 on plant 3694) - Validate warns past 11 rather than blocks. e.g. EM270 or GRUNDFOS Both boxes write it - driver_type on the units, process_name on the driver - so either one keeps it live."></label>
         <label class="f f-sm gated sysUnitField" title="Registration type recorded against the units. Lowercase, no spaces and no underscore: the driver reads each point's unit address back out of a key built from this value, so an underscore stops every point of the unit answering (docs/16 16.7). Mirrors the owner / driver name, underscores dropped, until you type your own value here - clear it if the delivery wants it blank Written by 'add the devices'.">reg.type<input id="sysRegType" title="Registration type recorded against the units. Lowercase, no spaces and no underscore: the driver reads each point's unit address back out of a key built from this value, so an underscore stops every point of the unit answering (docs/16 16.7). Mirrors the owner / driver name, underscores dropped, until you type your own value here - clear it if the delivery wants it blank Written by 'add the devices'."></label>
         <label class="f f-sm gated sysUnitField" title="Order number linked to the units in iw_sys_order_no. Lowercase, no spaces. Mirrors the owner / driver name until you type your own value here Written by 'add the devices'.">order no<input id="sysOrderNo" title="Order number linked to the units in iw_sys_order_no. Lowercase, no spaces. Mirrors the owner / driver name until you type your own value here Written by 'add the devices'."></label>
         <label class="f f-xs gated sysUnitField" title="Prefix put in front of every device address. Follows the comm mode - 1_ for tcp, 0_ for rtu - until you pick one yourself Written by 'add the devices'.">addr prefix<select id="sysPrefix" title="Prefix put in front of every device address. Follows the comm mode - 1_ for tcp, 0_ for rtu - until you pick one yourself Written by 'add the devices'."><option>0_</option><option>1_</option></select></label>
@@ -2161,8 +2161,19 @@ function bootstrapFailed(e, replied) {
 }
 
 /* ---------- options ---------- */
+/* The options the page has no control for - reserve_text, encoding, sql_format - are the
+   file's, and travel as the file had them. collectOptions used to walk the checkboxes
+   and nothing else, so a workbook that switched the reserve rule off (reserve_text "")
+   came back from the page with it on again, and a legacy project generated as modern,
+   without a word said (2026-09-30). */
+let optKept = {};
 function renderOptions(values) {
   requireBoot();                       // the checkboxes are BOOT.defaults, one per key
+  optKept = {};
+  for (const [name, value] of Object.entries(values || {}))
+    if (name in BOOT.defaults && typeof BOOT.defaults[name] !== "boolean"
+        && value !== undefined && value !== null)
+      optKept[name] = value;
   const box = (name) => {
     const cb = el("input", {type:"checkbox", id:"opt_"+name});
     cb.checked = values[name] !== undefined ? values[name] : BOOT.defaults[name];
@@ -2211,7 +2222,7 @@ function collectOptions() {
     const cb = $("opt_"+name);
     if (cb) out[name] = cb.checked;
   }
-  return out;
+  return Object.assign(out, optKept);
 }
 
 /* ---------- groups ---------- */
@@ -2542,7 +2553,17 @@ function showSystem(s) {
   if (![...$("commBaud").options].some(o => o.value === baud))
     $("commBaud").add(new Option(baud, baud));
   $("commBaud").value = baud;
-  $("commParity").value = c.parity || "even";
+  /* A parity the list does not carry - "E", "8E1" - is kept and shown, as pDriver keeps
+     an unknown driver: assigning it to the <select> would silently pick nothing, and the
+     collected project would say "" where the file said something. Validation names it
+     (comm-parity-unknown) and its link comes back here. */
+  const par = $("commParity"), parity = c.parity == null ? "even" : String(c.parity);
+  for (const extra of [...par.options]) if (extra.dataset.foreign) extra.remove();
+  par.value = parity;
+  if (par.value !== parity) {
+    par.append(el("option",{value:parity, "data-foreign":"1"}, parity));
+    par.value = parity;
+  }
   $("commStop").value = String(c.stop_bits || 1);
   $("unitRows").replaceChildren();
   const rows = (s.unit_list && s.unit_list.length) ? s.unit_list
@@ -3738,6 +3759,84 @@ const FIX_ACTIONS = {
       ptPushState(null, "clear online freq");
       for(const p of ctx.points) p.update_freq = null;
       updateStats(); applyPointView();}},
+  /* The 2026-09-30 sweep: an online mark on a row the plant never polls, a write to the
+     device's own place on the bus, a TCP unit behind a server that is not there, and the
+     parity the Excel tool wrote as a word. */
+  "online-inactive": {
+    label:"take the online mark off these points",
+    title:"Clears online on each point that is written inactive (undoable) - IWMAC does not poll an inactive parameter, so it could never show the device answering. If that leaves no online point, the next validation proposes measured values for it. Make the point active again instead if it was switched off by mistake",
+    run:(ctx)=>{if(!ctx.points.length) return;
+      ptPushState(null, "online off inactive rows");
+      for(const p of ctx.points) p.online = false;
+      updateStats(); applyPointView();}},
+  "rw-comm-setting": {
+    label:"make these read-only",
+    title:"Sets rw to r on each point that writes the device's own bus address, line settings or a factory reset (undoable). Reading them back is useful - it proves the address base - but one write from IWMAC takes the unit off the bus. Delete a command such as a factory reset from the list instead where reading it means nothing",
+    run:(ctx)=>{if(!ctx.points.length) return;
+      ptPushState(null, "bus settings read-only");
+      for(const p of ctx.points) p.rw = "r";
+      updateStats(); applyPointView();}},
+  "tcp-prefix-server": {
+    label:"use 1_",
+    title:"Sets the address prefix to 1_. On TCP it is the ID of the mb_tcp_servers line the device sits behind, and the settings block writes one server, ID 1 - any other prefix names a server that does not exist",
+    run:()=>{const f=$("sysPrefix"); if(!f) return;
+      f.value="1_"; f.dispatchEvent(new Event("change",{bubbles:true}));}},
+  "comm-parity-as-word": {
+    label:"switch to the modern format",
+    title:"Sets sql_format to modern, which writes the parity as the number the working drivers carry - 0 none, 1 odd, 2 even. The legacy format reproduces the Excel tool's word, which left an 8E1 device on plant 2794 silent",
+    run:(ctx)=>ctx.setOption("sql_format", "modern")},
+  /* Repeats the operator cannot tell apart. These buttons tell them apart with the
+     register or the state number - the pattern real installation sheets use (plant
+     11087) - and decide nothing about which one is wrong, which is why each advice says
+     to check the document first. */
+  "alias-duplicate": {
+    label:"add the register to the repeated texts",
+    title:"Appends each point's register in brackets to its text - Temperatur becomes Temperatur (3702) - on every row whose alias another row shares (undoable). Check first that the repeats are not a variant the unit does not have or a menu listed twice: those rows are removed, not renamed",
+    run:(ctx)=>{if(!ctx.points.length) return;
+      ptPushState(null, "register on repeated texts");
+      for(const p of ctx.points){
+        const bit = p.bit === null || p.bit === undefined || p.bit === "" ? "" : "." + p.bit;
+        p.text = `${p.text} (${p.addr}${bit})`;}
+      updateStats(); applyPointView();}},
+  "motherword-text-collision": {
+    label:"add the register to the name",
+    title:"Appends the register to the text of each authored point called Motherword that has no bit rows at its address (undoable), so it is no longer read as a word row and reaches the operator's menu. Rename it in the maker's own wording afterwards",
+    run:(ctx)=>{if(!ctx.points.length) return;
+      ptPushState(null, "register on Motherword");
+      for(const p of ctx.points) p.text = `${p.text} (${p.addr})`;
+      updateStats(); applyPointView();}},
+  "statetext-word-duplicate": {
+    label:"add the number to repeated words",
+    title:"Appends the state number to every word a list repeats - Off becomes Off (1) and Off (2) - so the operator can tell the states apart. It does not decide which one the document meant; copy the vendor's wording when you have it",
+    run:()=>{for(const box of [...$("statetexts").children]){
+        const byWord = new Map();
+        for(const line of box.querySelectorAll(".st-line")){
+          const w=line.querySelector(".sw"), v=line.querySelector(".sv");
+          const key=(w && w.value.trim().toLowerCase()) || "";
+          if(!key) continue;
+          if(!byWord.has(key)) byWord.set(key, []);
+          byWord.get(key).push([w, v]);}
+        for(const lines of byWord.values()) if(lines.length > 1)
+          for(const [w, v] of lines) w.value = `${w.value.trim()} (${v.value.trim()})`;}}},
+  "menu-too-long": {
+    label:"cut the menus to 10 characters",
+    title:"Shortens each menu past 10 characters to its first 10 (undoable) - exactly what MySQL would do on insert, only where you can see it. Check the cut value still names the menu you meant",
+    run:(ctx)=>{if(!ctx.points.length) return;
+      ptPushState(null, "cut menus");
+      /* menu has no column in the points table, so ptOut takes it from _orig - the same
+         reason the active repair edits both */
+      for(const p of ctx.points){
+        if(p.menu != null) p.menu = String(p.menu).slice(0, 10);
+        if(p._orig && p._orig.menu != null) p._orig.menu = String(p._orig.menu).slice(0, 10);}
+      updateStats(); applyPointView();}},
+  "project-datatype-also-shipped": {
+    label:"drop the project's copy",
+    title:"Removes the row from this project's Modbus variables. The shared table has the same definition, so the points using it keep exactly what they had",
+    run:(ctx)=>{for(const raw of ctx.errors){
+        /* a warning's message carries the "warning: " the errors do not */
+        const e=raw.replace(/^warning: /, "");
+        const m=e.match(/^datatypes\.(.+?): also in the shared table/); if(m) delete dtProject[m[1]];}
+      dtInvalidateKnown(); renderDatatypeCard(); applyPointView();}},
   "text-not-encodable": {
     label:"swap the paste artefacts",
     title:"Replaces only the characters that have an exact equivalent the encoding can write - a non-breaking hyphen for a hyphen, a Greek mu for the micro sign, a figure space for a space (undoable). An ohm sign, an arrow or a tick has no equivalent and is left alone: write those out in words rather than shipping a ?. Point fields only - a group alias or a state word carrying one is fixed in its own card",
@@ -4046,6 +4145,14 @@ const GOTO_COMM = {
   when:()=>true,
   run:()=>goToField("cardSys", "commMode"),
 };
+/* The same kind of fact as the transport: which framing the device uses is read off the
+   device, not guessed from a spelling, so the error suggests and the reader picks. */
+const GOTO_PARITY = {
+  label:"set the parity",
+  title:"Opens the Units & driver card and puts the cursor in the parity field. none, odd or even are what the driver reads - the message says which one the value most likely means, but the device's own setting decides",
+  when:()=>true,
+  run:()=>goToField("cardSys", "commParity"),
+};
 const GOTO_PLANT = {
   label:"set the plant number",
   title:"Opens the Project card and puts the cursor in the plant number field. 1234 is the number the starter prompt wrote into the file it asked an agent for until 2026-09-15, so it arrives in lists nobody set a number on - and it is a legal plant number, so nothing else can tell",
@@ -4107,6 +4214,7 @@ const GOTO_ACTIONS = {
   "project-datatype-unknown-value": GOTO_DATATYPES,
   "project-datatype-also-shipped": GOTO_DATATYPES,
   "comm-mode-unknown": GOTO_COMM,
+  "comm-parity-unknown": GOTO_PARITY,
   "driver-swap-needs-mb-exe": GOTO_DRIVER,
   "driver-write32-needs-mb-exe": GOTO_DRIVER,
   "driver-wide64-needs-mb-exe": GOTO_DRIVER,
@@ -4158,6 +4266,7 @@ function adviseOn(findings) {
    carries, then validate again so the outcome is visible immediately. Fixes
    that edit points push an undo step; option fixes show as amber deviations. */
 function applyAdviceFix(fix, group, pointRows) {
+  requireBoot();                               // setOption reads BOOT.defaults
   const toPoint = n => {
     const src = Array.isArray(pointRows) ? pointRows[n - 1] : n;
     if (!src) return null;                     // a synthesized row - nothing to edit
@@ -4177,6 +4286,7 @@ function applyAdviceFix(fix, group, pointRows) {
     setOption: (name, value) => {
       const cb = $("opt_" + name);
       if (cb) { cb.checked = value; cb.dispatchEvent(new Event("change", {bubbles:true})); }
+      else if (name in BOOT.defaults) optKept[name] = value;   // no control: kept value
     },
   });
   markValStale();
@@ -6658,6 +6768,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=7d71eafca6"></script>
+<script src="pyodide-adapter.js?v=be0a13ce33"></script>
 </body>
 </html>

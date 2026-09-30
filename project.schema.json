@@ -234,7 +234,7 @@
             "0_",
             "1_"
           ],
-          "description": "Prefix for device addresses: 0_ for the first driver on the plant, 1_ for the second."
+          "description": "The part of each device's driver address before the slave number. On TCP it is the ID of the mb_tcp_servers line the device sits behind, and the settings block writes exactly one server, ID 1 - so 1_; any other prefix names a server that does not exist and no point of the unit is polled (validate warns: tcp-prefix-server). RTU has no server list, and the fleet uses 0_ there (docs/15 section 2)."
         },
         "view_order": {
           "type": "integer",
@@ -330,7 +330,8 @@
                 "none",
                 "odd",
                 "even"
-              ]
+              ],
+              "description": "Serial parity, as the word. The modern script writes it into comm_parity as the number the driver reads (0 none, 1 odd, 2 even); the legacy one writes the word, as the Excel tool did, which left an 8E1 device silent on plant 2794 (validate: comm-parity-as-word). Anything else, E or 8E1 included, is written as it stands and the driver cannot read it (validate: comm-parity-unknown)."
             },
             "stop_bits": {
               "type": "integer",
