@@ -943,7 +943,9 @@
             <code>I_Hold_U16_N</code> plain integer/counter ·
             <code>Digital_X_N</code> discrete input · <code>Coil_X_N</code> coil ·
             <code>Bit_Hold</code>/<code>Bit_Input</code> one bit inside a word ·
-            <code>…_I32/U32/F</code> for 32-bit values. Word order is measured, not named:
+            <code>…_I32/U32/F</code> for 32-bit values. A writable register is a holding
+            register: <code>rw</code> takes a <code>_Hold_</code> or <code>Coil_X</code> key, never
+            <code>_Input_</code>. Word order is measured, not named:
             on <code>iw_mb.exe</code> an unsigned 32-bit <code>_N</code> reads the first register
             as the low word and <code>_W</code> as the high word (docs/15 §2.1), floats and
             signed 32-bit the same (plant 3694), so a low-word-first meter is
@@ -1581,13 +1583,17 @@ scale: a printed factor is inverted - "factor 10" or "x10" means x0.1. Only a
 unit: the fleet spellings - C (never °C), %, sec, V, %RH, ppm, m3/h, Pa, kWh.
   No key fits: write the unit as the document prints it - it ships as a custom
   eng_unit, nothing flagged, 20 characters at most - and say so in the notes.
-  Do not reach for a neighbour - kVAh is not VAh, sek is not ms.
+  Do not reach for a neighbour or a translation - kVAh is not VAh, the printed
+  Sec is sec (never sek), and ms is milliseconds, never m/s.
 decimals: match the scale - x0.1 gives 1, x0.01 gives 2.
 
 ALWAYS
 - Keep the document's own sections as the groups, in source order, with the
   heading as the group alias. aio/dio/alm/misc/sch are the fallback for a
   document with no structure of its own.
+- Where a column says which variant has a row (1V/2V against 2V), author the
+  installed variant's rows only - ask which it is - and a register printed
+  under several menus once, at its first listing.
 - Point order as printed - it becomes the operator's menu (view_order).
 - A late artifact restarts the checkpoint: if a filled workbook, generated SQL
   or a previous delivery turns up after we start, say so and start over from
@@ -1640,6 +1646,11 @@ NEVER
   unless an explicit 32-bit point at that address fixes the word order.
 - Never make a point rw unless the document says it is writable. A holding
   register is not permission.
+- Never put rw on an Input key. A writable register is a holding register:
+  an RW row is _Hold_ (a writable bit Coil_X_), and a document that names no
+  function code is _Hold_ throughout, provisional until one live read.
+- Never make the Modbus address, baud rate, parity or mode, or a factory
+  reset writable - a write from IWMAC cuts the unit off the bus or wipes it.
 - Never turn a negative-numbered enum or a bitmask into a state text.
 - Never copy a command telegram into addr - 0200FF00 is coil 0200 plus a
   payload - and never merge two sources that disagree on a register; ask
@@ -1852,7 +1863,7 @@ const COL_HELP = {
   alarm:"Alarm priority written to plant_pri: A alarm (fleet default), B/C lower, N note. Moves the row to the alm group only when auto_groups and alarms_to_alm are both on",
   unit:"Engineering unit - becomes eng_unit. A key from the unit table, or a custom unit the table lacks written as the document prints it (ships as typed, nothing flagged; the column holds 20 characters); never a near-miss spelling of a key",
   scale:"Scaling key - supplies the scale factor plus raw and engineering min/max in one block. x0.1 dominates the real fleet",
-  rw:"r read-only, rw writable (setpoints, commands). Bit rows are promoted to vr/vrw automatically; rw also emits the write half of the driver id",
+  rw:"r read-only, rw writable (setpoints, commands). A writable register is a holding register: rw on an _Input_ or Digital_X key writes a different register (rw-input-register). Bit rows are promoted to vr/vrw automatically; rw also emits the write half of the driver id",
   update_freq:"Polling override. Blank derives it: analog and integral values norm read-only / slow writable, digital IO slow. Use slow for energy totals",
   online:"Online indication - IWMAC uses these to see the unit is alive. Mark 3-4 frequently changing, always-readable points; at least one is required",
   decimals:"Display decimals, written as format %.Nf. Pair it with the scale: x0.1 goes with 1",
@@ -1931,7 +1942,7 @@ const COL_DOC = {
   rw:{
     what:"`r` for read-only, `rw` where the operator may write the register. Bit rows are promoted to `vr` and `vrw` for you.",
     use:"A writable point also emits the write half of the driver id, which is what turns the value into a control.",
-    when:"`rw` only where the vendor's document says the register is writable and the site should be writing it - setpoints, commands, mode selectors. Everything else `r`. This is the row's safety boundary, not a convenience: marked writable in error, a read-only register gives the operator a control that silently does nothing.",
+    when:"`rw` only where the vendor's document says the register is writable and the site should be writing it - setpoints, commands, mode selectors. Everything else `r`. This is the row's safety boundary, not a convenience: marked writable in error, a read-only register gives the operator a control that silently does nothing. A writable register is a holding register: Modbus cannot write an input register or a discrete input, so an `rw` row takes a `_Hold_` or `Coil_X` key, and a document naming no function code is `_Hold_` throughout (docs/11). Never writable, whatever the document says: the Modbus address, baud rate, parity or mode, and a factory reset - one write cuts the unit off the bus or wipes it.",
   },
   update_freq:{
     what:"How often the register is polled: `fast`, `norm`, `slow`, `once` or `never`. Empty means derived.",
@@ -3770,6 +3781,20 @@ const FIX_ACTIONS = {
       ptPushState(null, "clear bit formatting");
       for(const p of ctx.points){p.unit=null; p.scale=null; p.decimals=null;}
       updateStats(); applyPointView();}},
+  /* A writable register is a holding register (docs/11): the block is what is wrong,
+     not the write, so each row moves to the twin a write can reach. Every FC2/FC4 key
+     in the shipped table has one; a project-defined key without one is left alone. */
+  "rw-input-register": {
+    label:"move these to the holding register",
+    title:"Changes each writable input-register row to its holding twin (undoable): _Input_ becomes _Hold_, Digital_X becomes Coil_X. Modbus cannot write an input register or a discrete input, so a row the document marks writable lives in the holding table - right when the document says writable. If it says input register, set rw back to r instead",
+    run:(ctx)=>{if(!ctx.points.length) return;
+      ptPushState(null, "input writes to holding");
+      const known=dtKnown();
+      for(const p of ctx.points){
+        const twin=String(p.datatype||"").replace("_Input_","_Hold_").replace("Bit_Input","Bit_Hold")
+          .replace("Nibble_Input","Nibble_Hold").replace("Digital_X_","Coil_X_");
+        if(twin!==p.datatype && known.has(twin.toLowerCase())) p.datatype=twin;}
+      ptMarkUnknownDatatypes(); updateStats(); applyPointView();}},
   "group-unused": {
     label:"delete the empty groups",
     title:"Removes each group that holds no points from the Groups card. The operator loses a menu folder that opened on nothing",
@@ -6527,6 +6552,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=582cea1c5e"></script>
+<script src="pyodide-adapter.js?v=4ba8bbab25"></script>
 </body>
 </html>
