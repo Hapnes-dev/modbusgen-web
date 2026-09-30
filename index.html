@@ -3643,6 +3643,16 @@ function showProject(data) {
    the page cannot drift the way a regex over English quietly did - reword a message
    there and its fix used to detach with nothing to show for it. What stays here is the
    part only a browser can do: edit rows, tick an option, re-validate. */
+/* The two driver warnings whose question has a one-word answer. A statement about the
+   plant, not a guess at the device: the button fills the driver field and nothing else.
+   _W to _N is still never offered - which word order a register has is settled by the
+   vendor document or a live read, not by the driver being awkward. */
+const SET_MB_EXE = {
+  label:"this plant runs mb.exe",
+  title:"Sets the driver field to mb.exe - the house standard, and what a new project starts with. It is a statement about the plant, so click it only if the plant runs iw_mb.exe; on modbus.php, pick that instead and the warning becomes an error naming what to change. No datatype is touched",
+  run:()=>{const d=$("pDriver"); if(!d) return;
+    d.value="mb.exe"; d.dispatchEvent(new Event("change",{bubbles:true}));},
+};
 const FIX_ACTIONS = {
   /* Repairs for the delivery warnings. A warning with a mechanical remedy is the same
      shape as an error with one - the only difference is that nothing was blocking. */
@@ -3795,6 +3805,50 @@ const FIX_ACTIONS = {
           .replace("Nibble_Input","Nibble_Hold").replace("Digital_X_","Coil_X_");
         if(twin!==p.datatype && known.has(twin.toLowerCase())) p.datatype=twin;}
       ptMarkUnknownDatatypes(); updateStats(); applyPointView();}},
+  "driver-swap-needs-mb-exe": SET_MB_EXE,
+  "driver-wide64-needs-mb-exe": SET_MB_EXE,
+  /* A six-digit 0/1/3/4 address is Modicon table notation left on the number - 400101
+     is holding register 101. Only that shape is rewritten: any other address too high
+     is a fact about the row the page cannot compute, and it stays for the reader. */
+  "addr-too-high": {
+    label:"strip the table prefix",
+    title:"Rewrites each six-digit address that starts with 0, 1, 3 or 4 as the register after that digit (undoable): 400101 becomes 101, 300012 becomes 12. The leading digit is Modicon table notation (docs/13 section 2), and subtract_one still applies once, as before. Check the datatype matches the table the digit named - 3 is an input register, 4 a holding register. An address too high in any other shape is left alone",
+    run:(ctx)=>{const bad=ctx.points.filter(p=>/^[0134]\d{5}$/.test(String(p.addr)));
+      if(!bad.length) return;
+      ptPushState(null, "strip table prefix");
+      for(const p of bad) p.addr = Number(p.addr) % 100000;
+      updateStats(); applyPointView();}},
+  /* online-missing blocks generation, and which rows are reliable enough to prove the
+     unit alive is the author's call - so this is a proposal to check, not an answer:
+     up to three read-only measured values from the top of the list (docs/16 16.10),
+     never an alarm, a bit, a setpoint or a row that is not polled on repeat. */
+  "online-missing": {
+    label:"mark three measured values online",
+    title:"Proposes an online set and marks it (undoable): up to three read-only Analog values rows from the top of the list - no alarms, bits, setpoints or slow/once/never rows - topped up with read-only integral values if there are too few. IWMAC reads them to decide the unit is alive, so check the choice: an outdoor temperature or an energy counter is ideal, a value that can stop answering while the plant runs is not",
+    run:()=>{const app={};
+      for(const d of dtAllRows()) app[String(d.name).toLowerCase()]=d.application;
+      const ok=(p,kind)=>(p.rw||"r")==="r" && !p.alarm
+        && (p.bit===null||p.bit===undefined||p.bit==="")
+        && !["slow","once","never"].includes(String(p.update_freq||""))
+        && String(p.text||"")!=="Motherword"
+        && app[String(p.datatype||"").toLowerCase()]===kind;
+      const pick=ptModel.filter(p=>ok(p,"Analog values")).slice(0,3);
+      if(pick.length<3) pick.push(...ptModel.filter(p=>ok(p,"Integral values")).slice(0,3-pick.length));
+      if(!pick.length) return;
+      ptPushState(null, "propose online points");
+      for(const p of pick) p.online = true;
+      updateStats(); applyPointView();}},
+  /* The warning names every definition no row uses; deleting exactly those is the whole
+     remedy, and a definition a row does use is never touched. */
+  "project-datatype-unused": {
+    label:"delete the unused definitions",
+    title:"Removes each project datatype that no point uses. An unused definition changes nothing in the output and misleads the next reader, who will assume some point needs it",
+    run:()=>{for(const name of Object.keys(dtProject)) if(!dtUsageCount(name)) delete dtProject[name];
+      dtInvalidateKnown(); renderDatatypeCard(); applyPointView();}},
+  "motherword-absent": {
+    label:"switch on auto_motherwords",
+    title:"Checks auto_motherwords in the Project card so the missing word rows are synthesized, and validates again. Leave it off only if you author the word rows yourself",
+    run:(ctx)=>ctx.setOption("auto_motherwords", true)},
   "group-unused": {
     label:"delete the empty groups",
     title:"Removes each group that holds no points from the Groups card. The operator loses a menu folder that opened on nothing",
@@ -3998,8 +4052,60 @@ const GOTO_PLANT = {
   when:()=>true,
   run:()=>goToField("cardProject", "pPlant"),
 };
+const GOTO_PLANT_FIELD = {
+  label:"set the plant number",
+  title:"Opens the Project card and puts the cursor in the plant number field. The number names the generated file and is a fact about the plant, so only you can type it",
+  when:()=>true,
+  run:()=>goToField("cardProject", "pPlant"),
+};
+const GOTO_TABLE = {
+  label:"edit the table name",
+  title:"Opens the Project card and puts the cursor in the table name. It names the three database tables the list lands in, so a shorter name is a new destination - choose it deliberately",
+  when:()=>true,
+  run:()=>goToField("cardProject", "pTable"),
+};
+const GOTO_OWNER = {
+  label:"edit the driver name",
+  title:"Opens the Units & driver card and puts the cursor in the owner / driver name. It has to match the driver the plant already runs, so check it against the plant database before changing it",
+  when:()=>true,
+  run:()=>goToField("cardSys", "sysOwner"),
+};
+const GOTO_UNITS = {
+  label:"edit the device address",
+  title:"Opens the Units & driver card at the device table, cursor in the first address outside 1-255. The slave address is set on the device itself, so read it there",
+  when:()=>true,
+  run:()=>{wizFocus("cardSys");
+    const inputs=[...document.querySelectorAll("#unitRows .u-addr")];
+    const bad=inputs.find(i=>{const n=Number(i.value); return !Number.isInteger(n)||n<1||n>255;})||inputs[0];
+    if(bad) bad.focus({preventScroll:true});},
+};
+const GOTO_STATES = {
+  label:"open the state lists",
+  title:"Opens the State texts card, where the lists live - add the one a row points at, or give each number the vendor's own word",
+  when:()=>true,
+  run:()=>goToField("cardStates", ""),
+};
+const GOTO_DATATYPES = {
+  label:"open the project's datatypes",
+  title:"Opens the Modbus variables card, where this project's own datatype definitions are edited",
+  when:()=>true,
+  run:()=>goToField("cardVars", ""),
+};
 const GOTO_ACTIONS = {
   "plant-is-a-placeholder": GOTO_PLANT,
+  "plant-missing": GOTO_PLANT_FIELD,
+  "plant-not-filename-safe": GOTO_PLANT_FIELD,
+  "table-name-too-long": GOTO_TABLE,
+  "owner-charset": GOTO_OWNER,
+  "owner-too-long": GOTO_OWNER,
+  "slave-address-range": GOTO_UNITS,
+  "statetext-unknown": GOTO_STATES,
+  "statetext-word-duplicate": GOTO_STATES,
+  "datatype-func-unsupported": GOTO_DATATYPES,
+  "datatype-name-case-duplicate": GOTO_DATATYPES,
+  "datatype-swap-unsupported": GOTO_DATATYPES,
+  "project-datatype-unknown-value": GOTO_DATATYPES,
+  "project-datatype-also-shipped": GOTO_DATATYPES,
   "comm-mode-unknown": GOTO_COMM,
   "driver-swap-needs-mb-exe": GOTO_DRIVER,
   "driver-write32-needs-mb-exe": GOTO_DRIVER,
@@ -6552,6 +6658,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=4ba8bbab25"></script>
+<script src="pyodide-adapter.js?v=888e4e7421"></script>
 </body>
 </html>
