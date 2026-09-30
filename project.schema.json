@@ -182,7 +182,7 @@
         "null"
       ],
       "additionalProperties": false,
-      "description": "Optional iw_sys_* blocks: physical device registration and driver communication settings. Omit the whole object unless the user asks for a complete/new-plant script - an existing plant already has these. Omitting it is fully supported; writing \"system\": null is neither required nor useful, and adding it does not affect GUI import. An imported or GUI-exported project carries \"system\": null because the source workbook enabled no iw_sys section - that is what the converter emits, not a serialisation style to copy when authoring. Nothing is emitted unless units and/or settings is true.",
+      "description": "Optional iw_sys_* blocks: physical device registration and driver communication settings. Omit the whole object unless the user asks for a complete/new-plant script - an existing plant already has these. Omitting it is fully supported; writing \"system\": null is neither required nor useful, and adding it does not affect GUI import. An imported or GUI-exported project carries \"system\": null when its source holds no device or driver at all - a workbook with nothing typed into the Main_Setup unit and driver cells, a System card left empty. That is what the converter emits, not a serialisation style to copy when authoring. A workbook that holds a device or driver with both iw_sys boxes off imports it with units and settings false, so the values survive and stay inert. Nothing is emitted unless units and/or settings is true.",
       "properties": {
         "units": {
           "type": "boolean",
