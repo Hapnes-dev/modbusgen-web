@@ -4013,17 +4013,17 @@ const FIX_ACTIONS = {
         const id=box.querySelector(".st-id"); if(id && ids.has(id.value.trim())) box.remove();}}},
   "scale-without-decimals": {
     label:"set decimals from the scale",
-    title:"Fills decimals on each scaled row from its scale - x0.1 gives 1, x0.01 gives 2 (undoable). Only touches rows that have none",
+    title:"Fills decimals on each scaled row from its scale - x0.1 gives 1, x0.01 gives 2, x65 gives 4 (undoable). Only touches rows that have none",
     run:(ctx)=>{if(!ctx.points.length) return;
-      /* The multiplier is the key itself, so the decimals are its own - x0.1 gives 1,
-         x0.25 gives 2, x3.6 gives 1. A whole multiplier (x1, x10, x65) implies none and
-         the warning does not raise those; an earlier version matched only x0.1-style
-         keys and silently did nothing on the rest, so the button changed no rows and
-         the warning stayed on screen. Mirrors scale_decimals in validate.py. */
-      const from = s => {const m=/^x(\d*\.?\d+)$/.exec(String(s||"").trim());
-        if(!m) return null;
-        const v=parseFloat(m[1]); if(!isFinite(v) || v===Math.trunc(v)) return null;
-        const dot=m[1].indexOf("."); return dot<0 ? null : (m[1].length-dot-1) || null;};
+      /* The decimals are validate.py's scale_decimals, sent in the bootstrap as
+         BOOT.scale_decimals, so the button applies exactly what the warning asks for.
+         They come from the key's ranges in the scaling table, not its name: x65
+         (0..65536 -> 0..10) gives 4 and x0036 (0..277 -> 0..1) gives 3. Until 2026-10-01
+         this page read the name, as the warning did, and called both whole. An earlier
+         copy of the rule matched only x0.1-style keys, so the button changed no rows and
+         the warning stayed on screen; one rule in one place cannot drift that way. */
+      const table={}; for(const [k,v] of Object.entries((BOOT && BOOT.scale_decimals) || {})) table[k.toLowerCase()]=v;
+      const from = s => table[String(s||"").trim().toLowerCase()] ?? null;
       ptPushState(null, "decimals from scale");
       for(const p of ctx.points){const d=from(p.scale); if(d!=null && p.decimals==null) p.decimals=d;}
       updateStats(); applyPointView();}},
@@ -6817,6 +6817,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=be0a13ce33"></script>
+<script src="pyodide-adapter.js?v=e85a16109e"></script>
 </body>
 </html>
