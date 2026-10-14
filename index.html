@@ -1668,6 +1668,10 @@ ALWAYS
 - update_freq slow on energy totals, counters and configuration values.
 - Write canonical, not exhaustive: leave out every field at its default.
 - Prefer a deliberate subset - the driver sends one Modbus request per point.
+- Every point traces to a printed row: each point is one row the document
+  prints, by function and number. Where a sheet names each row twice (a tag
+  and a comment), take the column that names every row - count its values
+  first; a column that repeats gives repeated aliases.
 
 NEVER
 - Never invent a datatype or scale key; if none fits, stop and ask. A unit the
@@ -1692,6 +1696,9 @@ NEVER
   32 bits silently. Skip the row and say so.
 - Never write a system: block unless I ask for a new-plant script.
 - Never transcribe an existing list by hand.
+- Never author a register the document does not print - not the next member
+  of a numbered series (H0-H2 printed is no H3), and not one that only
+  answered on the wire. Report it as an open question instead.
 - Never delete a row because it reports an error - fix what the code names.
   A validator suggestion is a guess: I_Hold_U16R_N suggests I_Hold_U16_R,
   which is wrong for a device that really is _N.
