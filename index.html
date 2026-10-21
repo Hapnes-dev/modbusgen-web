@@ -341,6 +341,9 @@
   .wizard .wizbody{padding:10px 12px;max-height:56vh;overflow:auto}
   .wizard .wizbody p{margin:0 0 8px}
   .wizard .wizbody p:last-child{margin-bottom:0}
+  .wizard .wizbody ul,.wizard .wizbody ol{margin:0 0 8px;padding-left:18px}
+  .wizard .wizbody li{margin:2px 0}
+  .wizard .wizbody ul:last-child,.wizard .wizbody ol:last-child{margin-bottom:0}
   .wizard .wizbody code{background:#12151b;border:1px solid var(--line);border-radius:4px;
     padding:0 5px;font-size:11.5px;color:#a8d8ff}
   .wizard .wizbody b{color:var(--text)}
@@ -630,7 +633,7 @@
   <button id="btnGenerate" class="primary"
           title="Validate, then render the SQL import script into the Result card below. Nothing is written to disk">Generate SQL</button>
   <button id="btnWizard"
-          title="Step-by-step guide: what to prompt the AI agent, then every card of this page in order"><svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true" style="vertical-align:-1px;margin-right:5px;fill:currentColor"><path d="M1.2 13.4 9 5.6l1.4 1.4-7.8 7.8z"/><path d="M11.4 1.3l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/><path d="M4.6 1.6l.4 1 1 .4-1 .4-.4 1-.4-1-1-.4 1-.4z"/></svg>Wizard</button>
+          title="Step-by-step help: from the maker's document to the script, one card at a time"><svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true" style="vertical-align:-1px;margin-right:5px;fill:currentColor"><path d="M1.2 13.4 9 5.6l1.4 1.4-7.8 7.8z"/><path d="M11.4 1.3l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/><path d="M4.6 1.6l.4 1 1 .4-1 .4-.4 1-.4-1-1-.4 1-.4z"/></svg>Wizard</button>
 </header>
 <main>
   <div class="card" id="cardProject">
@@ -6536,131 +6539,83 @@ initFolding();
    step exists to be done, not read. `skip` marks the steps most lists do not need, so a
    first-timer is not left wondering what they failed to fill in. */
 const WIZARD = [
-  {title:"What you are making", card:"cardTips", copy:true,
-   body:`<p>A device on a plant — a meter, a valve, a heat pump — holds its values in
-     numbered slots called <b>registers</b>. Register 101 might be the supply
-     temperature, 102 a setpoint. <b>Modbus</b> is the language for asking a device what
-     is in a slot. The device maker publishes which slot holds what, in a table usually
-     called a <i>register map</i> or <i>Modbus list</i>.</p>
-     <p>IWMAC cannot read that PDF. It needs the same information as rows in its
-     database, and this page produces the script that puts them there. That is the whole
-     job: maker's document in, database script out.</p>
-     <p><b>You do not type it in.</b> Attach the maker's document to a Copilot chat and
-     paste the prompt highlighted below — <b>copy prompt</b> takes the whole thing. The
-     agent writes the file and asks you about anything the document does not say. Answer
-     its questions; it is meant to ask.</p>
-     <p>One shortcut worth knowing: if a filled <b>Modbustemplate</b> workbook or an
-     older generated SQL script already exists for this plant, do not use the chat at
-     all. <b>Insert Excel</b> and <b>Import SQL</b> convert those directly and exactly,
-     and an existing delivery beats anything written from scratch.</p>`},
+  {title:"Start here", card:"cardTips", copy:true,
+   body:`<p>This page turns a device maker's <b>Modbus list</b> (the table of what each
+     register holds) into a <b>script</b> you import into IWMAC.</p>
+     <p><b>The easy way:</b></p>
+     <ol>
+       <li>Open the AI agent and attach the maker's document.</li>
+       <li>Press <b>copy prompt</b> below and paste it into the chat.</li>
+       <li>Answer the agent's questions. You get a <code>.json</code> file.</li>
+     </ol>
+     <p>Already have a filled <b>Modbustemplate</b> or an old <b>SQL script</b> for this
+     plant? Use <b>Insert Excel</b> or <b>Import SQL</b> instead. No chat needed.</p>`},
   {title:"Open the project", card:"cardProject",
-   body:`<p>Press <b>Import project</b> and pick the <code>.json</code> the agent wrote —
-     or <b>New</b> to start from nothing and type it yourself.</p>
-     <p>Then check the three things nobody but you knows. <b>Table name</b> is a short
-     lowercase word — letters, digits and underscore, 25 characters at most — naming the
-     three database tables this plant's list lands in. <b>Plant
-     number</b> identifies the site in IWMAC. <b>Driver</b> is which of IWMAC's two Modbus
-     drivers this plant runs, which decides whether a swapped word order and a 32-bit
-     write are possible there at all. None of the three can be guessed from a datasheet,
-     so if you are unsure, ask whoever owns the plant — and leave the driver
-     <b>not stated</b> rather than picking one, because validation then asks instead of
-     assuming.</p>
-     <p>Below them are the options. Leave them as they are unless you know why not; an
-     option shown <span style="color:#e8b34a">amber</span> is one that differs from the
-     recommended setting. The single one worth checking is
-     <code>subtract_one</code>. Device makers usually number their registers from 1,
-     while the Modbus protocol itself counts from 0, so the tool subtracts one. Nearly
-     every document is the from-1 kind, so leave it ticked — but if yours prints an
-     explicit column of protocol addresses starting at 0, untick it. Getting this wrong
-     shifts every value by one register, and the list still looks perfectly fine.</p>`},
+   body:`<p>Press <b>Import project</b> and pick the agent's <code>.json</code> file. Or
+     press <b>New</b> to start empty.</p>
+     <p>Then check three fields:</p>
+     <ul>
+       <li><b>Table name</b>: a short name such as <code>vent_ahu1</code>. Small letters,
+         digits and _ only, at most 25.</li>
+       <li><b>Plant number</b>: only used in the file name.</li>
+       <li><b>Driver</b>: keep <b>mb.exe</b>. Choose modbus.php only if you know the plant
+         runs it.</li>
+     </ul>
+     <p>Leave the options as they are. <span style="color:#e8b34a">Amber</span> means
+     "not the usual setting".</p>
+     <p>If the plant later shows every value one row off, check <code>subtract_one</code>
+     first.</p>`},
   {title:"Groups", card:"cardGroups",
-   body:`<p>A <b>group</b> is a folder in the menu the operator sees in IWMAC. Every
-     value belongs to exactly one. The short key (<code>aio</code>) is what you type on a
-     row; the alias next to it ("Analoge inn/ut") is what the operator reads, so it goes
-     in their language.</p>
-     <p>If your source document had its own sections — Temperatures, Alarms, Setpoints —
-     <b>use those as your groups, in the same order</b>. Someone already decided how this
-     device is organised, and throwing that away for generic folders makes the menu worse
-     than the document.</p>
-     <p>If the document has no structure of its own, press <b>+ default groups</b> for
-     the five nearly every list uses: <code>aio</code> analogue in/out, <code>dio</code>
-     digital in/out, <code>alm</code> alarms, <code>misc</code> everything else,
-     <code>sch</code> time schedules.</p>`},
+   body:`<p>Groups are the folders the operator sees in IWMAC. Each point goes in one.</p>
+     <p>The agent's file already has them, so just check the names.</p>
+     <p>Making them yourself? Use the sections of the maker's document, or press
+     <b>+ default groups</b>.</p>`},
   {title:"State texts", card:"cardStates",
-   body:`<p>Not every register holds a measurement. Some hold a <b>code</b>: 0 means off,
-     1 means running, 2 means defrosting. On its own the operator would just see the
-     number 2.</p>
-     <p>A <b>state text list</b> maps those numbers to words. Write it once here, then
-     point a row at it by its id number.</p>
-     <p>Two rules. Copy the maker's numbers <b>exactly</b> — if the document jumps from 3
-     to 5, your list jumps too, because those numbers are what the device actually sends.
-     Keep its words as printed too - do not translate them. Press <code>Enter</code> in a
-     word box to add the next one.</p>`,
-   skip:"Nothing to do here if no register in your document has a code table."},
+   body:`<p>Some values are codes: 0 = Off, 1 = On, 2 = Defrost. A state text list turns
+     the numbers into words.</p>
+     <p>Copy the numbers and the words <b>exactly</b> as the maker's document prints
+     them. Do not translate.</p>`,
+   skip:"Skip if no value in your document is a code."},
   {title:"Modbus variables", card:"cardVars",
-   body:`<p>A <b>datatype</b> tells the driver how to read a register: which Modbus
-     command to send, whether the value is a whole number or has decimals, whether it can
-     be negative, whether it spans two registers, and in what order the bytes arrive.
-     <code>A_Hold_I16_N</code> is one of them.</p>
-     <p>136 datatypes ship with this tool and they cover almost every device. You pick one
-     per row on the Points card, from a dropdown — you do not write them.</p>
-     <p>This card exists only for the rare register that none of the 136 describes. If you
-     think you need one, <b>ask someone first</b>: a wrong datatype does not fail, it
-     quietly reads a believable wrong number.</p>`,
-   skip:"Most lists never touch this card. Skipping it is the normal answer."},
+   body:`<p>You can almost always skip this card.</p>
+     <p>It is only for a rare register that none of the built-in datatypes can read. Ask
+     someone before you add one here.</p>`,
+   skip:"Most lists skip this card."},
   {title:"Points", card:"cardPoints",
-   body:`<p>This is the list itself, and the real work. A <b>point</b> is one value: one
-     register, one row here, one line the operator sees in IWMAC.</p>
-     <p>A row needs four things at minimum. <b>Group</b>, the folder it belongs to.
-     <b>Datatype</b>, how to read it. <b>Address</b>, the register number straight from the
-     maker's document. <b>Text</b>, the name the operator reads — short, and in the
-     maker's own wording, so the list and the manual can be read side by side: a Norwegian
-     manual gives Norwegian texts, an English one English. State words and group aliases
-     are the same - the document's words, never translated.</p>
-     <p>The rest is optional and worth filling in where the document supports it: the
-     <b>unit</b> (°C, %, kWh), a <b>scale</b> if the device sends tenths instead of whole
-     numbers, an <b>alarm</b> letter if this value is an alarm, a <b>state text</b> if it
-     is a code.</p>
-     <p>Some values are a single <b>bit</b> inside a register — one status word where bit
-     3 means "filter alarm". Give the bit number and nothing more; the tool works out the
-     rest by itself.</p>
-     <p>Working in here: <code>Ctrl+F</code> searches, click and drag selects several rows
-     and the bar underneath edits them together, and a row highlighted <span
-     style="color:#ff6b6b">red</span> uses a datatype no table knows — fix that before you
+   body:`<p>This is the list itself. One row is one value the operator sees.</p>
+     <p>Every row needs:</p>
+     <ul>
+       <li><b>Group</b>: which folder.</li>
+       <li><b>Datatype</b>: how to read it. Pick it from the list.</li>
+       <li><b>Address</b>: the register number from the document.</li>
+       <li><b>Text</b>: the name, worded as in the document.</li>
+     </ul>
+     <p>Add <b>unit</b>, <b>scale</b>, <b>alarm</b> and <b>state text</b> where the
+     document gives them.</p>
+     <p>A <span style="color:#ff6b6b">red</span> row has a problem. Fix it before you
      generate.</p>`},
   {title:"Units & driver", card:"cardSys",
-   body:`<p>Everything so far describes <i>values</i>. This card describes the
-     <b>device</b> and the <b>connection</b>: its address on the bus, whether it is
-     reached over the network or a serial cable, the speed of that cable, and the name
-     the driver runs under.</p>
-     <p>You only need it when this plant has never had this driver before. If the plant is
-     already running, IWMAC knows all of it, and both switches stay off.</p>
-     <p>So the normal answer here is to leave the card alone entirely.</p>`,
-   skip:"Skip it unless this is a brand-new plant or a new device."},
+   body:`<p>Only for a <b>new plant or a new device</b>: how IWMAC connects to it (bus
+     address, network or cable, speed).</p>
+     <p>Is the plant already running? Then leave this card alone.</p>`,
+   skip:"Skip unless the plant or the device is new."},
   {title:"Validate", card:"cardRun",
-   body:`<p><b>Validate</b> checks the whole list and produces nothing. Run it as often as
-     you like.</p>
-     <p><b>Errors</b> stop generation and turn their rows red: a datatype that does not
-     exist, two rows reading the same register, a group nothing defines. Each one names
-     what is wrong and what to do about it, and where the repair is mechanical there is a
-     <b>fix:</b> button that does it for you.</p>
-     <p><b>Warnings</b> do not stop you, but they are not noise either — each says what it
-     costs to ignore it. Read them before you decide to.</p>
-     <p>One rule catches everyone the first time: at least one point must be marked
-     <b>online</b>. IWMAC reads those to check the device is still answering, so pick
-     three or four reliable values that change often — a temperature, not a serial
-     number, which would answer even if the device were dead.</p>`},
+   body:`<p>Press <b>Validate</b>. It checks the list and changes nothing.</p>
+     <ul>
+       <li><b>Errors</b> must be fixed. Many have a <b>fix</b> button.</li>
+       <li><b>Warnings</b> do not stop you, but read them.</li>
+     </ul>
+     <p>Mark 3 or 4 points <b>online</b>. Pick values that change often, such as a
+     temperature. IWMAC uses them to see that the device answers.</p>`},
   {title:"Generate the script", card:"cardResult",
-   body:`<p><b>Generate SQL</b> writes the database script and shows it below. It is plain
-     text, and it is what gets imported into the plant database. <b>copy SQL</b> puts it
-     on the clipboard, <b>export SQL</b> downloads it, <b>save file</b> writes it to
-     disk.</p>
-     <p>Two things after that. The script is not the whole job on the IWMAC side: run
-     <b>Setup Statetext</b>, then <b>JSON Setup</b>, then <b>Generate Param/Grp/Set</b>,
-     and check it reports <span class="ex">Done</span>.</p>
-     <p>And press <b>Export</b> in the header to save the project itself. Next time this
-     plant changes you start from that file rather than from a chat — which is the
-     difference between an edit and doing all of this again.</p>`},
+   body:`<p>Press <b>Generate SQL</b>, then <b>export SQL</b> to download the script.
+     Import it into IWMAC.</p>
+     <p>Then, in IWMAC, run <b>Setup Statetext</b>, <b>JSON Setup</b> and
+     <b>Generate Param/Grp/Set</b>, in that order. Wait for <span class="ex">Done</span>.</p>
+     <p>Replacing a list that is already on the plant? The import never deletes old rows,
+     so ask how to clear them first.</p>
+     <p>Last, press <b>Export</b> at the top to save the project file. Next time, start
+     from that file.</p>`},
 ];
 let wizAt = -1;
 
