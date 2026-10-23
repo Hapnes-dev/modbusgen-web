@@ -709,15 +709,18 @@
 
         <h4>Script shape</h4>
         <ul>
-          <li><b>truncate</b><span class="dflt">on</span> — empty the table first with
-            <code>TRUNCATE TABLE</code>, which is what you want when re-importing.</li>
+          <li><b>truncate</b><span class="dflt">off</span> — empty the list's three
+            tables with <code>TRUNCATE TABLE</code> before writing them. Tick it when this
+            list replaces the whole of an older one on the plant: <code>REPLACE INTO</code>
+            alone never removes a row, so rows the new list dropped stay behind. Leave it
+            off for a list that adds only a few points to a table, or it wipes the rest. A
+            <code>sql_format: legacy</code> file truncates unless it is unticked.</li>
           <li><b>create_tables</b><span class="dflt">off</span> — add
             <code>CREATE TABLE IF NOT EXISTS</code>. Needed the first time a plant gets
             this table.</li>
-          <li><span class="note">Neither does anything in the default format.</span>
-            <code>modern</code> always creates the table and uses
-            <code>REPLACE INTO</code> rather than empty-then-insert, so these two only
-            matter with <code>sql_format: legacy</code>.</li>
+          <li><span class="note">create_tables does nothing in the default format.</span>
+            <code>modern</code> always creates the table, so it only matters with
+            <code>sql_format: legacy</code>.</li>
         </ul>
 
         <h4>Alias text</h4>
@@ -1887,7 +1890,7 @@ const OPT_MORE = [
 // hover text for every boolean option - keep in step with the Project card help
 const OPT_HELP = {
   subtract_one:"subtract 1 from every Modbus address (1-based device docs)",
-  truncate:"emit TRUNCATE TABLE before the inserts - legacy sql_format only, ignored by modern",
+  truncate:"empty the list's three tables with TRUNCATE TABLE before writing them - tick it when this list replaces the whole of an older one, so rows it dropped do not stay behind; never for a list that adds a few points to a table. Off by default in the modern format, on in legacy",
   create_tables:"emit CREATE TABLE IF NOT EXISTS - legacy sql_format only, modern always emits it",
   force_active:"set every point active=1; rows with text 'Reserve.' still stay inactive",
   auto_motherwords:"synthesize the missing word row for bit-addressed points",
@@ -2227,17 +2230,25 @@ function bootstrapFailed(e, replied) {
 let optKept = {};
 function renderOptions(values) {
   requireBoot();                       // the checkboxes are BOOT.defaults, one per key
+  /* truncate's default is the format's (Options.truncates): off for modern, on for
+     legacy. The bootstrap sends it as null for that reason, so it is a checkbox by name
+     rather than by the type of its default, and the box shows what this file's script
+     will do. */
+  const isBoolOpt = (name) => name === "truncate" || typeof BOOT.defaults[name] === "boolean";
+  const optDefault = (name) => name === "truncate"
+    ? (optKept.sql_format ?? BOOT.defaults.sql_format) === "legacy"
+    : BOOT.defaults[name];
   optKept = {};
   for (const [name, value] of Object.entries(values || {}))
-    if (name in BOOT.defaults && typeof BOOT.defaults[name] !== "boolean"
+    if (name in BOOT.defaults && !isBoolOpt(name)
         && value !== undefined && value !== null)
       optKept[name] = value;
   const box = (name) => {
     const cb = el("input", {type:"checkbox", id:"opt_"+name});
-    cb.checked = values[name] !== undefined ? values[name] : BOOT.defaults[name];
+    cb.checked = values[name] !== undefined && values[name] !== null ? values[name] : optDefault(name);
     const label = el("label",{class:"chk"}, cb, name);
     const sync = () => {
-      const dev = cb.checked !== BOOT.defaults[name];
+      const dev = cb.checked !== optDefault(name);
       label.classList.toggle("dev", dev);
       label.title = (OPT_HELP[name] || name) + (dev
         ? " — DIFFERS from the template default, which is the recommended setting"
@@ -2247,7 +2258,7 @@ function renderOptions(values) {
     sync();
     return label;
   };
-  const bools = Object.keys(BOOT.defaults).filter(n => typeof BOOT.defaults[n] === "boolean");
+  const bools = Object.keys(BOOT.defaults).filter(isBoolOpt);
 
   $("optCore").replaceChildren(...OPT_CORE.filter(n => bools.includes(n)).map(box));
 
@@ -5667,13 +5678,28 @@ document.addEventListener("keydown", e => {
 });
 /* ---------- autosave: unsaved work survives closing the page ---------- */
 const AUTOSAVE_KEY = "modbusgen_autosave";
+/* 2: truncate is honoured by the modern format (2026-10-23). A record saved in this
+   browser before that carries the old page's truncate: true, which the box wrote by
+   default and modern then ignored - the old default, not a choice. storedProject drops
+   it, so the format decides as it does for any file that says nothing; legacy keeps
+   its value, because there the box always worked. */
+const STORE_V = 2;
+function storedProject(rec) {
+  const p = rec?.project;
+  if (p && (rec.v || 0) < STORE_V && p.options?.truncate === true
+      && (p.options.sql_format ?? "modern") !== "legacy") {
+    const {truncate, ...rest} = p.options;
+    return {...p, options: rest};
+  }
+  return p;
+}
 let autosaveTimer = null;
 function queueAutosave() {
   clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
     try {
       localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(
-        {when: Date.now(), file: $("fileName").value, project: collectProject()}));
+        {when: Date.now(), file: $("fileName").value, project: collectProject(), v: STORE_V}));
     } catch {}
   }, 1500);
 }
@@ -6087,7 +6113,7 @@ $("btnLoad").onclick = async () => {
       showError(new Error(`"${name}" is no longer stored in this browser`));
       return;
     }
-    showProject(rec.project);
+    showProject(storedProject(rec));
     $("fileName").value = name;
     outNote(`Loaded "${name}" from this browser, saved ${fmtStamp(rec.when, true)}.`);
     return;
@@ -6240,7 +6266,7 @@ $("btnSave").onclick = () => {
   try {
     const all = savedAll();
     const existed = name in all;
-    all[name] = {when: Date.now(), project: collectProject()};
+    all[name] = {when: Date.now(), project: collectProject(), v: STORE_V};
     savedWrite(all);
     refreshFileSelect(LOCAL_PREFIX + name);
     btnFlash(btn, existed ? "updated ✓" : "saved ✓", "ok");
@@ -6729,7 +6755,7 @@ async function init() {
   try { restored = JSON.parse(localStorage.getItem(AUTOSAVE_KEY) || "null"); } catch {}
   if (restored?.project && (restored.project.table ||
                             (restored.project.points || []).some(p => p.datatype || p.text))) {
-    showProject(restored.project);
+    showProject(storedProject(restored));
     $("fileName").value = restored.file || "";
     const when = fmtStamp(restored.when, true);
     $("out").replaceChildren(messageBox("info", "Restored:",
@@ -6779,6 +6805,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=ed2db6af71"></script>
+<script src="pyodide-adapter.js?v=0da65f1991"></script>
 </body>
 </html>

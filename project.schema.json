@@ -72,8 +72,7 @@
         },
         "truncate": {
           "type": "boolean",
-          "default": true,
-          "description": "legacy sql_format only: emit TRUNCATE TABLE before the inserts. Ignored by modern, which uses REPLACE INTO."
+          "description": "Empty the list's three tables (iw_par_<table>_groups, _param, iw_set_<table>) with TRUNCATE TABLE before writing them. Left out, it follows sql_format: on for legacy (the Excel tool's Main!B23), off for modern. Turn it on when this list replaces the whole of an older one, never for a list that adds a few points to a table another list fills."
         },
         "create_tables": {
           "type": "boolean",
