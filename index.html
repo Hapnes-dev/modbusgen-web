@@ -74,6 +74,17 @@
   #valStatus.stale{opacity:.55}
   #valStatus.stale::before{background:var(--dim);box-shadow:none}
   #valStatus:hover{filter:brightness(1.2)}
+  /* in the header because it has to outlast every message the Result card shows: the
+     page is no longer saving itself, and that stays true until a save works again */
+  #autosaveWarn{font-size:11.5px;font-weight:600;color:var(--red);border:1px solid #7a3a44;
+                background:#3a2126;border-radius:6px;padding:2px 8px;cursor:help}
+  #autosaveWarn[hidden]{display:none}
+  /* a group key or state id another row also holds, or a state list with no id - :focus
+     too, because that is when it is being typed and input:focus would repaint it blue */
+  input.keybad, input.keybad:focus{border-color:var(--red);box-shadow:0 0 0 1px var(--red) inset}
+  /* a script the project has been edited since - still readable, no longer offered */
+  .sqlbar.stale .chip.warnfilter{border-color:#6d5415}
+  pre.sql.stale{opacity:.5}
   .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
   label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--dim)}
   input,select,textarea,button{
@@ -626,6 +637,7 @@
   <button id="btnFoldAll" class="ghost"
           title="Fold every card to its heading, or unfold them all. Each heading also folds its own card; what is folded is remembered in this browser">collapse all</button>
   <span style="flex:1"></span>
+  <span id="autosaveWarn" role="alert" hidden>autosave failed - export your work</span>
   <span id="valStatus" hidden></span>
   <span class="sep" aria-hidden="true"></span>
   <button id="btnValidate"
@@ -1147,8 +1159,11 @@
             <b>apply</b> writes it to every selected row. <b>fill down</b> instead copies
             that column's value from the topmost selected row into the rest, leaving
             every other column alone.</li>
-          <li><b>duplicate</b> copies each selected row with <span class="ex">addr + 1</span>;
-            <b>delete</b> removes them all.</li>
+          <li><b>duplicate</b> copies the selection as a block, right after it, with every
+            address moved by the block's span - from its lowest register to the end of its
+            highest value - so 32-bit values at <span class="ex">100, 102, 104</span>
+            continue at <span class="ex">106, 108, 110</span>; <b>delete</b> removes them
+            all.</li>
           <li><b>addr ±</b> is the one entry that adds rather than writes: it moves every
             selected address by a signed number, so <span class="ex">-2</span> takes two
             off each of them and <span class="ex">3</span> adds three, and the distances
@@ -1174,11 +1189,16 @@
         <h4>Undo</h4>
         <ul>
           <li><b>↶ undo</b>, or <code>Ctrl+Z</code>, steps back through the last
-            <b>10</b> changes to this table - cell edits, adding and deleting rows,
-            duplicating, the bulk edits and <i>keep this order</i>. The button's tooltip
-            names the change it will reverse.</li>
+            <b>50</b> changes to this table - cell edits, adding and deleting rows,
+            duplicating, the bulk edits, the fix buttons and <i>keep this order</i>.
+            <code>Ctrl+Y</code> or <code>Ctrl+Shift+Z</code> steps forward again until you
+            change something new. The button's tooltip names the change it will reverse.</li>
+          <li>The keys belong to the table while the cursor is in it or on nothing that
+            takes typing. In any other field on the page they are that field's own
+            undo and redo, as they always are.</li>
           <li>Typing counts as <b>one step per field</b>, not per keystroke: the state is
-            taken when you enter a cell and kept only if you actually changed something.</li>
+            taken at your first change in a cell and kept only if the row really ended up
+            different.</li>
           <li>Undo restores rows whole, including the fields this table does not show
             (<code>element_id</code>, <code>menu</code>, <code>active</code>, the ranges).
             Loading or starting a project clears the history.</li>
@@ -1186,9 +1206,13 @@
 
         <h4>Working with rows</h4>
         <ul>
-          <li>⧉ duplicates a row with <b>addr + 1</b> — the fastest way through a
-            sequential register block. Every <code>driver_id</code> and
-            <code>element_id</code> must be unique; duplicates are caught by Validate.</li>
+          <li>⧉ duplicates a row onto <b>the next register</b>, right below it — the
+            fastest way through a sequential register block. The step follows the
+            datatype: <span class="ex">+1</span> for a 16-bit value,
+            <span class="ex">+2</span> for a 32-bit one, <span class="ex">+4</span> for
+            64-bit, and the next bit in the same word for a bit row. Every
+            <code>driver_id</code> and <code>element_id</code> must be unique; duplicates
+            are caught by Validate.</li>
           <li>A project file can carry fields this table does not show —
             <code>element_id</code>, <code>menu</code>, <code>active</code>,
             <code>range_min</code>/<code>range_max</code>. They are preserved on load and
@@ -1217,7 +1241,7 @@
           <th data-col="decimals">dec</th>
           <th data-col="statetext">state</th>
           <th data-col="no_group">no grp</th>
-          <th title="Row actions: ⧉ duplicates with addr + 1, ✕ deletes"></th>
+          <th title="Row actions: ⧉ duplicates onto the next register (or the next bit), ✕ deletes"></th>
         </tr></thead>
         <!-- #points holds a fixed pool of rows - a screenful, not the project - and
              the pads stand in for the height of everything above and below it, so
@@ -1245,7 +1269,7 @@
               title="Copy the selected block once per instance, offsetting every address by the stride. This is how zone and section blocks are built - give it the instances that exist, not a count">replicate…</button>
       <button id="bulkExport"
               title="Download just the selected points as a project .json, carrying only the groups and state texts they use">export</button>
-      <button id="bulkDup" title="Duplicate every selected row, appended at the bottom with addr + 1">duplicate</button>
+      <button id="bulkDup" title="Duplicate the selected rows as a block, right after it, every address moved by the block's span - 32-bit values at 100, 102, 104 continue at 106, 108, 110">duplicate</button>
       <button id="bulkDel" class="danger" title="Delete every selected row">delete</button>
       <button id="bulkClear" class="ghost" title="Clear the selection (Esc)">✕</button>
     </div>
@@ -1276,7 +1300,7 @@
     </div>
     <div class="row" style="margin-top:8px">
       <button id="btnAddPoint" title="Append an empty point row at the bottom of the table">+ point</button>
-      <span id="ptTip" style="font-size:11.5px;color:var(--dim)">tip: ⧉ duplicates a row with addr + 1</span>
+      <span id="ptTip" style="font-size:11.5px;color:var(--dim)">tip: ⧉ duplicates a row onto the next register</span>
     </div>
   </div>
 
@@ -1326,10 +1350,12 @@
         <h4>Communication</h4>
         <p>The <b>mode</b> select shows only the fields it uses: <b>tcp</b> — IP of the
         device or gateway, port <span class="ex">502</span> unless documented otherwise;
-        <b>rtu</b> — COM port on the IWMAC machine, baud, parity and stop bits, which
-        must match every device on the bus. Values land in
+        <b>rtu</b> — COM port on the IWMAC machine, baud, parity, stop bits and data
+        bits, which must match every device on the bus. Values land in
         <code>iw_sys_plant_settings</code>; everything not shown here uses the standard
-        driver defaults.</p>
+        driver defaults. A value a loaded file carries that the lists do not offer - a
+        mode, a parity, a prefix - is kept and shown as it was rather than replaced, and
+        Validate says what is wrong with it.</p>
       </div>
     </details>
     <div class="row">
@@ -1371,6 +1397,7 @@
         <label class="f f-sm cm-rtu" title="Serial speed - must match every device on the bus">baud<select id="commBaud" title="Serial speed - must match every device on the bus"><option>19200</option><option>9600</option><option>300</option><option>600</option><option>1200</option><option>2400</option><option>4800</option><option>14400</option><option>38400</option><option>57600</option><option>76800</option><option>115200</option></select></label>
         <label class="f f-sm cm-rtu" title="Serial parity - must match every device on the bus">parity<select id="commParity" title="Serial parity - must match every device on the bus"><option>even</option><option>odd</option><option>none</option></select></label>
         <label class="f f-xs cm-rtu" title="Serial stop bits - must match every device on the bus">stop bits<select id="commStop" title="Serial stop bits - must match every device on the bus"><option>1</option><option>2</option></select></label>
+        <label class="f f-xs cm-rtu" title="Serial data bits - 8 on nearly every Modbus RTU bus, 7 only where the device documentation says so. Must match every device on the bus">data bits<select id="commData" title="Serial data bits - 8 on nearly every Modbus RTU bus, 7 only where the device documentation says so. Must match every device on the bus"><option>8</option><option>7</option></select></label>
       </div>
     </div>
   </div>
@@ -1394,6 +1421,13 @@
         <p>The script is not the end of the job: import it on the IWMAC side, and
         <b>Export</b> the project itself so the next revision starts from that file
         rather than from a chat.</p>
+
+        <p><b>previous version…</b> — when this list replaces one already on the plant,
+        pick that version: its project file, or the SQL script that put it there. Generate
+        then also deletes the rows that version had and this one has not, in the template
+        and on every unit, and shows what changed. The points both have keep their
+        settings on the plant. <b>verification SQL</b>, beside the script, downloads
+        read-only checks to run after the import.</p>
       </div>
     </details>
     <div class="row" style="gap:8px;align-items:center">
@@ -1401,12 +1435,19 @@
               title="Check the project without producing SQL: unknown table keys, duplicate ids, undefined groups, unresolved state refs, no online point. Warnings do not block">Validate</button>
       <button id="btnRunGenerate" class="uiv"
               title="Validate, then render the SQL import script into the Result card below. Nothing is written to disk"><span>Generate SQL</span></button>
+      <button id="btnPrev" class="ghost"
+              title="Generate against the version of this list that is on the plant now - its project file, or the SQL script that put it there. The script then also deletes the rows that version had and this one has not, and the points both have keep their settings on the plant (docs/16 section 16.6.7)">previous version…</button>
+      <input type="file" id="prevFile" accept=".json,.yaml,.yml,.sql,.txt" hidden>
+      <span class="chip" id="prevChip" hidden
+            title="Generate SQL compares the list with this file and deletes what only the file has">previous: <b id="prevName"></b>
+        <button id="btnPrevClear" class="ghost" style="padding:0 5px"
+                title="Generate without the previous version">✕</button></span>
     </div>
   </div>
 
   <div class="card" id="cardResult">
     <h2>Result</h2>
-    <details class="help"><summary title="What Validate, Generate SQL and Generate + save file each do, and how to read the result">help</summary>
+    <details class="help"><summary title="What Validate, Generate SQL and save file each do, and how to read the result">help</summary>
       <div class="helpbody">
         <h4>The buttons</h4>
         <ul>
@@ -1467,7 +1508,7 @@
         Norwegian text survives.</p>
       </div>
     </details>
-    <div id="out"><div class="message-box message-box-info"><svg viewBox="0 0 512 512" class="mb-icon" aria-hidden="true" fill="currentColor"><path d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM216 336h24V272H216c-13.3 0-24-10.7-24-24s10.7-24 24-24h48c13.3 0 24 10.7 24 24v88h8c13.3 0 24 10.7 24 24s-10.7 24-24 24H216c-13.3 0-24-10.7-24-24s10.7-24 24-24zm40-208a32 32 0 1 1 0 64 32 32 0 1 1 0-64z"/></svg><div class="mb-body"><div class="mb-head"><strong>Note:</strong> Validate or generate to see results.</div></div></div></div>
+    <div id="out" aria-live="polite"><div class="message-box message-box-info"><svg viewBox="0 0 512 512" class="mb-icon" aria-hidden="true" fill="currentColor"><path d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM216 336h24V272H216c-13.3 0-24-10.7-24-24s10.7-24 24-24h48c13.3 0 24 10.7 24 24v88h8c13.3 0 24 10.7 24 24s-10.7 24-24 24H216c-13.3 0-24-10.7-24-24s10.7-24 24-24zm40-208a32 32 0 1 1 0 64 32 32 0 1 1 0-64z"/></svg><div class="mb-body"><div class="mb-head"><strong>Note:</strong> Validate or generate to see results.</div></div></div></div>
   </div>
 
   <div class="card" id="cardTips">
@@ -1545,8 +1586,8 @@ working project if one is supplied, else from the schema - never from memory.
 This is the whole container. Copy it, then fill it:
 {
   "$schema": "https://hapnes-dev.github.io/modbusgen-web/project.schema.json",
-  "table": "device_rtu", "plant": "1234", "driver": "mb.exe",
-  "options": {"subtract_one": false},
+  "table": "device_rtu", "plant": "", "driver": "mb.exe",
+  "options": {"subtract_one": true},
   "groups": {"main": "Section heading as the document prints it"},
   "statetexts": {"1": {"0": "Off", "1": "Auto"}},
   "points": [
@@ -1742,12 +1783,11 @@ validation. I run the validator.</pre>
           title="Unfold the whole prompt, or fold it back to its first few lines">show the whole prompt ▾</button>
         <h4>Then, in the chat</h4>
         <ol start="3" style="margin:4px 0;padding-left:20px">
-          <li><b>It asks about older files first.</b> Answer that question before
-            anything else. If someone has already made a Modbustemplate workbook or an
-            SQL script for this plant, say so and stop the chat there. Bring that file
-            here instead, with <b>Insert Excel</b> or <b>Import SQL</b>. This page copies
-            the whole list across, exactly. Writing the list again by hand is always
-            worse.</li>
+          <li><b>It works from what you attach.</b> It does not ask whether an older
+            list exists. If someone has already made a Modbustemplate workbook or an
+            SQL script for this plant, skip the chat and bring that file here instead,
+            with <b>Insert Excel</b> or <b>Import SQL</b>. This page copies the whole
+            list across, exactly. Writing the list again by hand is always worse.</li>
           <li><b>Answer its questions.</b> It is supposed to ask. Only you know what the
             document leaves out. It should also stop and warn you about two things: a
             document that numbers registers from 0, and a plant that runs the
@@ -1886,6 +1926,17 @@ validation. I run the validator.</pre>
 <script>
 "use strict";
 let BOOT = null;          // bootstrap payload - null until init() has it; see the boot gate below
+/* The page against what was last kept of it. projRev counts every edit, so a Validate or
+   Generate can tell whether the list it sent is still the list on screen when the answer
+   comes back - the answer names rows by position. projDirty says whether anything changed
+   since the page last matched a file or a browser copy (Save, Export, Load, Import, New);
+   New, Load and the imports ask before they replace a page that has. savedAs is the
+   browser-saved name this session last loaded or saved, the one Save may overwrite
+   without asking. Declared up here because functions all over the script read them, and
+   a `let` read before its own line has run throws. */
+let projRev = 0;
+let projDirty = false;
+let savedAs = null;
 const OPT_CORE = ["subtract_one","truncate","replace_list","create_tables","force_active","auto_motherwords"];
 // clusters under "more options" - same grouping as the Project card help
 const OPT_MORE = [
@@ -2147,7 +2198,18 @@ async function api(path, body) {
   if (window.PYODIDE_API) return window.PYODIDE_API(path, body);   // static web build
   const opts = body ? {method:"POST", body: JSON.stringify(body),
                        headers:{"Content-Type":"application/json"}} : {};
-  const r = await fetch(path, opts);
+  let r;
+  try { r = await fetch(path, opts); }
+  catch (e) {
+    /* fetch only rejects when no answer came back at all - "Failed to fetch" in Chrome,
+       "NetworkError when attempting to fetch resource" in Firefox. Behind this page that
+       means the Python server was stopped or its window closed, and the browser's words
+       read like a fault in the project. */
+    throw new Error("the modbusgen server behind this page is not answering - it has "
+      + "probably been stopped or its window closed. Start it again (python -m modbusgen "
+      + "gui) and press the button again; nothing on this page is lost. ("
+      + (e && e.message || e) + ")");
+  }
   const data = await r.json();
   if (!r.ok) throw new Error(data.error || r.statusText);
   return data;
@@ -2312,10 +2374,12 @@ function addGroupRow(name="", alias="") {
     el("input",{class:"g-alias", placeholder:"display alias (e.g. Zone 1)", value:alias,
                 title:"The name the operator sees for this group in IWMAC. Blank falls back to the key itself",
                 style:"width:260px"}),
+    // removing a row fires no input event, so it reports the edit itself (autosave, stale result)
     el("button",{class:"ghost rowbtn", title:"delete this group - points still referencing it will fail validation",
-                 onclick:e=>{e.target.parentNode.remove();refreshGroupList();}},"✕"));
+                 onclick:e=>{e.target.parentNode.remove();refreshGroupList();markValStale();}},"✕"));
   row._key = String(name ?? "").trim();   // the key its points hold - see groupKeyChanged
   $("groups").append(row);
+  markKeyClashes();
 }
 /* Renaming a group key takes its points with it. A point holds the key, not the row,
    so until 2026-09-23 a rename changed the card and nothing else: Save, Export and
@@ -2362,6 +2426,7 @@ function groupKeyChanged(row, input) {
   }
   const rekey = list => { for (const q of list || []) if (q && ptStr(q.group) === was) q.group = now; };
   for (const step of ptUndo) rekey(step.points);
+  for (const step of ptRedo) rekey(step.points);
   rekey(ptPreEdit);
   refreshGroupList();
   if (moved) { updateStats(); applyPointView(); }
@@ -2383,6 +2448,74 @@ function collectGroups() {
 function refreshGroupList() {
   $("dlGroups").replaceChildren(
     ...Object.keys(collectGroups()).map(g => el("option",{value:g})));
+  markKeyClashes();
+}
+/* Both cards are collected as key -> value, so two group rows under one key, or two
+   state lists under one id, collapse to the last of them without a word - and a state
+   list with no id is left out altogether. Said on the field itself, while it is being
+   typed, and again by Validate and Generate (keyClashFindings), which refuse to treat
+   the collapsed project as the one on screen. */
+function keyClashes() {
+  const count = inputs => {
+    const n = new Map();
+    for (const i of inputs) { const k = i.value.trim(); if (k) n.set(k, (n.get(k) || 0) + 1); }
+    return n;
+  };
+  const groups = [...document.querySelectorAll("#groups .g-name")];
+  const lists = [...document.querySelectorAll("#statetexts .st-id")];
+  const g = count(groups), s = count(lists);
+  const nameless = lists.filter(i => !i.value.trim()
+    && [...i.closest(".st-list").querySelectorAll(".sw")].some(w => w.value.trim()));
+  return {groups, lists, nameless,
+          groupDup: [...g].filter(([, n]) => n > 1), listDup: [...s].filter(([, n]) => n > 1),
+          g, s};
+}
+function markKeyClashes() {
+  const c = keyClashes();
+  const flag = (i, why) => {
+    if (i.dataset.help == null) i.dataset.help = i.title;     // the field's own help, put back after
+    i.classList.toggle("keybad", !!why);
+    i.title = why || i.dataset.help;
+  };
+  for (const i of c.groups) {
+    const k = i.value.trim();
+    flag(i, k && c.g.get(k) > 1
+      ? `Another group row has the key "${k}" too. Only the last of them reaches the project - `
+        + `give this one its own key, or delete the row you do not need`
+      : "");
+  }
+  for (const i of c.lists) {
+    const k = i.value.trim();
+    flag(i, k && c.s.get(k) > 1
+      ? `Another state list has the id ${k} too. Only the last of them reaches the project, so `
+        + `points using ${k} would read that list's words - give this one its own id`
+      : c.nameless.includes(i)
+      ? "This list has no id, so it is left out of the project - give it the number its points use"
+      : "");
+  }
+}
+/* The same three as errors in a Validate or Generate answer. Page-side codes: the backend
+   never sees the duplicates, because collection has already folded them into one. */
+function keyClashFindings() {
+  const c = keyClashes(), out = [];
+  const add = (code, message, advice) =>
+    out.push({code, message, advice, point: null, addr: null, suggestion: null,
+              points: [], addrs: []});
+  for (const [k, n] of c.groupDup)
+    add("group-key-duplicate",
+        `groups: the key '${k}' is on ${n} rows of the Groups card - only the last row reaches the project`,
+        "Give each group row its own key, or delete the extra row. The card is collected as "
+        + "key -> alias, so the earlier rows are dropped without a word.");
+  for (const [k, n] of c.listDup)
+    add("statetext-id-duplicate",
+        `statetexts: the id ${k} is on ${n} lists in the State texts card - only the last list reaches the project`,
+        "Give each state list its own id. The lists are collected by id, so every point using "
+        + "it reads the last list's words, whichever list it was meant to have.");
+  if (c.nameless.length)
+    add("statetext-id-missing",
+        `statetexts: ${c.nameless.length} state list(s) have words but no id, so they are left out of the project`,
+        "Give the list the id its points use in their state column.");
+  return out;
 }
 
 /* ---------- state texts ---------- */
@@ -2395,7 +2528,7 @@ function addStateLine(box, value="", word="", focusWord=false) {
     el("input",{class:"sw", value:word, placeholder:"Drift",
                 title:"The word the operator sees for this value (Norwegian). Enter adds the next state; pasting a 0=Av list fills all lines at once"}),
     el("button",{class:"ghost rowbtn", title:"remove this state",
-                 onclick:()=>line.remove()},"✕"));
+                 onclick:()=>{ line.remove(); markKeyClashes(); markValStale(); }},"✕"));
   const sw = line.querySelector(".sw");
   sw.addEventListener("keydown", e => {
     if (e.key === "Enter") { e.preventDefault(); stAddNext(box); }
@@ -2426,23 +2559,77 @@ function stAddNext(box) {
   const vals = [...box.querySelectorAll(".sv")].map(i => Number(i.value)).filter(Number.isFinite);
   addStateLine(box, vals.length ? Math.max(...vals) + 1 : 0, "", true);
 }
-function addStateRow(id="", states=null) {
+/* A new list takes the next id, one past the highest. It used to start with none, and
+   collectStates leaves a list with no id out of the project without a word - so a list
+   added and filled in was simply not there when the project was saved. */
+function stNextId() {
+  const ids = [...document.querySelectorAll("#statetexts .st-id")]
+    .map(i => Number(i.value.trim() || NaN)).filter(Number.isInteger);
+  return String(ids.length ? Math.max(0, ...ids) + 1 : 1);
+}
+function addStateRow(id = stNextId(), states=null) {
   const box = el("div",{class:"st-list"},
     el("div",{class:"st-head"},
       el("span",{class:"lbl", title:"The number a point puts in its state column to use this list"},"id"),
       el("input",{class:"st-id", type:"number", value:id, style:"width:64px",
-                  title:"The number a point puts in its state column to use this list"}),
+                  title:"The number a point puts in its state column to use this list. Changing it moves the points that use it",
+                  onchange:e=>stIdChanged(box, e.target)}),
       el("span",{class:"h2fill"}),
       el("button",{class:"ghost rowbtn", title:"delete this whole list - points still referencing its id will fail validation",
-                   onclick:e=>box.remove()},"✕")),
+                   onclick:()=>{ box.remove(); markKeyClashes(); markValStale(); }},"✕")),
     el("div",{class:"st-lines"}),
     el("button",{class:"ghost addline",
                  title:"Add the next state - the value continues from the last line. Enter in a word box does the same",
                  onclick:()=>stAddNext(box)},"+ state"));
+  box._id = String(id ?? "").trim();      // the id its points hold - see stIdChanged
   const entries = states ? Object.entries(states) : [];
   if (entries.length) for (const [v, w] of entries) addStateLine(box, v, w);
   else addStateLine(box, 0, "");
   $("statetexts").append(box);
+  markKeyClashes();
+}
+/* Renumbering a list takes its points with it, as renaming a group key does
+   (groupKeyChanged) and for the same reason: a point holds the id, not the list, so a
+   new id on the card left every point on the old one - pointing at nothing, or at
+   whichever list took that number next. Committed on change, never per keystroke: "12"
+   passes through "1" on its way. An id another list already holds is refused rather
+   than merged, and the undo snapshots are rewritten with the model. */
+function stIdChanged(box, input) {
+  const was = box._id || "", now = input.value.trim();
+  if (now === was) return;
+  if (!now) return;           // cleared: remember the old id, so the next one still moves its points
+  if (!was) { box._id = now; markKeyClashes(); return; }   // a list being numbered - nothing uses it yet
+  const others = [...$("statetexts").children].filter(b => b !== box)
+                   .map(b => b.querySelector(".st-id").value.trim());
+  if (others.includes(now)) {
+    input.value = was;
+    markKeyClashes();
+    outNote(`State list ${now} already exists, so this list keeps the id ${was} and no point `
+          + `moved. Give it a free number instead.`, "warn");
+    return;
+  }
+  box._id = now;
+  markKeyClashes();
+  if (others.includes(was)) {     // another list still holds the old id: its points stay with it
+    outNote(`State list ${was} is still defined by another list, so its points stay with that `
+          + `one; list ${now} is used by no point yet.`);
+    return;
+  }
+  let moved = 0;
+  for (const p of ptModel) {
+    if (p.statetext == null || String(p.statetext) !== was) continue;
+    ptWriteField(p, "statetext", now);
+    moved++;
+  }
+  const rekey = list => { for (const q of list || [])
+    if (q && q.statetext != null && String(q.statetext) === was) q.statetext = ptNum(now); };
+  for (const step of ptUndo) rekey(step.points);
+  for (const step of ptRedo) rekey(step.points);
+  rekey(ptPreEdit);
+  if (moved) { updateStats(); applyPointView(); }
+  outNote(moved
+    ? `Renumbered state list ${was} to ${now} - ${moved} point${moved === 1 ? "" : "s"} moved with it.`
+    : `Renumbered state list ${was} to ${now} - no point used it.`, "ok");
 }
 function collectStates() {
   const out = {};
@@ -2481,8 +2668,9 @@ function addUnitRow(u = {}) {
         onclick:()=>{ const d = unitData(tr);
                       addUnitRow({unit_id:bumpTail(d.unit_id), unit_name:bumpTail(d.unit_name),
                                   driver_addr:bumpTail(d.driver_addr), view_order:d.view_order});
-                      renumberUnits(); }},"⧉"),
-      el("button",{class:"ghost rowbtn", title:"remove this device", onclick:()=>{ tr.remove(); renumberUnits(); }},"✕")));
+                      renumberUnits(); markValStale(); }},"⧉"),
+      el("button",{class:"ghost rowbtn", title:"remove this device",
+                   onclick:()=>{ tr.remove(); renumberUnits(); markValStale(); }},"✕")));
   tb.append(tr);
 }
 function renumberUnits() {
@@ -2577,25 +2765,31 @@ function unitData(tr) {
    block at all - omitting it is the supported way to say "this plant already has
    its devices and driver" (schema, docs/10). */
 const COMM_DEFAULTS = {mode:"tcp", ip:"", port:502, com_port:"",
-                       baudrate:19200, parity:"even", stop_bits:1};
+                       baudrate:19200, parity:"even", stop_bits:1, data_bits:8};
+/* The comm keys the card has no control for, as the loaded file had them. collectSystem
+   used to build comm from the controls alone, so a key without one was dropped on the
+   way out - data_bits was, until it got its field, and a 7-bit plant came back as 8. */
+let commKept = {};
 function collectSystem() {
   const units = $("sysUnits").checked, settings = $("sysSettings").checked;
   const rows = [...$("unitRows").children].map(unitData)
     .filter(u => u.unit_id || u.unit_name || u.driver_addr);
   const owner = $("sysOwner").value.trim();
   const comm = {
+    ...commKept,
     mode: $("commMode").value, ip: $("commIp").value.trim(),
     port: Number($("commPort").value || 502),
     com_port: $("commCom").value.trim(),
     baudrate: Number($("commBaud").value),
     parity: $("commParity").value, stop_bits: Number($("commStop").value),
+    data_bits: Number($("commData").value),
   };
   /* Communication counts as filled-in work too. It was left out of this test, so a
      card holding nothing but an IP address collapsed to `system: null` and
      showSystem() cleared every comm field on the next load - the address, the COM
      port, the mode, all of it, with no error. That is exactly the state the card
      invites: both boxes stay unticked while a driver is prepared. */
-  const commTouched = Object.keys(COMM_DEFAULTS)
+  const commTouched = Object.keys(commKept).length > 0 || Object.keys(COMM_DEFAULTS)
     .some(k => comm[k] !== COMM_DEFAULTS[k]);
   if (!units && !settings && !rows.length && !owner && !commTouched) return null;
   return {
@@ -2619,9 +2813,16 @@ function showSystem(s) {
   $("sysRegType").value = String(s.reg_type || "").replace(/\s+/g, "").toLowerCase();
   $("sysOrderNo").value = idText(s.order_no || "");
   const c = s.comm || {};
-  $("commMode").value = c.mode || "tcp";
-  // mode first: a project that carries no prefix takes the one its mode implies
-  $("sysPrefix").value = s.driver_addr_prefix || PREFIX_FOR_MODE[$("commMode").value];
+  commKept = Object.fromEntries(Object.entries(c).filter(([k]) => !(k in COMM_DEFAULTS)));
+  /* A mode the driver does not have is kept and shown like an unknown parity below: it
+     used to become "" in the select, and the project then said nothing where the file
+     said "RTU" - comm-mode-unknown names it, and its link comes back here. Only a file
+     with no mode at all gets tcp, which is what the backend reads for one. */
+  selectKeep($("commMode"), c.mode == null ? "tcp" : String(c.mode));
+  // mode first: a project that carries no prefix takes the one its mode implies. An
+  // empty one is an answer - addresses with no prefix - and is kept, not replaced
+  selectKeep($("sysPrefix"), s.driver_addr_prefix == null
+    ? (PREFIX_FOR_MODE[$("commMode").value] || "1_") : String(s.driver_addr_prefix));
   $("commIp").value = c.ip || "";
   $("commPort").value = c.port ?? 502;
   $("commCom").value = c.com_port || "";
@@ -2634,14 +2835,9 @@ function showSystem(s) {
      an unknown driver: assigning it to the <select> would silently pick nothing, and the
      collected project would say "" where the file said something. Validation names it
      (comm-parity-unknown) and its link comes back here. */
-  const par = $("commParity"), parity = c.parity == null ? "even" : String(c.parity);
-  for (const extra of [...par.options]) if (extra.dataset.foreign) extra.remove();
-  par.value = parity;
-  if (par.value !== parity) {
-    par.append(el("option",{value:parity, "data-foreign":"1"}, parity));
-    par.value = parity;
-  }
-  $("commStop").value = String(c.stop_bits || 1);
+  selectKeep($("commParity"), c.parity == null ? "even" : String(c.parity));
+  selectKeep($("commStop"), String(c.stop_bits || 1));
+  selectKeep($("commData"), String(c.data_bits ?? 8));
   $("unitRows").replaceChildren();
   const rows = (s.unit_list && s.unit_list.length) ? s.unit_list
     : (s.unit_id ? [{unit_id:s.unit_id, unit_name:s.unit_name,
@@ -2649,6 +2845,15 @@ function showSystem(s) {
   for (const u of rows) addUnitRow(u);
   renumberUnits();
   sysRelink();
+}
+/* Put a value into a <select> that may not list it. Assigning an unlisted value picks
+   nothing, and the select then reads "" - so the value the file gave becomes an extra
+   option of its own (marked foreign, and dropped on the next load) rather than lost. */
+function selectKeep(sel, value) {
+  for (const extra of [...sel.options]) if (extra.dataset.foreign) extra.remove();
+  if (![...sel.options].some(o => o.value === value))
+    sel.append(el("option",{value, "data-foreign":"1"}, value === "" ? "(empty)" : value));
+  sel.value = value;
 }
 
 /* Two conveniences in the system block, both "linked until you say otherwise":
@@ -2780,7 +2985,10 @@ function hydrateSelect(s) {
   return s;
 }
 const DT_NEW = "➕ new variable…";   // a sentinel value, never a datatype name
-function dtFill(s) {
+/* `withNew` false leaves the sentinel out: the bulk bar's dropdown writes its value into
+   every selected row and has no dialog behind it, so picking the entry there wrote
+   "➕ new variable…" as the datatype of all of them. */
+function dtFill(s, withNew = true) {
   requireBoot();                       // runs on first touch, long after boot - still gated
   const names = BOOT.datatypes.map(d => d.name);
   const common = DT_COMMON.filter(n => names.includes(n));
@@ -2797,7 +3005,7 @@ function dtFill(s) {
   const og2 = el("optgroup",{label:"all"});
   for (const n of names) if (!common.includes(n)) og2.append(el("option",{value:n}, n));
   s.append(og2);
-  s.append(el("option",{value:DT_NEW}, DT_NEW));
+  if (withNew) s.append(el("option",{value:DT_NEW}, DT_NEW));
 }
 function dtSelect(value) {
   requireBoot();                       // every point row needs the datatype list
@@ -2856,11 +3064,17 @@ const ptNum = v => { const s = ptStr(v); return s === "" ? null : Number(s); };
 const ptBit = v => { const s = ptStr(v);
                      return s === "" ? null : (/^\d+$/.test(s) ? Number(s) : s); };
 
+/* A point's searchable text is cached (ptHay), so whatever changes a point has to drop
+   it, or a search for the value it now holds finds nothing. ptWriteField does it for
+   every field it writes; the writers that set a field directly - the address shift, the
+   bulk ticks, a datatype rename, the advice fixes, which also edit fields kept in _orig -
+   come through here too, so there is one way to say "this point changed". */
+function ptTouch(p) { if (p) p._hay = null; }
 /* One field, written straight into the point. Every route into the model goes
    through here - the delegated input listener, bulk edit, paste, the advice fixes -
    so a column can only be normalised one way. */
 function ptWriteField(p, col, raw) {
-  p._hay = null;                    // the search cache is now a keystroke out of date
+  ptTouch(p);                       // the search cache is now a keystroke out of date
   switch (col) {
     case "addr": case "decimals": case "statetext": p[col] = ptNum(raw); break;
     case "bit":                                     p.bit = ptBit(raw); break;
@@ -2898,15 +3112,29 @@ function ptAdd(src = {}) {            // appended at the bottom, as the table sh
   ptFresh.add(p);                     // shown whatever the search and filters say
   return p;
 }
+/* ...and the same, put at a place in the project order rather than at the bottom: a
+   copy belongs beside what it was copied from, because the project order decides each
+   group's view_order. The caller renumbers. */
+function ptInsertAt(at, list) {
+  const made = list.map(ptNew);
+  ptModel.splice(Math.max(0, Math.min(at, ptModel.length)), 0, ...made);
+  for (const p of made) ptFresh.add(p);
+  return made;
+}
 function ptSetModel(points) {
   ptModel = (points || []).map(ptNew);
   // the old points are gone; leaving them in the view lists would let a scroll
   // event between here and the caller's applyPointView() render a dead project
   ptOrder = ptModel; ptView = ptModel;
   ptSel.clear(); ptSelAnchor = null;
-  ptBad.clear();
+  /* Every mark names a point of the list being replaced. Only the red one was cleared,
+     so the amber warned marks, the pin and the "warned" filter outlived a Load, an
+     import, New and an undo - on points nobody could see, filtering the new list down
+     to nothing. */
+  ptBad.clear(); ptWarn.clear(); ptPin.clear(); ptFlash.clear();
   ptFresh.clear(); ptSortCache = null;
-  ptFilters.delete("failing");        // nothing is marked, so the filter has no rows
+  ptFilters.delete("failing");        // nothing is marked, so the filters have no rows
+  ptFilters.delete("warned");
   ptReseq();
   ptEnsurePool();
   ptFirst = -1; ptShown = -1;         // the pool holds someone else's points
@@ -3214,7 +3442,7 @@ function ptMakeRow() {
     el("td",{}, el("input",{class:"p-statetext", type:"number", style:"width:52px", title:h("statetext")})),
     el("td",{}, el("input",{class:"p-no_group", type:"checkbox", title:h("no_group")})),
     el("td",{class:"acts"},
-      el("button",{class:"ghost rowbtn", title:"duplicate (addr + 1)",
+      el("button",{class:"ghost rowbtn", title:"duplicate onto the next register - +1, +2 for 32-bit, +4 for 64-bit, the next bit for a bit row",
                    onclick:()=>ptDuplicate(tr._pt)},"⧉"),
       el("button",{class:"ghost rowbtn", title:"delete",
                    onclick:()=>ptDelete(tr._pt)},"✕")));
@@ -3240,31 +3468,44 @@ function ptSetSel(n, v) {
 }
 /* Only assign what differs. It saves work, and assigning .value to a focused input
    moves its caret to the end - which is what a render triggered by the keystroke
-   being typed would do on every key. */
-function ptSetV(n, v) { const s = v == null ? "" : String(v); if (n.value !== s) n.value = s; }
+   being typed would do on every key.
+
+   `hold` is the field being typed in, when its row still shows the same point. The
+   model keeps a text field trimmed, so a refresh between two keystrokes wrote "Temp"
+   back over "Temp " and the next key made "Temptilluft". A field that already says
+   what the model holds, give or take the spaces at its ends, is left exactly as typed;
+   one the model has really moved away from - a paste, a fix, an undo - is still
+   rewritten. */
+function ptSetV(n, v, hold) {
+  const s = v == null ? "" : String(v);
+  if (n.value === s) return;
+  if (n === hold && n.value.trim() === s) return;
+  n.value = s;
+}
 function ptSetChk(n, b) { if (n.checked !== b) n.checked = b; }
 
 function ptFill(tr, p, vi) {
   const f = tr._f;
+  const hold = tr._pt === p ? document.activeElement : null;   // see ptSetV
   tr._pt = p;
   const num = String(p._seq + 1);         // project position, not the view's
   if (f.num.textContent !== num) f.num.textContent = num;
-  ptSetV(f.group, p.group);
+  ptSetV(f.group, p.group, hold);
   ptSetSel(f.datatype, p.datatype);
-  ptSetV(f.addr, p.addr);
-  ptSetV(f.bit, p.bit);
-  ptSetV(f.system_no, p.system_no);
-  ptSetV(f.tag, p.tag);
-  ptSetV(f.text, p.text);
-  ptSetV(f.extra, p.extra);
+  ptSetV(f.addr, p.addr, hold);
+  ptSetV(f.bit, p.bit, hold);
+  ptSetV(f.system_no, p.system_no, hold);
+  ptSetV(f.tag, p.tag, hold);
+  ptSetV(f.text, p.text, hold);
+  ptSetV(f.extra, p.extra, hold);
   ptSetSel(f.alarm, p.alarm);
-  ptSetV(f.unit, p.unit);
+  ptSetV(f.unit, p.unit, hold);
   ptSetSel(f.scale, p.scale);
   ptSetSel(f.rw, p.rw);
   ptSetSel(f.update_freq, p.update_freq);
   ptSetChk(f.online, !!p.online);
   ptSetSel(f.decimals, p.decimals);
-  ptSetV(f.statetext, p.statetext);
+  ptSetV(f.statetext, p.statetext, hold);
   ptSetChk(f.no_group, !!p.no_group);
   tr.classList.toggle("sel", ptSel.has(p));
   tr.classList.toggle("warn", ptWarn.has(p));
@@ -3330,8 +3571,13 @@ function ptDraw(force) {
   const from = act && act.closest ? act.closest("#points tr") : null;
   const keepCls = from ? [...act.classList].find(c => c.startsWith("p-")) : null;
   const keep = keepCls ? from._pt : null;      // a focused row button follows the slot
-  let caret = null;
-  if (keep) { try { caret = [act.selectionStart, act.selectionEnd]; } catch { caret = null; } }
+  let caret = null, typed = null;
+  if (keep) {
+    try { caret = [act.selectionStart, act.selectionEnd]; } catch { caret = null; }
+    // what is in the box rather than what the model made of it: the model is trimmed,
+    // and a scroll between "Temp " and "t" must not take the space with it (ptSetV)
+    if (act.tagName === "INPUT" && act.type !== "checkbox") typed = act.value;
+  }
 
   if (shown !== ptShown)                  // only when the view got shorter than the pool
     for (let k = 0; k < ptPool.length; k++) ptPool[k].classList.toggle("spare", k >= shown);
@@ -3345,6 +3591,7 @@ function ptDraw(force) {
     const to = ptPool.find(tr => tr._pt === keep);
     const field = to ? to._f[keepCls.slice(2)] : null;
     if (field && field !== act) {
+      if (typed !== null && field.value.trim() === typed.trim()) field.value = typed;
       field.focus({preventScroll:true});
       if (caret) try { field.setSelectionRange(caret[0], caret[1]); } catch {}
     } else if (!field && act.isConnected) {
@@ -3371,24 +3618,62 @@ function ptReveal(p) {
   ptRender(true);
   return ptPool.find(tr => tr._pt === p) || null;
 }
+/* ---------- duplicate: the next register, not the next number ----------
+   ⧉ and the bulk bar's duplicate used to add 1 to the address whatever the row read, so
+   a copy of a 32-bit value landed on its own low word and a copy of a bit row on the
+   next register's same bit - and both appended at the bottom, away from the block.
+   Registers per raw type are validate.py's WORD_BITS over 16: what the driver reads for
+   one point, from the datatype table the page already holds (shipped and project). */
+const RAW_REGISTERS = {I16:1, U16:1, rI16:1, rU16:1, CLK:1, BCD35:1,
+                       I32:2, U32:2, F:2, STR4:2, BCD4:2,
+                       D:4, I64I32:4, U64U32:4, STR8:4};
+function ptRegisterWidths() {
+  const w = new Map();
+  for (const d of dtAllRows()) w.set(String(d.name).toLowerCase(), RAW_REGISTERS[d.raw_type] || 1);
+  return w;
+}
+function ptWidthOf(d, widths) {
+  return widths.get(String(d.datatype || "").toLowerCase()) || 1;
+}
+/* One row onto what follows it: the next bit inside the same word for a bit row (the
+   next field of the same length for nibble syntax, 5#4 -> 9#4), otherwise the register
+   after this value's last one. A bit past the word is left for Validate to name -
+   which word holds it is the 32-bit word order modbusgen never guesses. */
+function ptStepOne(d, widths) {
+  if (typeof d.bit === "number") { d.bit += 1; return; }
+  const nib = typeof d.bit === "string" ? d.bit.match(/^(\d+)#(\d+)$/) : null;
+  if (nib) { d.bit = `${Number(nib[1]) + Number(nib[2])}#${nib[2]}`; return; }
+  if (typeof d.addr === "number") d.addr += ptWidthOf(d, widths);
+}
 function ptDuplicate(p) {
   if (!p) return;
   ptPushState(null, "duplicate row");
   const d = ptOut(p);
-  if (typeof d.addr === "number") d.addr += 1;
+  ptStepOne(d, ptRegisterWidths());
   delete d.element_id;                    // a copy must not inherit an explicit id
-  const np = ptAdd(d);
+  const [np] = ptInsertAt(ptModel.indexOf(p) + 1, [d]);   // right after its source
   renumber();
   ptReveal(np);
+}
+/* A point leaving the list leaves every set that names it - selection, the red, amber,
+   pin and blink marks, the fresh rows. The bulk delete used to clear only the red one,
+   so a deleted row could still be counted in "3 warned" and filtered for. */
+function ptForget(p) {
+  ptSel.delete(p); ptBad.delete(p); ptWarn.delete(p); ptPin.delete(p); ptFlash.delete(p);
+  ptFresh.delete(p);
+  if (ptSelAnchor === p) ptSelAnchor = null;
+}
+function ptForgetDone() {                 // an armed filter with nothing marked hides every row
+  if (!ptBad.size) ptFilters.delete("failing");
+  if (!ptWarn.size) ptFilters.delete("warned");
 }
 function ptDelete(p) {
   if (!p) return;
   ptPushState(null, "delete row");
   const i = ptModel.indexOf(p);
   if (i >= 0) ptModel.splice(i, 1);
-  ptSel.delete(p); ptBad.delete(p); ptWarn.delete(p); ptPin.delete(p); ptFlash.delete(p);
-  ptFresh.delete(p);
-  if (ptSelAnchor === p) ptSelAnchor = null;
+  ptForget(p);
+  ptForgetDone();
   renumber();
 }
 function ptToggleSort(col) {
@@ -3413,14 +3698,26 @@ function ptCommitOrder() {
    a committed reorder, and cannot drift out of step with any of them. ptOut
    carries the fields the table does not show (element_id, menu, active, ranges)
    through p._orig, so those survive an undo too. */
-const PT_UNDO_MAX = 10;
+const PT_UNDO_MAX = 50;
 const ptUndo = [];
-let ptPreEdit = null;          // state captured when a cell took focus
+const ptRedo = [];             // the steps undo went back over, newest last
+/* A cell edit used to cost two copies of the whole list and two serialisations of it:
+   one copy when the cell took focus, typed in or not, and at commit a second copy plus
+   a JSON.stringify of both to see whether they differed - on a 1600-point list, on every
+   Tab. Now the copy is taken at the first keystroke that actually changes a point
+   (ptOnFieldEdit), so ptPreEdit being set is itself the dirty flag, and ptEditFrom holds
+   just the points touched, as they were, so a value typed and then typed back costs no
+   undo step. */
+let ptPreEdit = null;          // the list before the first keystroke in the cell being edited
+let ptEditFrom = null;         // point -> its serialised self before that keystroke
 
 function ptCapture() { return ptModel.map(ptOut); }
 function ptPushState(state, label) {
+  // an action arriving while a cell is mid-edit: the typing is its own step, before this one
+  if (!state && ptPreEdit) ptCommitPendingEdit();
   ptUndo.push({points: state || ptCapture(), label});
   while (ptUndo.length > PT_UNDO_MAX) ptUndo.shift();
+  ptRedo.length = 0;           // a new change forks the history; what was undone is gone
   ptUpdateUndoButton();
 }
 function ptUpdateUndoButton() {
@@ -3428,9 +3725,13 @@ function ptUpdateUndoButton() {
   if (!b) return;
   const n = ptUndo.length;
   b.disabled = n === 0;
-  b.title = n
-    ? `Undo: ${n === 1 ? "1 step" : n + " steps"} available, most recent "${ptUndo[n-1].label}" (Ctrl+Z). Keeps the last ${PT_UNDO_MAX}`
-    : `Nothing to undo yet. Point edits, adds, deletes and bulk changes are kept, the last ${PT_UNDO_MAX} of them (Ctrl+Z)`;
+  const redo = ptRedo.length
+    ? ` Redo: ${ptRedo.length} step${ptRedo.length === 1 ? "" : "s"}, next "${ptRedo[ptRedo.length-1].label}" (Ctrl+Y or Ctrl+Shift+Z).`
+    : "";
+  b.title = (n
+    ? `Undo: ${n === 1 ? "1 step" : n + " steps"} available, most recent "${ptUndo[n-1].label}" (Ctrl+Z). Keeps the last ${PT_UNDO_MAX}.`
+    : `Nothing to undo yet. Point edits, adds, deletes and bulk changes are kept, the last ${PT_UNDO_MAX} of them (Ctrl+Z).`)
+    + redo;
 }
 function ptRestore(points) {
   ptSetModel(points);
@@ -3443,14 +3744,25 @@ function ptDoUndo() {
   ptCommitPendingEdit();
   const step = ptUndo.pop();
   if (!step) return;
+  ptRedo.push({points: ptCapture(), label: step.label});
+  ptRestore(step.points);
+  ptUpdateUndoButton();
+}
+function ptDoRedo() {
+  ptCommitPendingEdit();       // typing since the undo is a new change, and empties the redo
+  const step = ptRedo.pop();
+  if (!step) return;
+  ptUndo.push({points: ptCapture(), label: step.label});
+  while (ptUndo.length > PT_UNDO_MAX) ptUndo.shift();
   ptRestore(step.points);
   ptUpdateUndoButton();
 }
 function ptCommitPendingEdit() {
   if (!ptPreEdit) return;
-  const now = ptCapture();
-  if (JSON.stringify(now) !== JSON.stringify(ptPreEdit)) ptPushState(ptPreEdit, "edit");
-  ptPreEdit = null;
+  const before = ptPreEdit, touched = ptEditFrom;
+  ptPreEdit = null; ptEditFrom = null;
+  if ([...(touched || [])].some(([p, was]) => JSON.stringify(ptOut(p)) !== was))
+    ptPushState(before, "edit");
 }
 
 /* ---------- points: multi-row selection and bulk edit ----------
@@ -3505,7 +3817,8 @@ const ADDR_SHIFT_HELP = "Move every selected address by this many registers, kee
 function bulkValueControl(col) {
   const mk = items => pick("bulk-val", "", items, COL_HELP[col]);
   switch (col) {
-    case "datatype":   { const s = dtSelect(""); s.className = "bulk-val"; return s; }
+    case "datatype":   requireBoot();
+                       return lazySelect("bulk-val", "", s => dtFill(s, false), COL_HELP.datatype);
     case "alarm":      return mk(["","A","N","B","C"]);
     case "scale":      return mk(scaleItems());
     case "rw":         return mk(["r","rw","vr","vrw"]);
@@ -3538,7 +3851,7 @@ function bulkRefreshValue() {
 /* The bulk bar's "on"/"off" is its own vocabulary for the two checkbox columns;
    everything else is the value as typed, normalised by ptWriteField like any edit. */
 function bulkWrite(p, col, value) {
-  if (col === "online" || col === "no_group") p[col] = (value === "on" || value === true);
+  if (col === "online" || col === "no_group") { p[col] = (value === "on" || value === true); ptTouch(p); }
   else ptWriteField(p, col, value);
 }
 function bulkRead(p, col) {
@@ -3578,7 +3891,7 @@ function bulkShiftAddr(raw) {
   }
   ptPushState(null, `shift addr by ${delta > 0 ? "+" : ""}${delta}`);
   markValStale();
-  for (const p of rows) p.addr += delta;
+  for (const p of rows) { p.addr += delta; ptTouch(p); }
   updateStats(); applyPointView(); ptPaintSelection();
   $("out").replaceChildren(messageBox("info", "Shifted:",
     `${rows.length} address${rows.length === 1 ? "" : "es"} moved by `
@@ -3588,6 +3901,7 @@ function bulkApply() {
   const col = $("bulkCol").value, ctrl = document.querySelector(".bulk-val");
   if (!ctrl) return;
   if (col === ADDR_SHIFT) return bulkShiftAddr(ctrl.value);
+  if (ctrl.value === DT_NEW) return;          // never a datatype - the bulk list leaves it out
   ptPushState(null, "apply " + col);
   markValStale();
   for (const p of bulkTargets()) bulkWrite(p, col, ctrl.value);
@@ -3683,6 +3997,8 @@ function collectProject() {
 }
 function showProject(data) {
   requireBoot();          // no project may be rendered before the tables are in
+  // another list: the previous version picked for the last one does not apply to it
+  if (prevVersion) { prevVersion = null; showPrevChip(); }
   $("pTable").value = data.table || "";
   $("pPlant").value = data.plant != null ? String(data.plant) : "";
   /* An unknown spelling is kept rather than dropped, as hydrateSelect does for an
@@ -3717,7 +4033,7 @@ function showProject(data) {
   ptSort = {col:null, dir:null};
   ptFilters.clear();
   $("valStatus").hidden = true;
-  ptUndo.length = 0; ptPreEdit = null; ptUpdateUndoButton();
+  ptUndo.length = 0; ptRedo.length = 0; ptPreEdit = null; ptEditFrom = null; ptUpdateUndoButton();
   if ($("ptSearch")) $("ptSearch").value = "";
   ptSetModel(data.points || []);
   if (!ptModel.length) ptAdd();          // an empty project still offers a row to type in
@@ -3729,6 +4045,11 @@ function showProject(data) {
   // autosave restore and the #file-name link
   const unknown = ptMarkUnknownDatatypes();
   if (unknown.size) $("out").replaceChildren(...dtUnknownMsgs(unknown));
+  // the page now holds exactly what was loaded, and no browser copy until the caller
+  // names one (renumber() above counted the load itself as an edit)
+  projDirty = false;
+  savedAs = null;
+  markKeyClashes();
 }
 
 /* ---------- output ---------- */
@@ -3927,7 +4248,9 @@ const FIX_ACTIONS = {
         : v;
       ptPushState(null, "swap paste artefacts");
       for(const p of ctx.points)
-        for(const f of ["text","extra","tag","system_no","menu","element_id"]){
+        // unit and the ranges since 2026-10-23, when validate.py began reading them too
+        for(const f of ["text","extra","tag","system_no","menu","element_id","unit",
+                        "range_min","range_max"]){
           const was = p[f], now = fix(was);
           if(now !== was){ p[f] = now; if(p._orig) p._orig[f] = fix(p._orig[f]); }}
       updateStats(); applyPointView();}},
@@ -4042,7 +4365,7 @@ const FIX_ACTIONS = {
         const id=box.querySelector(".st-id"); if(id && ids.has(id.value.trim())) box.remove();}}},
   "scale-without-decimals": {
     label:"set decimals from the scale",
-    title:"Fills decimals on each scaled row from its scale - x0.1 gives 1, x0.01 gives 2, x65 gives 4 (undoable). Only touches rows that have none",
+    title:"Fills decimals on each scaled row from its scale - x0.1 gives 1, x0.01 gives 2, x65 and x0036 give 3, the most the format takes (undoable). Only touches rows that have none",
     run:(ctx)=>{if(!ctx.points.length) return;
       /* The decimals are validate.py's scale_decimals, sent in the bootstrap as
          BOOT.scale_decimals, so the button applies exactly what the warning asks for.
@@ -4054,7 +4377,9 @@ const FIX_ACTIONS = {
       const table={}; for(const [k,v] of Object.entries((BOOT && BOOT.scale_decimals) || {})) table[k.toLowerCase()]=v;
       const from = s => table[String(s||"").trim().toLowerCase()] ?? null;
       ptPushState(null, "decimals from scale");
-      for(const p of ctx.points){const d=from(p.scale); if(d!=null && p.decimals==null) p.decimals=d;}
+      /* Capped at 3: decimals-range allows 0..3 and the dec column offers no more, so
+         x65's 4 written as asked swapped this warning for an error that blocks generation. */
+      for(const p of ctx.points){const d=from(p.scale); if(d!=null && p.decimals==null) p.decimals=Math.min(3, d);}
       updateStats(); applyPointView();}},
   "group-unknown": {
     label:"define the missing groups",
@@ -4133,7 +4458,7 @@ const FIX_ACTIONS = {
       updateStats(); applyPointView();}},
   "rw-invalid": {
     label:"set rw to r on these rows",
-    title:"Sets the access column to r on each affected row (undoable). The value there is not one the tool knows, and read-only is the safe reading of an unusable one",
+    title:"Sets the access column to r on each affected row (undoable). The value there is not one the tool knows, or it is vr/vrw on a motherword, whose bits are read through it - and read-only is the safe reading of either",
     run:(ctx)=>{if(!ctx.points.length) return;
       ptPushState(null, "fix rw");
       for(const p of ctx.points) p.rw = "r";
@@ -4339,23 +4664,45 @@ function adviseOn(findings) {
   }
   return byCode;
 }
-/* "apply the recommended fix": run the deterministic repair a stock advice
-   carries, then validate again so the outcome is visible immediately. Fixes
-   that edit points push an undo step; option fixes show as amber deviations. */
-function applyAdviceFix(fix, group, pointRows) {
-  requireBoot();                               // setOption reads BOOT.defaults
+/* The points a fix button acts on, found when the panel is BUILT. They used to be found
+   when the button was clicked, by position - and a row deleted, inserted or moved in
+   between put the repair on whichever points had slid into those places. The answer's
+   positions are only true of the list it was asked about, which is the list on screen
+   right now, so they are turned into the point objects here, once. */
+function adviceTargets(group, pointRows) {
   const toPoint = n => {
     const src = Array.isArray(pointRows) ? pointRows[n - 1] : n;
     if (!src) return null;                     // a synthesized row - nothing to edit
     return ptModel[src - 1] || null;           // point_rows counts the project order
   };
-  const points = [...group.points].map(toPoint).filter(Boolean);
-  /* Row-level pairs, because a fix that applies a *suggestion* has to apply each
-     point's own: two rows can carry two different bad spellings under one code, and
-     one substitution across both would be a guess wearing a button. */
-  const rows = (group.findings || [])
-    .map(f => ({p: f.point ? toPoint(f.point) : null, f}))
-    .filter(r => r.p);
+  return {
+    rev: projRev,                              // the list these objects were found in
+    points: [...(group.points || [])].map(toPoint).filter(Boolean),
+    /* Row-level pairs, because a fix that applies a *suggestion* has to apply each
+       point's own: two rows can carry two different bad spellings under one code, and
+       one substitution across both would be a guess wearing a button. */
+    rows: (group.findings || [])
+      .map(f => ({p: f.point ? toPoint(f.point) : null, f}))
+      .filter(r => r.p),
+  };
+}
+/* "apply the recommended fix": run the deterministic repair a stock advice
+   carries, then validate again so the outcome is visible immediately. Fixes
+   that edit points push an undo step; option fixes show as amber deviations.
+
+   If the project was edited after the advice was given, the fix does not run: the
+   finding may no longer hold - the row fixed by hand, the group now in use - and a
+   repair aimed at a list that is gone is a guess. It validates instead, and the fresh
+   panel carries fresh buttons. Points deleted since are skipped either way. */
+function applyAdviceFix(fix, group, target) {
+  requireBoot();                               // setOption reads BOOT.defaults
+  if (!target || target.rev !== projRev)
+    return runValidate("The list was edited after that advice was given, so the fix was "
+      + "not applied - it was checked again instead. Press the fix on the advice below "
+      + "if it still applies.");
+  const alive = new Set(ptModel);
+  const points = target.points.filter(p => alive.has(p));
+  const rows = target.rows.filter(r => alive.has(r.p));
   fix.run({
     points,
     rows,
@@ -4366,8 +4713,13 @@ function applyAdviceFix(fix, group, pointRows) {
       else if (name in BOOT.defaults) optKept[name] = value;   // no control: kept value
     },
   });
+  /* The repairs write fields directly, some of them fields only _orig holds (active,
+     menu, the ranges) - so every point's search text is dropped, rather than trusting
+     forty repairs to remember one line each. */
+  for (const p of ptModel) ptTouch(p);
+  markKeyClashes();                            // some remove or add group rows and state lists
   markValStale();
-  return $("btnValidate").onclick();           // re-validate: the panel and chip refresh
+  return runValidate();                        // re-validate: the panel and chip refresh
 }
 /* ---------- follow a message to the rows it is about ----------
    Every finding and every warning already carries the rows it came from - `point`/`addr`
@@ -4403,7 +4755,8 @@ function pinPoints(points, kind) {
   if (card.classList.contains("collapsed")) { card.classList.remove("collapsed"); foldWrite(); }
   applyPointView();
   if (points.length) ptReveal(points[0]);      // scrolls the virtual list to the row
-  card.scrollIntoView({block:"start", behavior:"smooth"});
+  // not scrollIntoView({block:"start"}), which parked the card under the sticky header
+  scrollUnderHeader(card);
   flashPoints(points);
 }
 
@@ -4516,10 +4869,12 @@ function renderAdvice(findings, pointRows) {
     // a transposition, and naming the candidate is most of the fix
     if (group.suggestions.size)
       line.append(" ", el("b",{}, `Nearest key(s): ${[...group.suggestions].join(", ")}.`));
-    if (group.fix)
+    if (group.fix) {
+      const target = adviceTargets(group, pointRows);     // now, not at the click
       line.append(" ", el("button",{class:"ghost fixbtn", title:group.fix.title,
-        onclick:()=>applyAdviceFix(group.fix, group, pointRows)},
+        onclick:()=>applyAdviceFix(group.fix, group, target)},
         "fix: " + group.fix.label));
+    }
     const go = gotoButton(code);
     if (go) line.append(" ", go);
     box.append(line);
@@ -4813,14 +5168,21 @@ $("dtSave").onclick = () => {
 
   if (dtDialogTarget.name && dtDialogTarget.name !== name) {
     // a rename has to follow the points using the old name, or they lose their datatype
+    const was = dtDialogTarget.name.toLowerCase();
     for (const p of ptModel)
-      if (String(p.datatype).toLowerCase() === dtDialogTarget.name.toLowerCase())
-        p.datatype = name;
+      if (String(p.datatype).toLowerCase() === was) { p.datatype = name; ptTouch(p); }
+    /* ...and the undo snapshots with them, as a group rename does: left alone, Ctrl+Z
+       after a rename put the points back on a name no variable defines any more. */
+    const rekey = list => { for (const q of list || [])
+      if (q && String(q.datatype).toLowerCase() === was) q.datatype = name; };
+    for (const step of ptUndo) rekey(step.points);
+    for (const step of ptRedo) rekey(step.points);
+    rekey(ptPreEdit);
     delete dtProject[dtDialogTarget.name];
   }
   dtProject[name] = dtDialogRow();
   dtInvalidateKnown();
-  if (dtDialogTarget.point) dtDialogTarget.point.datatype = name;
+  if (dtDialogTarget.point) { dtDialogTarget.point.datatype = name; ptTouch(dtDialogTarget.point); }
   renderDatatypeCard();
   ptMarkUnknownDatatypes();
   applyPointView();
@@ -4912,9 +5274,37 @@ function setValStatus(res) {
                   : `The last check passed${warns ? ` with ${warns} warning(s)` : ""}. `)
           + "Click to jump to the details. Dimmed means the project was edited afterwards";
 }
+/* Called by every edit that could change what Validate or Generate would say - a cell,
+   a card, a bulk edit, a fix, an undo, renumber() behind every add, delete and reorder -
+   which makes it the one place that knows the project changed. So it is also where the
+   revision moves (a run in flight compares it), where the page becomes "changed since
+   it was last kept" (New, Load and the imports ask before replacing it), where the
+   autosave is queued (removing a row or a group fires no input event to queue it), and
+   where a script already on screen stops being offered as current. */
 function markValStale() {
+  projRev++;
+  projDirty = true;
   const s = $("valStatus");
   if (!s.hidden) s.classList.add("stale");
+  markScriptStale();
+  queueAutosave();
+}
+/* The script in the Result card is the project as it was when Generate ran. Edited
+   afterwards, copy SQL and export SQL went on handing out that old script with nothing
+   to say so - the one place a stale answer costs a plant something. Both are switched
+   off and the bar offers to regenerate; save file stays, because it regenerates. */
+function markScriptStale() {
+  const bar = $("sqlBar");
+  if (!bar || bar.classList.contains("stale")) return;
+  bar.classList.add("stale");
+  const why = "The project was edited after this script was generated, so it no longer "
+            + "matches - regenerate first";
+  for (const b of bar.querySelectorAll(".sql-copy, .sql-export")) { b.disabled = true; b.title = why; }
+  bar.append(
+    el("span",{class:"chip warnfilter", title:why}, "edited since - out of date"),
+    el("button",{class:"primary", title:"Generate the script again from the project as it is now",
+                 onclick:() => runGenerate()}, "regenerate"));
+  $("out").querySelector("pre.sql")?.classList.add("stale");
 }
 /* Bring the Result card to you rather than leave it below the fold. It is the last card
    but one, so pressing Generate SQL from the header - which is sticky, and therefore
@@ -4931,11 +5321,15 @@ function revealResult() {
     card.classList.remove("collapsed");
     foldWrite();
   }
-  /* Not scrollIntoView({block:"start"}): the header is sticky, so the top of the
-     viewport is ~99px of chrome and block:"start" parks the card's heading and its
-     first message underneath it. Same correction wizFocus makes, and for the same
-     reason. Scrolled to the card rather than to #out, so the heading is what you land
-     on and the result reads as belonging to something. */
+  // Scrolled to the card rather than to #out, so the heading is what you land on and
+  // the result reads as belonging to something.
+  scrollUnderHeader(card);
+}
+/* Not scrollIntoView({block:"start"}): the header is sticky, so the top of the viewport
+   is ~99px of chrome and block:"start" parks the card's heading and its first lines
+   underneath it. Same correction wizFocus makes, and for the same reason. Shared by the
+   Result jump and the jump from a message to its rows. */
+function scrollUnderHeader(card) {
   const head = document.querySelector("header").getBoundingClientRect().height;
   const top = window.scrollY + card.getBoundingClientRect().top;
   window.scrollTo({behavior:"smooth", top: Math.max(0, top - head - 8)});
@@ -5047,8 +5441,28 @@ function reportBar(res, warns, infos) {
     }},"copy report"));
 }
 
-function showResult(res, sqlWanted) {
+/* What an out-of-date answer says about itself, above everything it lists. */
+function staleBanner(sqlWanted) {
+  const box = messageBox("warn", "Out of date:",
+    "the list was edited while this ran, so what follows describes it as it was when the "
+    + "button was pressed. No row is marked from it and it offers no fixes - it names rows "
+    + "by their place in a list that has changed since.");
+  mbBody(box).append(el("div",{class:"advice"},
+    el("button",{class:"ghost fixbtn", title:"Run it again on the list as it is now",
+                 onclick:() => sqlWanted ? runGenerate() : runValidate()},
+       sqlWanted ? "generate again" : "validate again")));
+  return box;
+}
+/* `stale` is an answer that came back after the list was edited - runCheck compares the
+   revision. Every row it names is a position in the list as it was sent, so marking,
+   linking or fixing by those positions would land on whatever has slid into them since.
+   The messages are still shown, for what they say, under a line that says what they
+   are; the marks of the last answer that was current stay as they were. */
+function showResult(res, sqlWanted, stale) {
   setValStatus(res);
+  if (stale) $("valStatus").classList.add("stale");
+  const live = !stale;
+  const rowsOf = f => live ? f : null;      // a finding's rows, only while they are still these rows
   const out = $("out");
   out.replaceChildren();
   /* Warnings arrive structurally now - code, message and advice - rather than as
@@ -5059,6 +5473,7 @@ function showResult(res, sqlWanted) {
     || (res.notes || []).filter(n => n.startsWith("warning:"))
                         .map(n => ({message: n, advice: "", code: ""}));
   const infos = (res.notes || []).filter(n => !n.startsWith("warning:"));
+  if (stale) out.append(staleBanner(sqlWanted));
   /* Before the messages, so it is in reach on a panel too long to scroll. Built once
      here rather than in each of the three exits below, which is also why it precedes
      the early `return` on the error path. */
@@ -5070,18 +5485,21 @@ function showResult(res, sqlWanted) {
   for (const w of warns) {
     const box = messageBox("warn", "Warning:",
                            String(w.message || "").replace(/^warning:\s*/, ""),
-                           w, res.point_rows, "warn");
+                           rowsOf(w), res.point_rows, "warn");
     if (w.advice) {
       const line = el("div",{class:"advice"}, w.advice);
       /* A warning with a mechanical remedy gets the same button an error does. It
          never blocked anything, so the button is the only thing that makes the
-         difference between a remark and a repair. */
-      const fix = FIX_ACTIONS[w.code];
-      if (fix)
+         difference between a remark and a repair. Its points are found now, while the
+         answer's positions still describe the list on screen (adviceTargets). */
+      const fix = live ? FIX_ACTIONS[w.code] : null;
+      if (fix) {
+        const group = {points: w.points || [], findings:[w], errors:[w.message]};
+        const target = adviceTargets(group, res.point_rows);
         line.append(" ", el("button",{class:"ghost fixbtn", title:fix.title,
-          onclick:()=>applyAdviceFix(fix, {points: w.points || [], findings:[w],
-                                           errors:[w.message]}, res.point_rows)},
+          onclick:()=>applyAdviceFix(fix, group, target)},
           "fix: " + fix.label));
+      }
       /* A warning whose blocker is an unanswered field gets a way to that field. Both
          driver warnings can carry one and only one of them can carry a repair, so the
          two affordances are independent and a line can show either, both or neither. */
@@ -5104,17 +5522,21 @@ function showResult(res, sqlWanted) {
     const fs = Array.isArray(res.findings) && res.findings.length === res.errors.length
              ? res.findings : null;
     res.errors.forEach((e, i) =>
-      out.append(messageBox("error", "Error:", e, fs ? fs[i] : null,
+      out.append(messageBox("error", "Error:", e, fs ? rowsOf(fs[i]) : null,
                             res.point_rows, "err")));
-    const advice = renderAdvice(res.findings, res.point_rows);
-    if (advice) out.append(advice);
-    markBadRows(res.errors, res.point_rows, res.findings);
-    markWarnRows(warns, res.point_rows);   // amber under the red, both survive the run
+    if (live) {
+      const advice = renderAdvice(res.findings, res.point_rows);
+      if (advice) out.append(advice);
+      markBadRows(res.errors, res.point_rows, res.findings);
+      markWarnRows(warns, res.point_rows);   // amber under the red, both survive the run
+    }
     updateStats();
     return;
   }
-  clearBadRows();
-  markWarnRows(warns, res.point_rows);     // a clean run still has warnings to show
+  if (live) {
+    clearBadRows();
+    markWarnRows(warns, res.point_rows);   // a clean run still has warnings to show
+  }
   updateStats();
   const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
   if (!sqlWanted) {
@@ -5124,6 +5546,7 @@ function showResult(res, sqlWanted) {
   }
   if (res.written)
     out.append(messageBox("success", "Written:", String(res.written)));
+  if (res.update) out.append(updateBox(res.update));
   const pre = el("pre",{class:"sql"}, res.sql || "");
   // Count records, not one format's keyword: legacy writes one INSERT per record,
   // modern writes multi-row REPLACE INTO blocks, so counting "INSERT" reported 0 for
@@ -5132,22 +5555,39 @@ function showResult(res, sqlWanted) {
   const inserts = srcLines.filter(l => l.startsWith("INSERT INTO")).length;
   const tuples = srcLines.filter(l => /^\(.*\),?;?$/.test(l)).length;
   const rows = inserts || tuples;
-  out.append(el("div",{class:"sqlbar"},
+  const sqlBar = el("div",{class:"sqlbar", id:"sqlBar"},
     el("span",{class:"chip", title:"Rows this script writes across the group, param and set tables - the same count either SQL format"},
        `${rows} rows`),
-    el("button",{title:"Copy the whole script to the clipboard, ready to paste into the plant database",
+    el("button",{class:"sql-copy",
+                 title:"Copy the whole script to the clipboard, ready to paste into the plant database",
                  onclick:async e=>{
-      await navigator.clipboard.writeText(res.sql || "");
-      e.target.textContent = "copied ✓";
-      setTimeout(()=>e.target.textContent = "copy SQL", 1500);
+      const btn = e.currentTarget;
+      /* The clipboard can refuse - no focus, no permission, an insecure origin - and an
+         unhandled refusal left the button saying nothing while whatever was on the
+         clipboard before waited to be pasted into a plant database as the script. */
+      try { await navigator.clipboard.writeText(res.sql || ""); }
+      catch (err) {
+        btn.textContent = "copy blocked";
+        setTimeout(()=>btn.textContent = "copy SQL", 1500);
+        if (!sqlBar.nextElementSibling?.classList.contains("copyblocked")) {
+          const box = messageBox("warn", "Not copied:",
+            "the browser refused to put the script on the clipboard (" + (err && err.message || err)
+            + "). Nothing was copied - use export SQL, or select the script below and copy it.");
+          box.classList.add("copyblocked");
+          sqlBar.after(box);
+        }
+        return;
+      }
+      btn.textContent = "copied ✓";
+      setTimeout(()=>btn.textContent = "copy SQL", 1500);
     }},"copy SQL"),
-    el("button",{class:"ghost",
-                 title:"Download exactly this script as a file, encoded cp1252 the way the IWMAC tables expect. Does not regenerate - use Generate + save file for that",
+    el("button",{class:"ghost sql-export",
+                 title:"Download exactly this script as a file, encoded cp1252 the way the IWMAC tables expect. Does not regenerate - use save file for that",
                  onclick:e=>{
       /* Named here rather than taken from res.filename, so every download this page
          makes matches. `sql` is spelled out because .txt does not say what it holds,
          where .xlsm and .json do. The server's own name still applies to
-         "Generate + save file", which writes into the projects folder rather than
+         "save file", which writes into the projects folder rather than
          downloading, and to the CLI. */
       const name = exportName("sql", ".txt");
       if (res.b64) downloadBytes(name, res.b64);
@@ -5161,10 +5601,96 @@ function showResult(res, sqlWanted) {
        saving these bytes: the page may have been edited since. */
     el("button",{class:"ghost", id:"btnSaveSql",
                  title:"Regenerate and write the .sql file into the projects folder (browser build: downloads it), named by the server from the plant number and table",
-                 onclick:saveSqlFile},"save file")), pre);
+                 onclick:saveSqlFile},"save file"),
+    res.verify_sql ? el("button",{class:"ghost", id:"btnVerifySql",
+                 title:"Download read-only checks to paste into the plant's SQL tool after the import: bound rows per unit, rows left behind, duplicates. Each query lists problems, so an empty result is a pass (docs/16 section 16.6.8)",
+                 onclick:e=>{
+      if (res.verify_b64) downloadBytes(res.verify_filename, res.verify_b64);
+      else downloadTextFile(res.verify_filename, res.verify_sql);
+      e.target.textContent = "downloaded ✓";
+      setTimeout(()=>e.target.textContent = "verification SQL", 1500);
+    }},"verification SQL") : "");
+  out.append(sqlBar, pre);
+  if (stale) markScriptStale();            // the script is the list as it was sent
 }
 function showError(e) {
   $("out").replaceChildren(messageBox("error", "Error:", String(e.message || e)));
+}
+
+/* ---------- the previous version of the list (docs/16 section 16.6.7) ----------
+   Given the version that is on the plant now, Generate writes a script that also
+   deletes the rows that version had and this one has not - in the template and on every
+   unit - and leaves the points both have, and their settings, alone. Without it the
+   choice was an import that leaves rows behind, or replace_list, which deletes them all.
+   Held in memory only: a one-off comparison for one generate, not part of the project. */
+// var, not let: showProject clears it, and can run before this line has
+var prevVersion = null;                  // {name, project}
+function prevPayload(generate) {
+  return generate && prevVersion ? {previous: prevVersion.project} : {};
+}
+function showPrevChip() {
+  $("prevChip").hidden = !prevVersion;
+  $("prevName").textContent = prevVersion ? prevVersion.name : "";
+}
+async function readPrevious(file) {
+  if (/\.(sql|txt)$/i.test(file.name)) {
+    // IWMAC scripts are cp1252, read the way Import SQL reads them
+    const buf = await file.arrayBuffer();
+    let text;
+    try { text = new TextDecoder("utf-8", {fatal: true}).decode(buf); }
+    catch { text = new TextDecoder("windows-1252").decode(buf); }
+    return (await api("/api/import-sql", {text})).project;
+  }
+  return await api("/api/parse", {text: await file.text()});
+}
+$("btnPrev").onclick = () => $("prevFile").click();
+$("prevFile").onchange = async e => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  try {
+    prevVersion = {name: file.name, project: await readPrevious(file)};
+    showPrevChip();
+    markValStale();
+    $("out").replaceChildren(messageBox("info", "Previous version:",
+      `${file.name} - Generate SQL now also deletes the rows it has and this list has not.`));
+    revealResult();
+  } catch (err) { showError(new Error(`could not read ${file.name}: ${err.message}`)); }
+};
+$("btnPrevClear").onclick = () => { prevVersion = null; showPrevChip(); markValStale(); };
+function updateBox(u) {
+  const box = messageBox(u.removed.length || u.readdressed.length ? "warn" : "info",
+    "Update from the previous version:",
+    `${prevVersion ? prevVersion.name + ": " : ""}${u.summary}. The script deletes the rows `
+    + `that are gone; the points both versions have keep their settings on the plant.`);
+  const body = mbBody(box);
+  if (u.removed.length) {
+    const shown = u.removed.slice(0, 30).map(r =>
+      el("li",{}, el("code",{}, r.element_id), ` ${r.driver_id} - ${r.alias}`));
+    if (u.removed.length > 30) shown.push(el("li",{}, `… and ${u.removed.length - 30} more`));
+    body.append(el("details",{}, el("summary",{}, `${u.removed.length} row(s) deleted`),
+                   el("ul",{}, ...shown)));
+  }
+  if (u.readdressed.length)
+    body.append(el("div",{class:"advice"}, `Re-addressed, so unbound to bind anew - relink `
+      + `their panel objects: ${u.readdressed.slice(0, 12).join(", ")}`
+      + (u.readdressed.length > 12 ? " …" : "")));
+  if (u.previous_table && u.previous_table !== ($("pTable").value || "").trim())
+    body.append(el("div",{class:"advice"}, `The previous version wrote table `
+      + `${u.previous_table}: its own tables are left as they are.`));
+  return box;
+}
+
+/* ---------- keys an imported file holds that the page leaves out ----------
+   The page keeps only what a project has a field for, so a file with "scaling" for
+   scale, or "substract_one", imported as if the key were not there: no scale, the
+   subtraction still on, and no word said (review, 2026-10-23). The backend names each
+   such key with the nearest real one (model.unknown_keys). */
+async function leftOutMsgs(text) {
+  try {
+    const res = await api("/api/check-keys", {text});
+    return (res.notes || []).map(n => messageBox("warn", "Left out:", n));
+  } catch { return []; }
 }
 
 /* ---------- wiring ---------- */
@@ -5175,8 +5701,12 @@ $("btnDefaultGroups").onclick = () => {
                                ["alm","Alarmer"],["misc","Diverse"],["sch","Tidsskjema"]])
     if (!existing.has(name)) addGroupRow(name, alias);
   refreshGroupList();
+  markValStale();               // rows made from script fire no input event
 };
-$("btnAddState").onclick = () => addStateRow();
+// a new list is part of the project from the start now that it is born with an id
+$("btnAddState").onclick = () => { addStateRow(); markValStale(); };
+// an id typed or cleared, or the first word typed into a list with none, changes the marks
+$("statetexts").addEventListener("input", markKeyClashes);
 $("btnAddPoint").onclick = () => { ptPushState(null,"add point");
   const p = ptAdd(); renumber();
   // preventScroll: the focus jump would fight the scroll ptReveal just made
@@ -5230,7 +5760,11 @@ document.addEventListener("mouseup", () => {
   document.body.classList.remove("rowdrag");
 });
 
-$("btnOptReset").onclick = () => { renderOptions({}); markValStale(); };
+/* Only the checkboxes go back to the recommendation. renderOptions rebuilds optKept from
+   what it is given, so handing it {} also threw away the options the page has no control
+   for - sql_format, reserve_text, encoding - and a legacy project generated as modern
+   after a reset. They are handed back in with it. */
+$("btnOptReset").onclick = () => { renderOptions({...optKept}); markValStale(); };
 for (const id of ["optCore","optMore"])
   $(id).addEventListener("change", updateOptReset);
 
@@ -5400,14 +5934,27 @@ $("repRun").onclick = () => {
     : note);
 };
 
+/* The selection is copied as a block: every address moves by the block's span - from its
+   lowest register to the end of its highest value - so a run of 32-bit values at 100,
+   102, 104 continues at 106, 108, 110 and bits 0-7 of word 10 become bits 0-7 of word
+   11. The copies go right after the block, in project order, as replicate's do. */
 $("bulkDup").onclick = () => {
+  const rows = repSourceRows();             // project order: the block as it is written
+  if (!rows.length) return;
+  if (rows.length === 1) return ptDuplicate(rows[0]);
   ptPushState(null, "duplicate rows");
-  for (const p of bulkTargets()) {
+  const widths = ptRegisterWidths();
+  let lo = Infinity, hi = -Infinity;
+  for (const p of rows)
+    if (typeof p.addr === "number") { lo = Math.min(lo, p.addr); hi = Math.max(hi, p.addr + ptWidthOf(p, widths)); }
+  const span = hi > lo ? hi - lo : 1;
+  const copies = rows.map(p => {
     const d = ptOut(p);
-    if (typeof d.addr === "number") d.addr += 1;
+    if (typeof d.addr === "number") d.addr += span;
     delete d.element_id;                 // a copy must not inherit an explicit id
-    ptAdd(d);
-  }
+    return d;
+  });
+  ptInsertAt(ptModel.indexOf(rows[rows.length - 1]) + 1, copies);
   ptClearSelection(); renumber();
 };
 $("bulkDel").onclick = () => {
@@ -5416,7 +5963,8 @@ $("bulkDel").onclick = () => {
   ptPushState(null, "delete rows");
   const gone = new Set(rows);
   ptModel = ptModel.filter(p => !gone.has(p));
-  for (const p of rows) ptBad.delete(p);
+  for (const p of rows) ptForget(p);       // every mark, not only the red one
+  ptForgetDone();
   ptClearSelection(); renumber();
 };
 
@@ -5442,6 +5990,9 @@ function ptOnFieldEdit(e) {
     dtDialogOpen({point: p});
     return;
   }
+  // the undo step for this cell: the list as it is now, before this first change lands
+  if (!ptPreEdit) { ptPreEdit = ptCapture(); ptEditFrom = new Map(); }
+  if (!ptEditFrom.has(p)) ptEditFrom.set(p, JSON.stringify(ptOut(p)));
   ptWriteField(p, cls.slice(2), f.type === "checkbox" ? f.checked : f.value);
   // the card counts the points using each variable, so that number moves with this
   // edit. Only when the project has variables at all - a select fires once per pick
@@ -5450,11 +6001,11 @@ function ptOnFieldEdit(e) {
 $("points").addEventListener("input", ptOnFieldEdit);
 $("points").addEventListener("change", ptOnFieldEdit);
 
-/* points undo: one step per field visited, not per keystroke - the state is
-   captured when a cell takes focus and pushed only if it actually changed.
+/* points undo: one step per field edited, not per keystroke - the state is captured
+   by the first change in a cell (ptOnFieldEdit), not when the cell takes focus, and
+   pushed on change or on leaving the table only if a point really ended up different.
    Registered after ptOnFieldEdit on purpose: the keystroke has to be in the model
    before this compares the model with the state the cell was entered in. */
-$("points").addEventListener("focusin", () => { if (!ptPreEdit) ptPreEdit = ptCapture(); });
 $("points").addEventListener("change", ptCommitPendingEdit);
 $("points").addEventListener("focusout", e => {
   if (!e.relatedTarget || !$("points").contains(e.relatedTarget)) {
@@ -5478,12 +6029,43 @@ function ptColChoices(col) {
     default:            return null;                   // free text
   }
 }
+/* What one pasted cell becomes in a column, or why it is not taken. A column backed by
+   a list takes a value the list offers, in any case - a spreadsheet capitalises the
+   first letter of a cell by itself, and "a_hold_i16_n" names the same key as
+   "A_Hold_I16_N", as the backend's lookups agree. The datatype list is the one the
+   dropdown offers: the shipped table and this project's own variables. A tick box takes
+   the ways a sheet writes yes and no - this table's own copy writes 1 and blank. */
+const PT_PASTE_YES = new Set(["1","x","true","yes","on"]);
+const PT_PASTE_NO  = new Set(["","0","false","no","off"]);
+function ptPasteValue(col, v) {
+  if (col === "online" || col === "no_group") {
+    const k = v.toLowerCase();
+    if (PT_PASTE_YES.has(k)) return {value: true};
+    if (PT_PASTE_NO.has(k)) return {value: false};
+    return {why: `'${v}' is not a tick - 1, x, true or yes ticks, 0, false, no or blank clears`};
+  }
+  if (col === "datatype") {
+    if (!v) return {value: ""};
+    const key = v.toLowerCase();
+    const hit = dtAllRows().find(d => String(d.name).toLowerCase() === key);
+    return hit ? {value: String(hit.name)}
+               : {why: `'${v}' is not a datatype the table or this project's variables describe`};
+  }
+  const choices = ptColChoices(col);
+  if (!choices) return {value: v};                   // free text
+  const hit = choices.find(c => c.toLowerCase() === v.toLowerCase());
+  if (hit !== undefined) return {value: hit};
+  const offered = choices.filter(Boolean);
+  return {why: offered.length <= 6 ? `'${v}' is not one of ${offered.join(", ")}`
+                                   : `'${v}' is not a key the ${col} list offers`};
+}
 /* Excel-style paste: a multi-cell clipboard (rows = lines, columns = tabs)
    pasted into any table cell fills the visible rows downward from that cell,
    column by column to the right, the way a spreadsheet would. A single plain
    value keeps the browser's normal paste. Points are created when the block
-   runs past the table; a column backed by a list only takes a value it offers;
-   checkbox columns are left alone. The whole paste is one undo step. */
+   runs past the table; each cell goes through ptPasteValue, and a cell it refuses
+   is counted and named afterwards rather than dropped without a word - a block that
+   lands with three datatypes missing looks complete. The whole paste is one undo step. */
 $("points").addEventListener("paste", e => {
   if (ptPastePoints(e)) return;                  // rows copied with Ctrl+C, below
   if (!e.target.matches("input, select")) return;
@@ -5501,24 +6083,37 @@ $("points").addEventListener("paste", e => {
   ptPushState(null, `paste ${lines.length} row${lines.length === 1 ? "" : "s"}`);
   const colIdx = [...tr.children].indexOf(startTd);
   let last = null;
+  const missed = [];
   for (const line of lines) {
     let p = ptView[r];
     if (!p) { p = ptAdd(); ptView.push(p); }      // the block ran past the table
     last = p;
     line.split("\t").forEach((v, j) => {
       const col = PT_COLS[colIdx + j];
-      if (!col || col === "online" || col === "no_group") return;    // checkboxes stay
       v = v.trim();
-      const choices = ptColChoices(col);
-      if (choices && !choices.includes(v)) return;
-      ptWriteField(p, col, v);
+      if (!col) { if (v) missed.push({p, col: "", why: `'${v}' is past the last column`}); return; }
+      const got = ptPasteValue(col, v);
+      if ("why" in got) { missed.push({p, col, why: got.why}); return; }
+      ptWriteField(p, col, got.value);
     });
     r++;
   }
   renumber();
-  ptPreEdit = ptCapture();   // typing after the paste diffs against the pasted state
+  ptPreEdit = null; ptEditFrom = null;   // typing after the paste diffs against the pasted state
   queueAutosave();           // no input event was raised; reach the hook directly
   ptReveal(last);
+  if (missed.length) {
+    const shown = missed.slice(0, 3).map(m =>
+      `row ${m.p._seq + 1}${m.col ? " " + m.col : ""}: ${m.why}`).join("; ");
+    $("out").replaceChildren(messageBox("warn", "Not pasted:",
+      `${missed.length} pasted cell${missed.length === 1 ? "" : "s"} not taken - ${shown}`
+      + (missed.length > 3 ? `; and ${missed.length - 3} more` : "")
+      + ". The rest went in; Ctrl+Z takes the whole paste back."));
+    // said under the table too: the Result card is a long way down from the cell
+    const tip = $("ptTip");
+    if (tip) tip.textContent = `${missed.length} pasted cell${missed.length === 1 ? "" : "s"} `
+      + `not taken - the Result card says which and why`;
+  }
 });
 /* Ctrl+C / Ctrl+V on rows. Copy takes the selected points, in view order, twice
    over: as the page's own type, for a paste back into this table, and as
@@ -5538,6 +6133,16 @@ function ptCopySelection(e) {
   const a = document.activeElement;
   if (a && /^(INPUT|TEXTAREA)$/.test(a.tagName) && a.selectionStart !== a.selectionEnd) return false;
   if (!ptSel.size || !e.clipboardData) return false;
+  /* Rows stay selected while you work elsewhere, so this listener used to take Ctrl+C
+     from the whole page: copying a sentence out of a help panel or an error message put
+     the selected rows on the clipboard instead. Rows are copied only when the copy is
+     about them - focus in the table or the bulk bar, or on nothing at all (a click on a
+     row number leaves it there) - and never over text selected somewhere else. */
+  const focused = a && a !== document.body && a !== document.documentElement ? a : null;
+  if (focused && !focused.closest("#points, #bulkBar")) return false;
+  const text = document.getSelection();
+  if (text && !text.isCollapsed && String(text).trim()
+      && !$("points").contains(text.anchorNode)) return false;
   const pts = bulkTargets();
   if (!pts.length) return false;
   const payload = pts.map(p => { const d = ptOut(p); delete d.element_id; return d; });
@@ -5578,7 +6183,7 @@ function ptPastePoints(e) {
   for (const p of added) ptSel.add(p);
   ptSelAnchor = added[0];
   renumber();
-  ptPreEdit = ptCapture();   // typing after the paste diffs against the pasted state
+  ptPreEdit = null; ptEditFrom = null;   // typing after the paste diffs against the pasted state
   queueAutosave();           // no input event was raised; reach the hook directly
   ptReveal(added[0]);
   ptPaintSelection();
@@ -5599,7 +6204,7 @@ ptUpdateUndoButton();
 /* ---------- contextual tip line under the points table ----------
    Follows what is being edited. Column text is the first sentence of COL_HELP,
    so the tip and the tooltips share one source and cannot disagree. */
-const PT_TIP_DEFAULT = "tip: ⧉ duplicates a row with addr + 1 · Ctrl+C / Ctrl+V copies the selected rows as new rows";
+const PT_TIP_DEFAULT = "tip: ⧉ duplicates a row onto the next register · Ctrl+C / Ctrl+V copies the selected rows as new rows";
 function updatePointTip() {
   const tip = $("ptTip");
   if (!tip) return;
@@ -5615,7 +6220,7 @@ function updatePointTip() {
       if (help) { tip.textContent = `${label}: ${help}`; return; }
     }
     if (cell.classList.contains("rowbtn")) {
-      tip.textContent = "row actions: ⧉ duplicates with addr + 1, ✕ deletes";
+      tip.textContent = "row actions: ⧉ duplicates onto the next register (or the next bit), ✕ deletes";
       return;
     }
   }
@@ -5643,20 +6248,45 @@ document.querySelector("table.points thead").addEventListener("click", e => {
   const th = e.target.closest("th[data-col]");
   if (th) ptToggleSort(th.dataset.col);
 });
+/* Ctrl+F and / put the cursor in the search box - and a folded Points card hides the
+   box with the rest of its tools, so focusing it did nothing at all. The card opens
+   first. */
+function ptFocusSearch() {
+  const card = $("cardPoints");
+  if (card.classList.contains("collapsed")) {
+    card.classList.remove("collapsed");
+    foldWrite();
+    ptRender(true);                    // the pool was measured while the table had no box
+  }
+  $("ptSearch").focus(); $("ptSearch").select();
+}
 document.addEventListener("keydown", e => {
   const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName);
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
+  const key = String(e.key || "").toLowerCase();     // autofill sends keydowns with no key
+  const undoKey = (e.ctrlKey || e.metaKey) && !e.altKey && key === "z";
+  // Ctrl+Y is redo on Windows; Cmd+Y is a browser's history on a Mac, so only Ctrl
+  const redoKey = (undoKey && e.shiftKey) || (e.ctrlKey && !e.metaKey && !e.altKey && key === "y");
+  if (undoKey || redoKey) {
     /* Claim it outright while the points table has the focus. Its inputs are pool
        slots, so the browser's own per-field undo stack holds what was typed into
        whatever point was in that slot earlier - possibly in a different project,
        since a load no longer destroys the fields. Stepping back through it would
        put another point's text on screen and, through the delegated input
        listener, into this point. Nothing to undo here means the key does nothing,
-       which is the right answer for a table this card owns. Elsewhere on the page
-       a field's native undo really is its own, so it is left alone unless this
-       card has history of its own to step back through. */
-    const inPoints = $("points").contains(document.activeElement);
-    if (inPoints || ptUndo.length || ptPreEdit) { e.preventDefault(); ptDoUndo(); }
+       which is the right answer for a table this card owns.
+
+       Anywhere else that takes typing - a group key, a state word, the table name, the
+       bulk bar's value - the keys are that field's own undo and redo. They used to be
+       taken for the points table whenever it had history, so Ctrl+Z in the Groups card
+       undid the last row deleted three cards away and left the group key as it was.
+       Off any field - a button just pressed, a row number clicked - they are the
+       table's again, provided it has a step to take. */
+    const a = document.activeElement;
+    const inPoints = $("points").contains(a);
+    if (!inPoints && (typing || a?.isContentEditable)) return;
+    if (!inPoints && !(redoKey ? ptRedo.length : (ptUndo.length || ptPreEdit))) return;
+    e.preventDefault();
+    if (redoKey) ptDoRedo(); else ptDoUndo();
     return;
   }
   /* Ctrl+F belongs to this search box, not to the browser's. The table renders a
@@ -5668,10 +6298,10 @@ document.addEventListener("keydown", e => {
      who really does want to search the page's own text. */
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f" && !e.shiftKey && !e.altKey) {
     e.preventDefault();
-    $("ptSearch").focus(); $("ptSearch").select();
+    ptFocusSearch();
     return;
   }
-  if (e.key === "/" && !typing) { e.preventDefault(); $("ptSearch").focus(); $("ptSearch").select(); }
+  if (e.key === "/" && !typing) { e.preventDefault(); ptFocusSearch(); }
   else if (e.key === "Escape") {
     if (!$("repBar").hidden) {
       repClose();
@@ -5701,24 +6331,117 @@ function storedProject(rec) {
   }
   return p;
 }
-let autosaveTimer = null;
+/* Three ways the autosave used to lose work. It waited for the typing to stop, so a
+   long stretch of editing saved nothing until it ended - it now saves at least every
+   AUTOSAVE_MAX_WAIT while edits go on. A full or refused storage was swallowed, so the
+   page went on looking safe - it now says so in the header until a save works again.
+   And New, Load, the imports and a #file link put another project on the page, and the
+   next autosave wrote over the one that was there - that one is now kept in a second
+   slot first (keepReplaced), and the replace asks when it had unsaved changes. */
+const AUTOSAVE_PREV_KEY = "modbusgen_autosave_prev";
+const AUTOSAVE_DELAY = 1500, AUTOSAVE_MAX_WAIT = 10000;
+let autosaveTimer = null, autosaveSince = 0;
+function autosaveRecord() {
+  return {when: Date.now(), file: $("fileName").value, dirty: projDirty, savedAs,
+          project: collectProject(), v: STORE_V};
+}
 function queueAutosave() {
+  const now = Date.now();
+  if (!autosaveTimer) autosaveSince = now;        // the oldest edit not saved yet
   clearTimeout(autosaveTimer);
-  autosaveTimer = setTimeout(() => {
-    try {
-      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(
-        {when: Date.now(), file: $("fileName").value, project: collectProject(), v: STORE_V}));
-    } catch {}
-  }, 1500);
+  autosaveTimer = setTimeout(autosaveNow,
+    Math.max(0, Math.min(AUTOSAVE_DELAY, autosaveSince + AUTOSAVE_MAX_WAIT - now)));
+}
+function autosaveNow() {
+  clearTimeout(autosaveTimer);
+  autosaveTimer = null;
+  // before the tables arrive nothing is on the page, and saving it would erase the last session
+  if (!bootstrapReady()) return;
+  try {
+    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(autosaveRecord()));
+    autosaveFailed(null);
+  } catch (e) { autosaveFailed(e); }
+}
+function autosaveFailed(e) {
+  const w = $("autosaveWarn");
+  if (!w) return;
+  w.hidden = !e;
+  if (e) w.title = "This browser refused to store the autosave (" + (e.name || e.message || e)
+    + "), so closing or reloading the page loses whatever changed since the last one that "
+    + "worked. Export the project now. The usual cause is full storage for this page - "
+    + "deleting projects saved in this browser frees it. This stays until an autosave works again.";
+}
+function readStored(key) {
+  try { return JSON.parse(localStorage.getItem(key) || "null"); } catch { return null; }
+}
+const recordHasWork = rec => !!(rec?.project && (rec.project.table ||
+  (rec.project.points || []).some(p => p.datatype || p.text)));
+/* What is on the page goes to the second slot before anything replaces it, so it can be
+   brought back. Returns whether there was work to keep and it was kept. */
+function keepReplaced(rec) {
+  try {
+    rec = rec || (bootstrapReady() ? autosaveRecord() : null);
+    if (!recordHasWork(rec)) return false;
+    localStorage.setItem(AUTOSAVE_PREV_KEY, JSON.stringify(rec));
+    return true;
+  } catch { return false; }
+}
+function confirmReplace(what) {
+  if (!projDirty) return true;
+  return confirm(`${what} replaces the project on this page, which has changes that have `
+    + `not been saved, exported or loaded since.\n\nReplace it? This browser keeps a copy, `
+    + `and the message afterwards offers it back.`);
+}
+/* The line under a replace that kept the project it replaced. */
+function offerRestore() {
+  const rec = readStored(AUTOSAVE_PREV_KEY);
+  const when = fmtStamp(rec?.when, true);
+  return el("div",{class:"msg fix"},
+    el("b",{}, "The project this replaced "),
+    `is kept in this browser${when ? ` as it was at ${when}` : ""}. `,
+    el("button",{class:"ghost fixbtn",
+                 title:"Put the replaced project back on the page. What is on the page then is kept the same way, so pressing it again swaps them back",
+                 onclick:restoreReplaced}, "bring it back"));
+}
+function restoreReplaced() {
+  const rec = readStored(AUTOSAVE_PREV_KEY);
+  if (!recordHasWork(rec)) {
+    showError(new Error("the replaced project is no longer stored in this browser"));
+    return;
+  }
+  if (!confirmReplace("Bringing back the replaced project")) return;
+  try {
+    const swapped = keepReplaced();       // what is here now becomes the one to bring back
+    showProject(storedProject(rec));
+    $("fileName").value = rec.file || "";
+    savedAs = rec.savedAs ?? null;
+    projDirty = rec.dirty !== false;
+    queueAutosave();
+    $("out").replaceChildren(messageBox("success", "Brought back:",
+      `the project as it was at ${fmtStamp(rec.when, true)}.`));
+    if (swapped) $("out").append(offerRestore());
+  } catch (e) { showError(e); }
 }
 document.addEventListener("input", queueAutosave);
 document.addEventListener("change", queueAutosave);
-for (const id of ["pTable","pPlant","optCore","optMore","groups","statetexts","points","cardSys"])
+for (const id of ["pTable","pPlant","pDriver","optCore","optMore","groups","statetexts","points","cardSys"])
   for (const ev of ["input","change"])
     $(id).addEventListener(ev, markValStale);
+/* Leaving with changes nobody kept asks first. The autosave brings them back on the
+   next visit in this browser - but not on another machine, and not once this
+   browser's storage is cleared, which is the case worth a question. */
+addEventListener("beforeunload", e => {
+  if (autosaveTimer) autosaveNow();       // the last keystrokes reach the autosave too
+  if (!projDirty) return;
+  e.preventDefault();
+  e.returnValue = "";
+});
+addEventListener("pagehide", () => { if (autosaveTimer) autosaveNow(); });
 
 $("btnNew").onclick = () => {
+  if (!confirmReplace("New")) return;
   try {
+    const dirty = projDirty, kept = keepReplaced();
     localStorage.removeItem(AUTOSAVE_KEY);
     $("fileName").value = "new-project.json";
     // mb.exe is the house standard (docs/15 section 1), so a list starts there rather
@@ -5726,12 +6449,16 @@ $("btnNew").onclick = () => {
     // absent driver empty, because absence means nobody said, not mb.exe.
     showProject({points:[], driver:"mb.exe"});
     $("out").replaceChildren(messageBox("info", "Note:", "New empty project."));
+    if (kept && dirty) $("out").append(offerRestore());
   } catch (e) { showError(e); }
 };
 $("btnImportJson").onclick = () => $("jsonFile").click();
 $("jsonFile").onchange = async e => {
   const file = e.target.files[0];
   if (!file) return;
+  // asked here rather than on the button: a file chooser opened after a dialog can be
+  // refused by the browser as no longer the user's own click
+  if (!confirmReplace(`Importing ${file.name}`)) { e.target.value = ""; return; }
   try {
     const text = await file.text();
     let data;
@@ -5748,13 +6475,16 @@ $("jsonFile").onchange = async e => {
       const chk = await api("/api/parse", {text: JSON.stringify(data)});
       if (chk && chk.error) throw new Error(chk.error);
     }
+    const dirty = projDirty, kept = keepReplaced();
     showProject(data);
     $("fileName").value = file.name;
     // the SQL and workbook importers report their own unknown datatypes from the
     // backend; a hand-written or hand-edited JSON has nobody to do that for it
     $("out").replaceChildren(messageBox("info", "Imported:",
       `${file.name} - review, then Validate and Save/Export.`),
-      ...dtUnknownMsgs(ptUnknownDatatypes()));
+      ...dtUnknownMsgs(ptUnknownDatatypes()),
+      ...(await leftOutMsgs(text)));
+    if (kept && dirty) $("out").append(offerRestore());
     queueAutosave();
   } catch (err) { showError(new Error(`could not import ${file.name}: ${err.message}`)); }
   e.target.value = "";
@@ -5763,6 +6493,7 @@ $("btnImportSql").onclick = () => $("sqlFile").click();
 $("sqlFile").onchange = async e => {
   const file = e.target.files[0];
   if (!file) return;
+  if (!confirmReplace(`Importing ${file.name}`)) { e.target.value = ""; return; }
   try {
     /* IWMAC scripts are cp1252; fall back to it when the bytes are not valid UTF-8 */
     const buf = await file.arrayBuffer();
@@ -5770,12 +6501,17 @@ $("sqlFile").onchange = async e => {
     try { text = new TextDecoder("utf-8", {fatal: true}).decode(buf); }
     catch { text = new TextDecoder("windows-1252").decode(buf); }
     const res = await api("/api/import-sql", {text});
+    const dirty = projDirty, kept = keepReplaced();
     showProject(res.project);
     $("fileName").value = (res.project.table || file.name.replace(/\.[^.]*$/, "")) + ".json";
+    /* Ranked and coloured as Insert Excel's are (importNoteMsgs): every note used to
+       come out as the same blue "Note:", so rows the conversion dropped read like a
+       remark about formatting. */
     $("out").replaceChildren(
       messageBox("success", "Converted:",
         `${file.name} - review (plant number!), then Validate and Export for the .json file.`),
-      ...res.notes.map(n => messageBox("info", "Note:", String(n))));
+      ...importNoteMsgs(res));
+    if (kept && dirty) $("out").append(offerRestore());
     queueAutosave();
   } catch (err) { showError(new Error(`could not convert ${file.name}: ${err.message}`)); }
   e.target.value = "";
@@ -5788,6 +6524,7 @@ $("btnImportXlsm").onclick = () => $("xlsmFile").click();
 $("xlsmFile").onchange = async e => {
   const file = e.target.files[0];
   if (!file) return;
+  if (!confirmReplace(`Inserting ${file.name}`)) { e.target.value = ""; return; }
   const btn = $("btnImportXlsm");
   btnBusy(btn, "converting…");
   try {
@@ -5797,12 +6534,14 @@ $("xlsmFile").onchange = async e => {
       bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
     const res = await api("/api/import-xlsm", {b64: btoa(bin), filename: file.name});
     if (res.error) throw new Error(res.error);
+    const dirty = projDirty, kept = keepReplaced();
     showProject(res.project);
     $("fileName").value = (res.project.table || file.name.replace(/\.[^.]*$/, "")) + ".json";
     $("out").replaceChildren(
       messageBox("success", "Converted:",
         `${file.name} - review (plant number!), then Validate and Export for the .json file.`),
       ...importNoteMsgs(res));
+    if (kept && dirty) $("out").append(offerRestore());
     btnFlash(btn, "converted ✓", "ok");
     queueAutosave();
   } catch (err) {
@@ -5854,7 +6593,7 @@ $("btnCopyPrompt").onclick = async (e) => {
   } catch (err) { btnFlash(btn, "copy failed", "bad", 2600); }
 };
 
-/* Clipped by default: the prompt is 98 lines and unfolded it buries the rest of the
+/* Clipped by default: the prompt is long and unfolded it buries the rest of the
    card. Copy takes the whole thing either way - it reads textContent, which the clip
    never touches, and the button says so. The wizard's first step unfolds it, because
    there the prompt is the thing being handed over. */
@@ -5882,6 +6621,8 @@ $("btnExport").onclick = async () => {
     $("out").replaceChildren(messageBox("success", "Exported:",
       `${name} - import it later to continue where you left off.`),
       ...dtUnknownMsgs(ptMarkUnknownDatatypes()));
+    projDirty = false;                     // the work is in a file now; replacing it asks nothing
+    queueAutosave();
     btnFlash(btn, "exported ✓", "ok");
   } catch (e) { btnFlash(btn, "export failed", "bad", 2600); showError(e); }
 };
@@ -6110,28 +6851,43 @@ $("btnXlsm").onclick = async () => {
   } catch (e) { btnFlash(btn, "export failed", "bad", 2600); showError(e); }
 };
 
-$("btnLoad").onclick = async () => {
+/* `asked` is true when the caller has already had the replace confirmed - the picker
+   asks before it changes the selection, so a cancel leaves both the page and the
+   picker as they were. */
+async function loadSelected(asked) {
   const value = $("fileSelect").value;
   if (!value) return;
+  const label = value.startsWith(LOCAL_PREFIX) ? value.slice(LOCAL_PREFIX.length) : value;
+  if (!asked && !confirmReplace(`Loading "${label}"`)) return;
+  const dirty = projDirty;
   if (value.startsWith(LOCAL_PREFIX)) {
-    const name = value.slice(LOCAL_PREFIX.length);
+    const name = label;
     const rec = savedAll()[name];
     if (!rec) {                                  // cleared in another tab
       refreshFileSelect("");
       showError(new Error(`"${name}" is no longer stored in this browser`));
       return;
     }
-    showProject(storedProject(rec));
-    $("fileName").value = name;
-    outNote(`Loaded "${name}" from this browser, saved ${fmtStamp(rec.when, true)}.`);
+    try {
+      const kept = keepReplaced();
+      showProject(storedProject(rec));
+      $("fileName").value = name;
+      savedAs = name;                          // Save may write it back without asking
+      outNote(`Loaded "${name}" from this browser, saved ${fmtStamp(rec.when, true)}.`);
+      if (kept && dirty) $("out").append(offerRestore());
+    } catch (e) { showError(e); }
     return;
   }
   try {
-    showProject(await api("/api/project?file=" + encodeURIComponent(value)));
+    const data = await api("/api/project?file=" + encodeURIComponent(value));
+    const kept = keepReplaced();
+    showProject(data);
     $("fileName").value = value;
     outNote("Loaded " + value);
+    if (kept && dirty) $("out").append(offerRestore());
   } catch (e) { showError(e); }
-};
+}
+$("btnLoad").onclick = () => loadSelected(false);
 /* Report on the button that was pressed. _restore survives overlapping flashes
    so a second click cannot leave a button stuck reading "saved ✓". */
 function btnBusy(btn, text) {
@@ -6274,8 +7030,28 @@ $("btnSave").onclick = () => {
   try {
     const all = savedAll();
     const existed = name in all;
+    /* A name already in use is written over silently only when it is the copy this page
+       came from or last went to. Any other is somebody's other project - two lists with
+       the same file name were enough to lose one of them without a word. */
+    if (existed && name !== savedAs) {
+      const old = all[name], pr = old?.project || {};
+      const what = [pr.plant && `plant ${pr.plant}`, pr.table && `table ${pr.table}`,
+                    Array.isArray(pr.points) && `${pr.points.length} points`].filter(Boolean).join(", ");
+      if (!confirm(`"${name}" is already saved in this browser${what ? ` (${what})` : ""}, `
+                 + `last at ${fmtStamp(old?.when, true) || "an unknown time"} - and it is not `
+                 + `the project this page loaded or last saved.\n\nOverwrite it with the `
+                 + `project on this page?`)) {
+        btnFlash(btn, "not saved", "bad", 2200);
+        outNote(`Nothing saved - "${name}" still holds the project it had. Give this one `
+              + `another name in the box beside Save.`, "warn");
+        return;
+      }
+    }
     all[name] = {when: Date.now(), project: collectProject(), v: STORE_V};
     savedWrite(all);
+    savedAs = name;
+    projDirty = false;                     // kept now; replacing it asks nothing
+    queueAutosave();
     refreshFileSelect(LOCAL_PREFIX + name);
     btnFlash(btn, existed ? "updated ✓" : "saved ✓", "ok");
     outNote(`${existed ? "Updated" : "Saved"} "${name}" in this browser at ${fmtStamp(all[name].when, true)}. `
@@ -6413,10 +7189,12 @@ function projSelect(i) {
   $("projList").querySelector(".prow.hi")?.scrollIntoView({block: "nearest"});
 }
 function projLoad(e) {
+  // the double-click and Enter on a row replace the page as Load does, so they ask as it does
+  if (!confirmReplace(`Loading "${e.name}"`)) return;
   $("fileSelect").value = e.value;
   syncDeleteButton();
   projClose();
-  $("btnLoad").onclick();
+  loadSelected(true);
 }
 function projDelete(e, btn) {
   if (e.where !== "browser") return;
@@ -6493,16 +7271,64 @@ function projSyncLabel() {
 }
 $("btnProjects").onclick = () => { projPanel && !projPanel.hidden ? projClose() : projOpen(); };
 /* Two buttons each, header and the Validate & generate card, one implementation. Called
-   bare from re-validate paths too (`$("btnValidate").onclick()`), so neither may depend
-   on being handed an event. */
-async function runValidate() {
-  try { showResult(await api("/api/validate", {project: collectProject()}), false); }
-  catch (e) { showError(e); }
+   bare from re-validate paths too (a fix button, "validate again"), so neither may
+   depend on being handed an event - runValidate takes a note only when it is a string. */
+/* ---------- one run at a time, and an answer that knows its age ----------
+   A run takes a moment - longer in the browser build, where Python runs in the tab -
+   and the page used to go on as if it took none: the buttons stayed live, so a second
+   press raced the first, and the answer marked rows by position whenever it arrived,
+   on a list that might have had rows deleted or added meanwhile. Now the four buttons
+   are off while a request is out, a press from code (a fix, "regenerate") waits for it
+   and runs after, and an answer whose revision is not the page's is shown as out of
+   date and marks nothing (showResult). */
+const RUN_BUTTONS = ["btnValidate","btnGenerate","btnRunValidate","btnRunGenerate"];
+let runBusy = false, runNext = null;
+function runSetBusy(on) {
+  runBusy = on;
+  for (const id of RUN_BUTTONS) {
+    const b = $(id);
+    if (!b) continue;
+    b.disabled = on || !bootstrapReady();
+    b.classList.toggle("working", on);
+  }
+}
+/* `note` is said above the answer - a fix that was not applied says why here. Duplicate
+   group keys and state ids are the page's own findings (keyClashFindings): the backend
+   only ever sees the collapsed project, so they are put in front of its errors, and a
+   Generate asked while they stand validates instead - nothing should be written from a
+   project that is not the one on screen. */
+async function runCheck(sqlWanted, note) {
+  if (runBusy) {
+    runNext = sqlWanted || runNext === "generate" ? "generate" : "validate";
+    return;
+  }
+  runSetBusy(true);
+  const rev = projRev;
+  try {
+    const clashes = keyClashFindings();
+    const generate = sqlWanted && !clashes.length;
+    const res = await api(generate ? "/api/generate" : "/api/validate",
+                          {project: collectProject(), ...prevPayload(generate)});
+    if (clashes.length) {
+      res.errors = [...clashes.map(f => f.message), ...(res.errors || [])];
+      if (Array.isArray(res.findings)) res.findings = [...clashes, ...res.findings];
+    }
+    showResult(res, generate, projRev !== rev);
+    if (note) $("out").prepend(messageBox("info", "Not applied:", note));
+  } catch (e) { showError(e); }
+  finally { runSetBusy(false); }
+  if (runNext) {
+    const next = runNext;
+    runNext = null;
+    await runCheck(next === "generate");
+  }
+}
+async function runValidate(note) {
+  await runCheck(false, typeof note === "string" ? note : "");
   revealResult();
 }
 async function runGenerate() {
-  try { showResult(await api("/api/generate", {project: collectProject()}), true); }
-  catch (e) { showError(e); }
+  await runCheck(true);
   /* Both runs end where their answer is. Generate's is the script or the errors that
      stopped it; Validate's is the findings. This one shipped Generate-only on the
      argument that Validate is run mid-edit and being moved is worse than a chip you can
@@ -6725,9 +7551,14 @@ $("wizClose").onclick = wizStop;
    the fresh element rather than a captured one. */
 async function saveSqlFile(e) {
   const btn = e.currentTarget;
+  // a file written from the collapsed project is not the project on screen - say why instead
+  if (keyClashFindings().length) return runCheck(false);
   btnBusy(btn, "generating…");
+  const rev = projRev;
   try {
-    showResult(await api("/api/generate", {project: collectProject(), save:true}), true);
+    showResult(await api("/api/generate", {project: collectProject(), save:true,
+                                           ...prevPayload(true)}), true,
+               projRev !== rev);
     const fresh = $("btnSaveSql");
     if (fresh) btnFlash(fresh, "written ✓", "ok");
   } catch (err) { btnFlash(btn, "failed", "bad", 2600); showError(err); }
@@ -6754,21 +7585,32 @@ async function init() {
   $("dlUnits").replaceChildren(...BOOT.units.map(u => el("option",{value:u})));
   refreshFileSelect("");        // projects folder plus anything saved in this browser
   const hash = decodeURIComponent(location.hash.slice(1));
+  const restored = readStored(AUTOSAVE_KEY);
+  // a record from before the flag was stored says nothing either way: treat it as unsaved
+  const unsaved = recordHasWork(restored) && restored.dirty !== false;
   if (hash && BOOT.projects.includes(hash)) {       // deep link: index.html#file.yaml
+    /* The link opens its file over whatever this browser was holding, and the first
+       autosave after it wrote over the unsaved work of the last visit. That work goes to
+       the second slot first, and the note offers it back. */
+    const kept = unsaved && keepReplaced(restored);
     $("fileSelect").value = hash;
     $("fileName").value = hash;
     showProject(await api("/api/project?file=" + encodeURIComponent(hash)));
+    if (kept)
+      $("out").replaceChildren(messageBox("info", "Note:",
+        `opened ${hash} from the link. This browser also held unsaved work from `
+        + `${fmtStamp(restored.when, true)}, which the link replaced.`), offerRestore());
     return;
   }
-  let restored = null;
-  try { restored = JSON.parse(localStorage.getItem(AUTOSAVE_KEY) || "null"); } catch {}
-  if (restored?.project && (restored.project.table ||
-                            (restored.project.points || []).some(p => p.datatype || p.text))) {
+  if (recordHasWork(restored)) {
     showProject(storedProject(restored));
     $("fileName").value = restored.file || "";
+    savedAs = restored.savedAs ?? null;
+    projDirty = unsaved;
     const when = fmtStamp(restored.when, true);
-    $("out").replaceChildren(messageBox("info", "Restored:",
-      `unsaved work from ${when}. "New" discards it; Save keeps it in this browser under a name, Export writes a file.`));
+    $("out").replaceChildren(messageBox("info", "Restored:", unsaved
+      ? `unsaved work from ${when}. Save keeps it in this browser under a name, Export writes a file; New, Load and the imports ask before replacing it.`
+      : `the project that was open at ${when}. It had no unsaved changes.`));
   } else {
     // nothing to restore, so this is a new list too - same house standard as New
     showProject({points:[], driver:"mb.exe"});
@@ -6814,6 +7656,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=186a0750bd"></script>
+<script src="pyodide-adapter.js?v=3bb9018a66"></script>
 </body>
 </html>

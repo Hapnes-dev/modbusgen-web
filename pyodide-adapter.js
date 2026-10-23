@@ -44,7 +44,7 @@ window.PYODIDE_READY = (async () => {
   _overlay("Loading YAML support…");
   await py.loadPackage("pyyaml");
   _overlay("Loading modbusgen…");
-  const buf = await (await fetch("modbusgen-src.zip?v=ecd2358deb")).arrayBuffer();
+  const buf = await (await fetch("modbusgen-src.zip?v=c431aa4328")).arrayBuffer();
   py.unpackArchive(buf, "zip");
   py.runPython("import sys; sys.path.insert(0, 'src')");
   const glue = py.pyimport("modbusgen.webapi");
@@ -129,7 +129,8 @@ window.PYODIDE_API = async (path, body) => {
   if (path === "/api/validate")
     return JSON.parse(glue.validate_json(JSON.stringify(body.project)));
   if (path === "/api/generate") {
-    const res = JSON.parse(glue.generate_json(JSON.stringify(body.project)));
+    const res = JSON.parse(glue.generate_json(JSON.stringify(body.project), null,
+      body.previous ? JSON.stringify(body.previous) : null));
     if (body.save && res.errors && !res.errors.length) {
       _downloadB64(res.filename, res.b64);
       res.written = res.filename + " (downloaded)";
@@ -141,6 +142,8 @@ window.PYODIDE_API = async (path, body) => {
     if (res.error) throw new Error(res.error);
     return res.project;
   }
+  if (path === "/api/check-keys")
+    return JSON.parse(glue.check_keys_json(body.text));
   if (path === "/api/import-sql") {
     const res = JSON.parse(glue.import_sql_json(body.text));
     if (res.error) throw new Error(res.error);
