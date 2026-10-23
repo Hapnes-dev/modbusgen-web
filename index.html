@@ -715,6 +715,13 @@
             alone never removes a row, so rows the new list dropped stay behind. Leave it
             off for a list that adds only a few points to a table, or it wipes the rest. A
             <code>sql_format: legacy</code> file truncates unless it is unticked.</li>
+          <li><b>replace_list</b><span class="dflt">off</span> — delete the whole old list
+            before writing this one. The script first deletes the parameter rows of every
+            unit whose group is this table (<code>com_stat</code> and
+            <code>com_error</code> stay), then empties the three tables as truncate does.
+            Tick it when this list replaces an old one completely. Back up first: settings
+            changed on the plant for those parameters go with them. Then run
+            <b>Generate Param/Grp/Set</b> to bind the new rows.</li>
           <li><b>create_tables</b><span class="dflt">off</span> — add
             <code>CREATE TABLE IF NOT EXISTS</code>. Needed the first time a plant gets
             this table.</li>
@@ -1879,7 +1886,7 @@ validation. I run the validator.</pre>
 <script>
 "use strict";
 let BOOT = null;          // bootstrap payload - null until init() has it; see the boot gate below
-const OPT_CORE = ["subtract_one","truncate","create_tables","force_active","auto_motherwords"];
+const OPT_CORE = ["subtract_one","truncate","replace_list","create_tables","force_active","auto_motherwords"];
 // clusters under "more options" - same grouping as the Project card help
 const OPT_MORE = [
   {title:"alias text",      names:["use_system_no","use_tag","use_extra","proper_case_states"]},
@@ -1891,6 +1898,7 @@ const OPT_MORE = [
 const OPT_HELP = {
   subtract_one:"subtract 1 from every Modbus address (1-based device docs)",
   truncate:"empty the list's three tables with TRUNCATE TABLE before writing them - tick it when this list replaces the whole of an older one, so rows it dropped do not stay behind; never for a list that adds a few points to a table. Off by default in the modern format, on in legacy",
+  replace_list:"delete the old list before writing this one: the script first deletes the parameter rows of every unit whose group is this table (com_stat and com_error stay), then empties the three tables as truncate does. For a list that replaces the whole of an older one - back up first, and run Generate Param/Grp/Set afterwards",
   create_tables:"emit CREATE TABLE IF NOT EXISTS - legacy sql_format only, modern always emits it",
   force_active:"set every point active=1; rows with text 'Reserve.' still stay inactive",
   auto_motherwords:"synthesize the missing word row for bit-addressed points",
@@ -6638,8 +6646,9 @@ const WIZARD = [
      Import it into IWMAC.</p>
      <p>Then, in IWMAC, run <b>Setup Statetext</b>, <b>JSON Setup</b> and
      <b>Generate Param/Grp/Set</b>, in that order. Wait for <span class="ex">Done</span>.</p>
-     <p>Replacing a list that is already on the plant? The import never deletes old rows,
-     so ask how to clear them first.</p>
+     <p>Replacing a list that is already on the plant? Tick <b>replace_list</b> in the
+     Project card's options before you generate. The script then deletes the old list
+     before it writes the new one. Take a backup before you import.</p>
      <p>Last, press <b>Export</b> at the top to save the project file. Next time, start
      from that file.</p>`},
 ];
@@ -6805,6 +6814,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=0da65f1991"></script>
+<script src="pyodide-adapter.js?v=186a0750bd"></script>
 </body>
 </html>
