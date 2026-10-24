@@ -200,7 +200,7 @@
         },
         "unit_id": {
           "type": "string",
-          "description": "Single-device form: device id in IWMAC.",
+          "description": "Single-device form: device id in IWMAC, the key iw_sys_plant_units holds the device under - validate warns when it is blank with units on (unit-id-blank).",
           "examples": [
             "U01"
           ]
@@ -223,7 +223,7 @@
         },
         "owner": {
           "type": "string",
-          "description": "Driver/settings owner - it is the settings owner, the driver_type and the process name in one, e.g. EM270 or GRUNDFOS. IWMAC documents a maximum of 10 characters, capitals and digits only; both are reported by soft_checks as warnings rather than enforced, because the fleet contradicts them (docs/16)."
+          "description": "Driver/settings owner - it is the settings owner, the driver_type and the process name in one, e.g. EM270 or GRUNDFOS. Required whenever units or settings is on: empty, the script registers a process with no name (validate: owner-missing, an error). IWMAC documents a maximum of 10 characters, capitals and digits only; both are reported by soft_checks as warnings rather than enforced, because the fleet contradicts them (docs/16) - and only when units or settings is on, since an inert block's owner reaches no SQL."
         },
         "driver_addr": {
           "type": [
@@ -238,7 +238,7 @@
             "0_",
             "1_"
           ],
-          "description": "The part of each device's driver address before the slave number. On TCP it is the ID of the mb_tcp_servers line the device sits behind, and the settings block writes exactly one server, ID 1 - so 1_; any other prefix names a server that does not exist and no point of the unit is polled (validate warns: tcp-prefix-server). RTU has no server list, and the fleet uses 0_ there (docs/15 section 2)."
+          "description": "The part of each device's driver address before the slave number. On TCP it is the ID of the mb_tcp_servers line the device sits behind, and the settings block writes exactly one server, ID 1 - so 1_; any other prefix names a server that does not exist and no point of the unit is polled (validate warns: tcp-prefix-server). RTU has no server list, and the fleet uses 0_ there (docs/15 section 2). Anything else - 0 without its underscore, 2_ - writes a driver_addr that names no server and no slave, and validate refuses it with units on (driver-addr-prefix-invalid)."
         },
         "view_order": {
           "type": "integer",
@@ -292,7 +292,7 @@
             },
             "ip": {
               "type": "string",
-              "description": "tcp: IP of the device or gateway.",
+              "description": "tcp: IP of the device or gateway - the address alone, 10.0.0.5, never 10.0.0.5:502: it is written into the mb_tcp_servers line ID;IPadr;IPport;..., so a colon, a semicolon or a space warns (ip-address-format).",
               "examples": [
                 "10.10.100.5"
               ]
@@ -300,11 +300,13 @@
             "port": {
               "type": "integer",
               "default": 502,
-              "description": "tcp: Modbus TCP port."
+              "minimum": 1,
+              "maximum": 65535,
+              "description": "tcp: Modbus TCP port, 1 to 65535 (validate warns outside it: tcp-port-range)."
             },
             "com_port": {
               "type": "string",
-              "description": "rtu: serial port on the IWMAC machine.",
+              "description": "rtu: serial port on the IWMAC machine, as its number in text - \"3\", never \"COM3\". The driver's comm_port takes 1 to 255 (docs/15 section 7); validate warns on anything else (com-port-range).",
               "examples": [
                 "1"
               ]
@@ -329,13 +331,26 @@
               "description": "rtu: the rate the bus is actually commissioned at, written verbatim into comm_baudrate. The Excel tool offered only 9600/19200 (a checkbox); the driver setting is a free numeric value, so the full standard ladder is allowed here - docs/10 divergence 15."
             },
             "parity": {
-              "type": "string",
+              "type": [
+                "string",
+                "integer"
+              ],
               "enum": [
                 "none",
                 "odd",
-                "even"
+                "even",
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                0,
+                1,
+                2,
+                3,
+                4
               ],
-              "description": "Serial parity, as the word. The modern script writes it into comm_parity as the number the driver reads (0 none, 1 odd, 2 even); the legacy one writes the word, as the Excel tool did, which left an 8E1 device silent on plant 2794 (validate: comm-parity-as-word). Anything else, E or 8E1 included, is written as it stands and the driver cannot read it (validate: comm-parity-unknown)."
+              "description": "Serial parity: the word none, odd or even, or the driver's own number 0-4 (0=N|1=O|2=E|3=M|4=S, docs/15 section 7) - a number is written into comm_parity as it stands, and a re-import writing 2 is what brought plant 2794's 8E1 device online (docs/16 section 16.8). The modern script writes a word as the number the driver reads (0 none, 1 odd, 2 even); the legacy one writes the word, as the Excel tool did, which left that device silent (validate: comm-parity-as-word). Anything else, E or 8E1 included, is written as it stands and the driver cannot read it (validate: comm-parity-unknown)."
             },
             "stop_bits": {
               "type": "integer",
@@ -379,7 +394,7 @@
     },
     "statetexts": {
       "type": "object",
-      "description": "Enumeration lists: list id -> {state number -> word}. Define each distinct vendor enumeration once and reference it from points via statetext: <id>. Keep the vendor's numbers exactly (>= 0 only - negative values cannot be state texts), and its words as printed - state words are not translated. Keys are digit strings in JSON.",
+      "description": "Enumeration lists: list id -> {state number -> word}. Define each distinct vendor enumeration once and reference it from points via statetext: <id>. Keep the vendor's numbers exactly (>= 0 only - negative values cannot be state texts; validate refuses one as statetext-number-negative), and its words as printed - state words are not translated; a blank word warns (statetext-word-blank). Keys are digit strings in JSON, each written once: a repeated key is a load error, not a last-one-wins.",
       "propertyNames": {
         "pattern": "^[0-9]+$"
       },
@@ -493,8 +508,8 @@
           "addr": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 65535,
-            "description": "Register/coil address exactly as the documentation prints it (strip 4xxxx/3xxxxx prefixes). Where a document prints both a Modicon-style register and an explicit protocol-address column, take the explicit one as printed and set subtract_one false - do not also strip a prefix or subtract again. options.subtract_one is the ONLY global offset conversion; never subtract per point. A printed register is not a proved address: where a live read proves the device answers at an offset the option cannot express (a SAIA controller at the printed number + 1, plant 2313), addr is that proved protocol address with subtract_one false. (Work!E)"
+            "maximum": 65536,
+            "description": "Register/coil address exactly as the documentation prints it (strip 4xxxx/3xxxxx prefixes). The ceiling is the wire address the driver sends, 0 to 65535 - addr less 1 with subtract_one on, addr itself with it off - so 65536 is legal only with subtract_one on; validate checks the wire address and refuses anything past it (addr-too-high). Where a document prints both a Modicon-style register and an explicit protocol-address column, take the explicit one as printed and set subtract_one false - do not also strip a prefix or subtract again. options.subtract_one is the ONLY global offset conversion; never subtract per point. A printed register is not a proved address: where a live read proves the device answers at an offset the option cannot express (a SAIA controller at the printed number + 1, plant 2313), addr is that proved protocol address with subtract_one false. (Work!E)"
           },
           "bit": {
             "description": "Bit number inside the register for Bit_* datatypes. 0-15 normally: the synthesized motherword is 16-bit and is never widened, because a 32-bit one would have to guess the word order. A bit of 16-31 is therefore a validation error UNLESS an explicit 32-bit point is authored at the same address, which commits to a word order and serves as the motherword. String form '5#4' = legacy nibble start#length. Do not author a motherword row otherwise - the tool synthesizes it. (Work!F)",

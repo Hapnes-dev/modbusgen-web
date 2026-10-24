@@ -48,8 +48,14 @@
      chevron - but clicks that land on a control inside it (the Points card's search,
      its tool buttons, a help summary) are that control's, not the card's. */
   .card > h2{cursor:pointer;user-select:none}
+  /* The caret is the keyboard's way in: a real button, so Tab reaches it and Enter or
+     Space folds the card. The heading stays the mouse's hit area. */
   .card > h2 .caret{flex:none;width:11px;color:var(--line2);font-size:9px;
-                    transition:transform .12s ease;transform:rotate(90deg)}
+                    transition:transform .12s ease;transform:rotate(90deg);
+                    background:none;border:0;border-radius:3px;padding:0;margin:0;
+                    line-height:1;font-family:inherit}
+  .card > h2 .caret:focus-visible{outline:2px solid var(--accent);outline-offset:3px;
+                                  color:var(--text)}
   .card.collapsed > h2 .caret{transform:rotate(0deg)}
   .card > h2:hover .caret{color:var(--text)}
   .card.collapsed > h2{margin-bottom:0}
@@ -60,11 +66,16 @@
   .card.collapsed > h2 .tool{display:none}
   .chip{font-size:11px;background:var(--panel2);border:1px solid var(--line);
         border-radius:20px;padding:1px 9px;color:var(--text)}
+  button.chip:focus-visible, #valStatus:focus-visible{outline:2px solid var(--accent);
+                                                      outline-offset:1px}
   /* last-validate verdict, beside the Validate button */
-  /* plain dot + text, no pill - it is a status readout, not a button */
+  /* plain dot + text, no pill - it reads as a status, and it is a button only so the
+     keyboard can follow it to the Result card as a click does */
   #valStatus{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;
              font-weight:600;letter-spacing:.02em;padding:3px 4px;
-             cursor:pointer;white-space:nowrap;color:var(--text)}
+             cursor:pointer;white-space:nowrap;color:var(--text);
+             background:none;border:0;border-radius:4px}
+  #valStatus[hidden]{display:none}
   #valStatus::before{content:"";width:7px;height:7px;border-radius:50%;flex:none}
   #valStatus.ok::before{background:var(--green);box-shadow:0 0 5px #3fbf7f66}
   #valStatus.err::before{background:var(--red);box-shadow:0 0 5px #ff6b6b66}
@@ -563,6 +574,15 @@
   .st-line .eq{color:var(--dim);font-size:11px}
   .st-list .addline{margin-top:6px;font-size:11.5px;padding:2px 9px}
   .grp-row{display:flex;gap:6px;align-items:center}
+  /* an order number the file gave the group, kept and written as it was */
+  .grp-row .g-order{font-size:11px;color:var(--dim);border:1px dashed var(--line2);
+                    border-radius:10px;padding:0 7px;white-space:nowrap;cursor:help}
+  /* which build this is - the commit and its day, or "local" */
+  footer.stamp{max-width:1520px;margin:-26px auto 0;padding:0 16px 18px;font-size:11px;
+               color:var(--dim);text-align:right;letter-spacing:.02em}
+  /* a file or a project's text dragged over the page */
+  body.dropping main{outline:2px dashed var(--accent);outline-offset:-6px;
+                     border-radius:var(--radius)}
   .st-row{display:flex;gap:8px;align-items:flex-start}
   .st-row textarea{width:360px;height:74px;font-family:Consolas,monospace;font-size:12px}
   /* the picker now carries a timestamp per entry - bound the closed control so a
@@ -638,7 +658,7 @@
           title="Fold every card to its heading, or unfold them all. Each heading also folds its own card; what is folded is remembered in this browser">collapse all</button>
   <span style="flex:1"></span>
   <span id="autosaveWarn" role="alert" hidden>autosave failed - export your work</span>
-  <span id="valStatus" hidden></span>
+  <button type="button" id="valStatus" hidden></button>
   <span class="sep" aria-hidden="true"></span>
   <button id="btnValidate"
           title="Check the project without producing SQL: unknown table keys, duplicate ids, undefined groups, unresolved state refs, no online point. Warnings do not block">Validate</button>
@@ -837,8 +857,10 @@
           <li>The five defaults (<code>aio dio alm misc sch</code>) are what nearly
             every existing plant list uses — one click adds them, and the keys
             autocomplete in the points table.</li>
-          <li>Display order in IWMAC = row order here. Saving from the GUI writes that
-            order, replacing any order numbers an imported project carried.</li>
+          <li>Display order in IWMAC = row order here. A group the file gave its own
+            <code>order</code> number keeps it — the row shows it as <i>order N</i> — and
+            is written with that number wherever its row sits, so the page and
+            <code>modbusgen generate</code> number the groups alike.</li>
         </ul>
 
         <h4>How they bind to points</h4>
@@ -893,6 +915,9 @@
           <li><b>Keep the vendor's numbers exactly</b>, and its words as printed
             (Norwegian). Values must be 0 or higher — an enum with negative values
             cannot be a state list; leave that point without one and say so.</li>
+          <li>A number used twice in one list — <code>1</code> and <code>01</code> are the
+            same number — and a word with no number are marked red, and Validate and
+            Generate stop on them rather than keep one line and drop the other.</li>
         </ul>
 
         <h4>Using it on points</h4>
@@ -1178,8 +1203,15 @@
             out of it, so a bulk edit can never change a row you cannot see.</li>
           <li><b>Ctrl+C</b> copies the selected rows; <b>Ctrl+V</b> pastes them as new rows
             right after the selection (at the bottom when nothing is selected), addresses
-            as copied - unlike ⧉, which steps the address. The copy is also plain
-            tab-separated text, so it pastes into a spreadsheet as well.</li>
+            as copied - unlike ⧉, which steps the address. The state lists and groups the
+            rows use travel with them, so pasted into another project they are merged the
+            way <b>⤒ points</b> merges a file's: a missing group or list is added, and a
+            list whose id is taken by different words here gets a free id. The copy is
+            also plain tab-separated text, so it pastes into a spreadsheet as well.</li>
+          <li>A block pasted from a spreadsheet takes, in <i>addr</i> and <i>state</i>,
+            only a whole decimal number: <code>4x0001</code>, <code>0x0010</code>,
+            <code>1e3</code> or a word is left out and named under the table rather than
+            read as some other number or as nothing.</li>
           <li>A row you just added or pasted stays on screen under a search or a filter
             until you change the search, a filter or the sort. A sorted column re-sorts
             when you leave the row, not on every keystroke, so the row you are typing in
@@ -1192,7 +1224,10 @@
             <b>50</b> changes to this table - cell edits, adding and deleting rows,
             duplicating, the bulk edits, the fix buttons and <i>keep this order</i>.
             <code>Ctrl+Y</code> or <code>Ctrl+Shift+Z</code> steps forward again until you
-            change something new. The button's tooltip names the change it will reverse.</li>
+            change something new. The button's tooltip names the change it will reverse.
+            <b>Undo</b> and <b>Redo</b> from a cell's right-click menu take the same
+            steps - never the field's own history, which may hold typing from another
+            point that scrolled through it.</li>
           <li>The keys belong to the table while the cursor is in it or on nothing that
             takes typing. In any other field on the page they are that field's own
             undo and redo, as they always are.</li>
@@ -1426,8 +1461,14 @@
         pick that version: its project file, or the SQL script that put it there. Generate
         then also deletes the rows that version had and this one has not, in the template
         and on every unit, and shows what changed. The points both have keep their
-        settings on the plant. <b>verification SQL</b>, beside the script, downloads
-        read-only checks to run after the import.</p>
+        settings on the plant. A version from another table is refused - another list's
+        file would delete that list's rows - unless you confirm that this list's table was
+        renamed; one with nothing in common is refused too. <b>verification SQL</b>,
+        beside the script, downloads read-only checks to run after the import;
+        <b>preview SQL</b> shows, before the import, what the script's deletes would take;
+        <b>change report</b> lists every point old → new, the map for relinking panels.
+        <b>database</b> qualifies the tables of those two read-only scripts for an SQL tool
+        that has none selected.</p>
       </div>
     </details>
     <div class="row" style="gap:8px;align-items:center">
@@ -1442,6 +1483,9 @@
             title="Generate SQL compares the list with this file and deletes what only the file has">previous: <b id="prevName"></b>
         <button id="btnPrevClear" class="ghost" style="padding:0 5px"
                 title="Generate without the previous version">✕</button></span>
+      <label class="f f-sm" title="Qualify the tables of the verification and preview SQL with this database, for an SQL tool that has none selected - the IWMAC plant database is iw_plant_server3. Leave it empty when the tool has one selected. The import script itself is not changed">database
+        <input id="pSchema" placeholder="iw_plant_server3" size="15" spellcheck="false"
+               autocomplete="off"></label>
     </div>
   </div>
 
@@ -1828,7 +1872,11 @@ validation. I run the validator.</pre>
         <ul>
           <li><code>Ctrl+F</code> or <code>/</code> searches the points. Type
             <code>++</code> in the search box to jump to the next word.</li>
-          <li><code>Ctrl+Z</code> undoes the last edit, up to 10 of them.</li>
+          <li><code>Ctrl+Z</code> undoes the last edit, up to 50 of them.</li>
+          <li><code>Tab</code> reaches the ▶ beside each card's heading; <code>Enter</code>
+            or <code>Space</code> folds the card. The counting chips in the Points heading
+            and the verdict beside Validate take <code>Enter</code> and <code>Space</code>
+            too.</li>
           <li><code>Ctrl+C</code> / <code>Ctrl+V</code> copies the selected rows and pastes
             them as new rows after the selection, addresses exactly as copied. With text
             selected inside a cell the keys copy that text instead.</li>
@@ -1849,7 +1897,12 @@ validation. I run the validator.</pre>
           <li><b>Starting a list:</b> press <b>New</b>, or pick a saved one. To bring a
             list in: <b>Import project</b> for a <code>.json</code> or
             <code>.yaml</code>, <b>Import SQL</b> for a generated script,
-            <b>Insert Excel</b> for a filled Modbustemplate workbook.</li>
+            <b>Insert Excel</b> for a filled Modbustemplate workbook - or drop the file
+            anywhere on the page, and it goes to the same import.</li>
+          <li><b>Straight from a chat:</b> copy the project JSON an AI agent answered
+            with - the code block alone, or the answer around it - and press
+            <code>Ctrl+V</code> anywhere outside a field. The page asks whether to
+            <b>open it as the project</b> or <b>append its points</b> to this one.</li>
           <li><b>Import SQL</b> brings no plant number with it. Set one before you
             generate.</li>
           <li><b>Work down the page:</b> Project, Groups, State texts, Points, then
@@ -1878,6 +1931,7 @@ validation. I run the validator.</pre>
     </div>
   </div>
 </main>
+<footer class="stamp" id="buildStamp"></footer>
 
 <div class="wizdim" aria-hidden="true"></div>
 <div id="wizard" class="wizard" hidden>
@@ -1920,6 +1974,19 @@ validation. I run the validator.</pre>
             title="Close without saving. Nothing is added to the project, and a point row that opened this dialog keeps the datatype it had">Cancel</button>
     <button id="dtSave"
             title="Add the variable to this project. It travels in the project file, Export Excel writes it into the workbook, and the local GUI can promote it into the shared table">Save variable</button>
+  </div>
+</dialog>
+
+<!-- a project pasted or dropped onto the page: open it, or append its points -->
+<dialog id="pasteDialog" class="dtdlg" style="min-width:440px">
+  <h3 id="pasteTitle" style="margin:0 0 8px">A project from outside the page</h3>
+  <div class="sub" id="pasteWhat" style="margin-bottom:12px"></div>
+  <div class="row" style="justify-content:flex-end">
+    <button class="ghost" id="pasteCancel"
+            title="Leave the page as it is - nothing is opened or added">Cancel</button>
+    <button class="ghost" id="pasteAppend"
+            title="Add its points to this list, with the groups and state texts they use, as ⤒ points does. Undoable with Ctrl+Z; groups and lists it adds stay">Append points</button>
+    <button id="pasteOpen">Open as project</button>
   </div>
 </dialog>
 
@@ -2365,7 +2432,28 @@ function collectOptions() {
 }
 
 /* ---------- groups ---------- */
-function addGroupRow(name="", alias="") {
+/* What a project file can say for one group: an alias, a mapping of alias and order, or
+   nothing at all - `aio: null` loads as a group with no alias, and the page used to die
+   on it half-way through a load, after the table, the options and the system block were
+   already the new file's (review, 2026-10-24). A number is its own text, as the loader
+   reads it. An order that is a whole number in text becomes the number; anything else is
+   kept as it came, for the loader to name. */
+function groupOf(val) {
+  if (val == null) return {alias: "", order: null};
+  if (typeof val !== "object") return {alias: String(val), order: null};
+  const o = val.order;
+  return {alias: val.alias == null ? "" : String(val.alias),
+          order: o == null || o === "" ? null
+               : /^\s*-?\d+\s*$/.test(String(o)) ? Number(o) : o};
+}
+function addGroupRow(name="", alias="", order=null) {
+  /* An explicit order travels with the row and goes back out as {alias, order}: the
+     loader numbers a group by its place in the mapping unless it has one, so dropping it
+     made the page and the CLI write different group_alias view_orders from one file. */
+  const tag = order == null ? null
+    : el("span",{class:"g-order",
+                 title:`The file gives this group order ${order} in IWMAC's menu (the view_order of its group_alias row), so it is written as ${order} wherever this row sits. Groups without a number take their place in this card`},
+         `order ${order}`);
   const row = el("div",{class:"grp-row"},
     el("input",{class:"g-name", placeholder:"name (e.g. zone1)", value:name,
                 title:"The short key you type in a point's group column. Every group a point uses must exist here or validation stops. Renaming the key moves every point that uses it",
@@ -2374,10 +2462,12 @@ function addGroupRow(name="", alias="") {
     el("input",{class:"g-alias", placeholder:"display alias (e.g. Zone 1)", value:alias,
                 title:"The name the operator sees for this group in IWMAC. Blank falls back to the key itself",
                 style:"width:260px"}),
+    ...(tag ? [tag] : []),
     // removing a row fires no input event, so it reports the edit itself (autosave, stale result)
     el("button",{class:"ghost rowbtn", title:"delete this group - points still referencing it will fail validation",
                  onclick:e=>{e.target.parentNode.remove();refreshGroupList();markValStale();}},"✕"));
   row._key = String(name ?? "").trim();   // the key its points hold - see groupKeyChanged
+  row._order = order == null ? null : order;
   $("groups").append(row);
   markKeyClashes();
 }
@@ -2441,7 +2531,10 @@ function collectGroups() {
   const out = {};
   for (const row of $("groups").children) {
     const name = row.querySelector(".g-name").value.trim();
-    if (name) out[name] = row.querySelector(".g-alias").value.trim();
+    if (!name) continue;
+    const alias = row.querySelector(".g-alias").value.trim();
+    // a plain alias unless the file numbered the group itself - see addGroupRow
+    out[name] = row._order == null ? alias : {alias, order: row._order};
   }
   return out;
 }
@@ -2466,9 +2559,45 @@ function keyClashes() {
   const g = count(groups), s = count(lists);
   const nameless = lists.filter(i => !i.value.trim()
     && [...i.closest(".st-list").querySelectorAll(".sw")].some(w => w.value.trim()));
+  /* Inside a list the same goes for the state numbers - and the loader reads 01 as 1, so
+     those two are one key there however they are typed. A word with no number is left
+     out of the list altogether. Only lines with a word count: a number with none is a
+     line not filled in yet, and collectStates leaves it out without loss. */
+  const states = [...document.querySelectorAll("#statetexts .st-list")].map(box => ({
+    id: box.querySelector(".st-id")?.value.trim() || "",
+    lines: [...box.querySelectorAll(".st-line")]
+      .map(l => ({input: l.querySelector(".sv"), value: l.querySelector(".sv").value,
+                  word: l.querySelector(".sw").value}))}));
+  const {dup: stateDup, bad: stateBad} = stValueClashes(states);
   return {groups, lists, nameless,
           groupDup: [...g].filter(([, n]) => n > 1), listDup: [...s].filter(([, n]) => n > 1),
-          g, s};
+          g, s, stateDup, stateBad,
+          stateValues: states.flatMap(b => b.lines.map(l => l.input))};
+}
+/* A state number as a list holds it - "-1", "7" for "07" - or null when the box holds
+   no whole number. Negative numbers are kept: an enum with one cannot be a state list,
+   and validation says so, where this page used to drop the line without a word. */
+function stNumber(v) {
+  const s = String(v ?? "").trim();
+  return /^-?\d+$/.test(s) ? String(BigInt(s)) : null;
+}
+/* Per list: the numbers on more than one worded line, and the worded lines with no
+   number. `lists` is [{id, lines:[{input, value, word}]}], so this needs no page. */
+function stValueClashes(lists) {
+  const dup = [], bad = [];
+  for (const list of lists) {
+    const seen = new Map();
+    for (const line of list.lines) {
+      if (!String(line.word ?? "").trim()) continue;
+      const v = stNumber(line.value);
+      if (v === null) { bad.push({id: list.id, input: line.input}); continue; }
+      if (!seen.has(v)) seen.set(v, []);
+      seen.get(v).push(line.input);
+    }
+    for (const [value, inputs] of seen)
+      if (inputs.length > 1) dup.push({id: list.id, value, inputs});
+  }
+  return {dup, bad};
 }
 function markKeyClashes() {
   const c = keyClashes();
@@ -2493,9 +2622,19 @@ function markKeyClashes() {
       ? "This list has no id, so it is left out of the project - give it the number its points use"
       : "");
   }
+  const why = new Map();
+  for (const d of c.stateDup)
+    for (const i of d.inputs)
+      why.set(i, `Another state in this list has the number ${d.value} too`
+        + (d.inputs.some(x => x.value.trim() !== d.value) ? ` (${d.inputs.map(x => x.value.trim()).join(" and ")} are one number to the loader)` : "")
+        + `. Only the last of them reaches the project - give each state its own number`);
+  for (const b of c.stateBad)
+    why.set(b.input, "This state has a word but no whole number, so it is left out of the "
+      + "project - type the register value the document gives that word");
+  for (const i of c.stateValues) flag(i, why.get(i) || "");
 }
-/* The same three as errors in a Validate or Generate answer. Page-side codes: the backend
-   never sees the duplicates, because collection has already folded them into one. */
+/* The same as errors in a Validate or Generate answer. Page-side codes: the backend never
+   sees the duplicates, because collection has already folded them into one. */
 function keyClashFindings() {
   const c = keyClashes(), out = [];
   const add = (code, message, advice) =>
@@ -2515,6 +2654,16 @@ function keyClashFindings() {
     add("statetext-id-missing",
         `statetexts: ${c.nameless.length} state list(s) have words but no id, so they are left out of the project`,
         "Give the list the id its points use in their state column.");
+  for (const d of c.stateDup)
+    add("statetext-value-duplicate",
+        `statetexts.${d.id || "?"}: the number ${d.value} is on ${d.inputs.length} states of one list - only the last reaches the project`,
+        "Give each state its own number, as the device document numbers them. The list is "
+        + "collected by number, and 1 and 01 are the same number to the loader, so the earlier "
+        + "states are dropped without a word.");
+  if (c.stateBad.length)
+    add("statetext-value-missing",
+        `statetexts: ${c.stateBad.length} state(s) have a word but no whole number, so they are left out of the project`,
+        "Type the register value the document gives each word - a whole number, as printed.");
   return out;
 }
 
@@ -2537,11 +2686,7 @@ function addStateLine(box, value="", word="", focusWord=false) {
   sw.addEventListener("paste", e => {
     const text = (e.clipboardData || window.clipboardData).getData("text");
     if (!/\n/.test(text) && !/=/.test(text)) return;   // ordinary word paste
-    const pairs = [];
-    for (const l of text.split(/\r?\n/)) {
-      const m = l.match(/^\s*(\d+)\s*=\s*(.+?)\s*$/);
-      if (m) pairs.push([m[1], m[2]]);
-    }
+    const pairs = stParsePairs(text);
     if (!pairs.length) return;
     e.preventDefault();
     const [first, ...rest] = pairs;
@@ -2553,6 +2698,17 @@ function addStateLine(box, value="", word="", focusWord=false) {
   lines.append(line);
   if (focusWord) sw.focus();
   return line;
+}
+/* "0=Av", one per line, as a vendor prints a list. A negative number is taken as typed -
+   leaving the line out was a state lost without a word; validation says it cannot be a
+   state list. */
+function stParsePairs(text) {
+  const pairs = [];
+  for (const l of String(text).split(/\r?\n/)) {
+    const m = l.match(/^\s*(-?\d+)\s*=\s*(.+?)\s*$/);
+    if (m) pairs.push([m[1], m[2]]);
+  }
+  return pairs;
 }
 function stAddNext(box) {
   // next value = last value + 1, the numbering vendors use
@@ -2638,9 +2794,14 @@ function collectStates() {
     if (!id) continue;
     const states = {};
     for (const line of box.querySelectorAll(".st-line")) {
+      /* Any whole number, as typed: a negative one is kept for validation to name, where
+         it used to be dropped without a word. 1 and 01 travel as typed too, so Export
+         keeps both lines - the loader reads them as one number, which is why two such
+         lines are marked (markKeyClashes) and refused by Validate and Generate
+         (keyClashFindings) rather than folded into one quietly. */
       const v = line.querySelector(".sv").value.trim();
       const w = line.querySelector(".sw").value.trim();
-      if (/^\d+$/.test(v) && w) states[v] = w;
+      if (stNumber(v) !== null && w) states[v] = w;
     }
     out[id] = states;
   }
@@ -3940,45 +4101,40 @@ function updateStats() {
   const rw = real.filter(r => (r.rw||"").includes("w")).length;
   const onl = real.filter(r => r.online).length;
   const alarms = real.filter(r => r.alarm).length;
-  // the four counting chips double as filters - click to show only those rows
-  const filterChip = (key, label, tip) =>
-    el("span",{class:"chip toggle" + (ptFilters.has(key) ? " on" : ""),
-               title: tip + ". Click to show only these rows",
-               onclick:()=>{ ptFilters.has(key) ? ptFilters.delete(key) : ptFilters.add(key);
-                             updateStats(); applyPointView(); }}, label);
+  /* The four counting chips double as filters - click to show only those rows. Buttons,
+     so Tab reaches them and Enter or Space toggles them as a click does; they used to be
+     spans, which only a mouse could press (review, 2026-10-24). The row is rebuilt on
+     every count, so a chip that had the focus hands it to its successor. */
+  const had = document.activeElement?.closest?.("#pointStats [data-filter]")?.dataset.filter;
+  const filterChip = (key, label, tip, cls = "", style = undefined) =>
+    el("button",{type:"button", class:"chip toggle" + cls + (ptFilters.has(key) ? " on" : ""),
+                 "data-filter":key, "aria-pressed":String(ptFilters.has(key)), style,
+                 title: tip,
+                 onclick:()=>{ ptFilters.has(key) ? ptFilters.delete(key) : ptFilters.add(key);
+                               updateStats(); applyPointView(); }}, label);
   $("pointStats").replaceChildren(
     el("span",{class:"chip", title:"Rows with a datatype, address or text - blank rows are not counted"},
        `${real.length} points`),
     filterChip("bits", `${bits} bits`,
-      "Rows addressing a single bit inside a word. Their motherword rows are added at generate time, so this is not the final row count"),
+      "Rows addressing a single bit inside a word. Their motherword rows are added at generate time, so this is not the final row count. Click to show only these rows"),
     filterChip("writable", `${rw} writable`,
-      "Rows the operator can write to (rw or vrw) - setpoints and commands"),
+      "Rows the operator can write to (rw or vrw) - setpoints and commands. Click to show only these rows"),
     filterChip("alarms", `${alarms} alarms`,
-      "Rows carrying an alarm priority letter (A, B, C or N)"),
-    el("span",{class:"chip toggle" + (ptFilters.has("online") ? " on" : "") + (onl ? "" : " warnfilter"),
-               title: (onl ? "Points marked as online indication - IWMAC uses them to see the unit is alive"
-                           : "No point is marked online - validation will fail until at least one is")
-                      + ". Click to show only these rows",
-               onclick:()=>{ ptFilters.has("online") ? ptFilters.delete("online") : ptFilters.add("online");
-                             updateStats(); applyPointView(); }},
-       `${onl} online${onl ? "" : " ⚠"}`));
+      "Rows carrying an alarm priority letter (A, B, C or N). Click to show only these rows"),
+    filterChip("online", `${onl} online${onl ? "" : " ⚠"}`,
+      (onl ? "Points marked as online indication - IWMAC uses them to see the unit is alive"
+           : "No point is marked online - validation will fail until at least one is")
+      + ". Click to show only these rows", onl ? "" : " warnfilter"));
   // only while the last validation left something marked
   if (ptBad.size)
-    $("pointStats").append(el("span",{
-      class:"chip toggle warnfilter" + (ptFilters.has("failing") ? " on" : ""),
-      style:"color:var(--red);border-color:#5b2b33",
-      title:"Rows the last Validate rejected. Click to show only those; editing does not clear the marks, the next Validate does",
-      onclick:()=>{ ptFilters.has("failing") ? ptFilters.delete("failing") : ptFilters.add("failing");
-                    updateStats(); applyPointView(); }},
-      `${ptBad.size} failing`));
+    $("pointStats").append(filterChip("failing", `${ptBad.size} failing`,
+      "Rows the last Validate rejected. Click to show only those; editing does not clear the marks, the next Validate does",
+      " warnfilter", "color:var(--red);border-color:#5b2b33"));
   if (ptWarn.size)
-    $("pointStats").append(el("span",{
-      class:"chip toggle warnfilter" + (ptFilters.has("warned") ? " on" : ""),
-      style:"color:var(--amber);border-color:#5a4523",
-      title:"Rows the last Validate warned about. They do not block generation, but each warning says what it costs to ignore. Click to show only those",
-      onclick:()=>{ ptFilters.has("warned") ? ptFilters.delete("warned") : ptFilters.add("warned");
-                    updateStats(); applyPointView(); }},
-      `${ptWarn.size} warned`));
+    $("pointStats").append(filterChip("warned", `${ptWarn.size} warned`,
+      "Rows the last Validate warned about. They do not block generation, but each warning says what it costs to ignore. Click to show only those",
+      " warnfilter", "color:var(--amber);border-color:#5a4523"));
+  if (had) $("pointStats").querySelector(`[data-filter="${had}"]`)?.focus({preventScroll: true});
 }
 
 /* ---------- project assemble / load ---------- */
@@ -3995,61 +4151,113 @@ function collectProject() {
     points: ptModel.map(ptOut),   // project order, never the sorted view
   };
 }
-function showProject(data) {
-  requireBoot();          // no project may be rendered before the tables are in
-  // another list: the previous version picked for the last one does not apply to it
-  if (prevVersion) { prevVersion = null; showPrevChip(); }
-  $("pTable").value = data.table || "";
-  $("pPlant").value = data.plant != null ? String(data.plant) : "";
-  /* An unknown spelling is kept rather than dropped, as hydrateSelect does for an
-     imported datatype: assigning a value a <select> does not list is a silent no-op, and
-     silence here would show "not stated" over a file that states something, then export
-     the page's answer instead of the file's. Validation reports it as driver-unknown. */
-  const drv = $("pDriver"), want = data.driver == null ? "" : String(data.driver).trim();
-  for (const extra of [...drv.options]) if (extra.dataset.foreign) extra.remove();
-  drv.value = want;
-  if (drv.value !== want) {
-    drv.append(el("option",{value:want, "data-foreign":"1"}, want));
-    drv.value = want;
-  }
-  showSystem(data.system);
-  renderOptions(data.options || {});
-  $("groups").replaceChildren();
-  for (const [name, val] of Object.entries(data.groups || {}))
-    addGroupRow(name, typeof val === "string" ? val : (val.alias || ""));
-  refreshGroupList();
-  $("statetexts").replaceChildren();
-  for (const [id, states] of Object.entries(data.statetexts || {}))
-    addStateRow(id, states);
-  /* The project's own datatypes are read before its points, so dtKnown() is right by
-     the time the points load and none of them is wrongly marked. The card itself is
-     rendered further down, after ptSetModel: it counts the points using each variable,
-     and up here ptModel still holds the project being replaced. */
-  dtProject = {};
-  for (const [name, row] of Object.entries(data.datatypes || {}))
-    dtProject[String(name)] = Object.fromEntries(
-      DT_FIELDS.map(f => [f, String((row || {})[f] ?? "")]));
-  dtInvalidateKnown();
-  ptSort = {col:null, dir:null};
-  ptFilters.clear();
-  $("valStatus").hidden = true;
-  ptUndo.length = 0; ptRedo.length = 0; ptPreEdit = null; ptEditFrom = null; ptUpdateUndoButton();
-  if ($("ptSearch")) $("ptSearch").value = "";
-  ptSetModel(data.points || []);
-  if (!ptModel.length) ptAdd();          // an empty project still offers a row to type in
+/* What showProject puts back when a load fails: the project, and what goes with it on
+   the page but not in the file - its name, its browser copy, whether it was changed, its
+   undo history, the previous version picked for it and the view of the points table. */
+function pageSnapshot() {
+  return {project: collectProject(), file: $("fileName").value, savedAs, dirty: projDirty,
+          undo: ptUndo.slice(), redo: ptRedo.slice(), prev: prevVersion,
+          sort: {...ptSort}, filters: [...ptFilters], search: $("ptSearch")?.value || "",
+          verdict: !$("valStatus").hidden, scroll: ptWrap()?.scrollTop || 0};
+}
+function pageRestore(s) {
+  $("fileName").value = s.file;
+  savedAs = s.savedAs;
+  projDirty = s.dirty;
+  ptUndo.splice(0, ptUndo.length, ...s.undo);
+  ptRedo.splice(0, ptRedo.length, ...s.redo);
+  ptUpdateUndoButton();
+  prevVersion = s.prev;
+  showPrevChip();
+  ptSort = s.sort;
+  // not the two that follow validation marks: the rebuilt points carry none, and an
+  // armed filter with nothing marked hides the whole table
+  for (const f of s.filters) if (f !== "failing" && f !== "warned") ptFilters.add(f);
+  if ($("ptSearch")) $("ptSearch").value = s.search;
+  // the verdict described this project; its marks went with the rebuilt points
+  if (s.verdict) { $("valStatus").hidden = false; $("valStatus").classList.add("stale"); }
+  updateStats();
+  applyPointView();
   const wrap = ptWrap();
-  if (wrap) wrap.scrollTop = 0;          // a new project starts at its first point
-  renumber();
-  renderDatatypeCard();                  // now that ptModel is this project's points
-  // every load path comes through here, so one call covers file, JSON, SQL, workbook,
-  // autosave restore and the #file-name link
-  const unknown = ptMarkUnknownDatatypes();
-  if (unknown.size) $("out").replaceChildren(...dtUnknownMsgs(unknown));
-  // the page now holds exactly what was loaded, and no browser copy until the caller
-  // names one (renumber() above counted the load itself as an edit)
-  projDirty = false;
-  savedAs = null;
-  markKeyClashes();
+  if (wrap) wrap.scrollTop = s.scroll;
+}
+/* All or nothing. A file the loader passed can still trip the page - `groups: {aio:
+   null}` did, after the table, plant, driver, system and options were already the new
+   file's while the state texts, the points, the undo history and the browser-copy name
+   were still the old project's, and Save then wrote that mixture over the old project's
+   copy (review, 2026-10-24). So what is on the page is taken first and put back whole
+   when anything below throws; the caller then reports the error over the project it
+   had. `restoring` is that putting back, which has nothing further to fall back on. */
+function showProject(data, restoring = false) {
+  requireBoot();          // no project may be rendered before the tables are in
+  const kept = restoring ? null : pageSnapshot();
+  try {
+    // another list: the previous version picked for the last one does not apply to it
+    if (prevVersion) { prevVersion = null; showPrevChip(); }
+    $("pTable").value = data.table || "";
+    $("pPlant").value = data.plant != null ? String(data.plant) : "";
+    /* An unknown spelling is kept rather than dropped, as hydrateSelect does for an
+       imported datatype: assigning a value a <select> does not list is a silent no-op, and
+       silence here would show "not stated" over a file that states something, then export
+       the page's answer instead of the file's. Validation reports it as driver-unknown. */
+    const drv = $("pDriver"), want = data.driver == null ? "" : String(data.driver).trim();
+    for (const extra of [...drv.options]) if (extra.dataset.foreign) extra.remove();
+    drv.value = want;
+    if (drv.value !== want) {
+      drv.append(el("option",{value:want, "data-foreign":"1"}, want));
+      drv.value = want;
+    }
+    showSystem(data.system);
+    renderOptions(data.options || {});
+    $("groups").replaceChildren();
+    for (const [name, val] of Object.entries(data.groups || {})) {
+      const g = groupOf(val);                // a null alias is a group with none
+      addGroupRow(name, g.alias, g.order);
+    }
+    refreshGroupList();
+    $("statetexts").replaceChildren();
+    for (const [id, states] of Object.entries(data.statetexts || {}))
+      addStateRow(id, states);
+    /* The project's own datatypes are read before its points, so dtKnown() is right by
+       the time the points load and none of them is wrongly marked. The card itself is
+       rendered further down, after ptSetModel: it counts the points using each variable,
+       and up here ptModel still holds the project being replaced. */
+    dtProject = {};
+    for (const [name, row] of Object.entries(data.datatypes || {}))
+      dtProject[String(name)] = Object.fromEntries(
+        DT_FIELDS.map(f => [f, String((row || {})[f] ?? "")]));
+    dtInvalidateKnown();
+    ptSort = {col:null, dir:null};
+    ptFilters.clear();
+    $("valStatus").hidden = true;
+    ptUndo.length = 0; ptRedo.length = 0; ptPreEdit = null; ptEditFrom = null; ptUpdateUndoButton();
+    if ($("ptSearch")) $("ptSearch").value = "";
+    ptSetModel(data.points || []);
+    if (!ptModel.length) ptAdd();          // an empty project still offers a row to type in
+    const wrap = ptWrap();
+    if (wrap) wrap.scrollTop = 0;          // a new project starts at its first point
+    renumber();
+    renderDatatypeCard();                  // now that ptModel is this project's points
+    // every load path comes through here, so one call covers file, JSON, SQL, workbook,
+    // autosave restore and the #file-name link
+    const unknown = ptMarkUnknownDatatypes();
+    if (unknown.size) $("out").replaceChildren(...dtUnknownMsgs(unknown));
+    // the page now holds exactly what was loaded, and no browser copy until the caller
+    // names one (renumber() above counted the load itself as an edit)
+    projDirty = false;
+    savedAs = null;
+    markKeyClashes();
+  } catch (e) {
+    if (kept) {
+      let back = false;
+      try { showProject(kept.project, true); pageRestore(kept); back = true; }
+      catch { /* the page could not be rebuilt either - said below */ }
+      throw new Error(`${e && e.message || e} - ` + (back
+        ? "nothing was loaded, and the page still holds the project it had"
+        : "and the page could not be put back as it was: reload it before saving anything"));
+    }
+    throw e;
+  }
 }
 
 /* ---------- output ---------- */
@@ -4248,11 +4456,18 @@ const FIX_ACTIONS = {
         : v;
       ptPushState(null, "swap paste artefacts");
       for(const p of ctx.points)
-        // unit and the ranges since 2026-10-23, when validate.py began reading them too
+        // unit and the ranges since 2026-10-23, when validate.py began reading them too.
+        // menu, element_id and the ranges have no column, so the model point has no such
+        // field and the value lives in _orig alone - reading p[f] found undefined there,
+        // and the button changed nothing in them (review, 2026-10-24). Read where the
+        // value is, and write it there: ptOut lays the model's fields over _orig.
         for(const f of ["text","extra","tag","system_no","menu","element_id","unit",
                         "range_min","range_max"]){
-          const was = p[f], now = fix(was);
-          if(now !== was){ p[f] = now; if(p._orig) p._orig[f] = fix(p._orig[f]); }}
+          const inModel = p[f] !== undefined;
+          const was = inModel ? p[f] : p._orig?.[f], now = fix(was);
+          if(now === was) continue;
+          if(inModel) p[f] = now;
+          if(p._orig && p._orig[f] !== undefined) p._orig[f] = fix(p._orig[f]);}
       updateStats(); applyPointView();}},
   "statetext-overwrites-extra": {
     label:"switch statetext_in_alias off",
@@ -4285,10 +4500,13 @@ const FIX_ACTIONS = {
       updateStats(); applyPointView();}},
   "bit-point-formatted": {
     label:"clear the formatting on these rows",
-    title:"Empties unit, scale and decimals on each single-bit row (undoable). A bit is on or off, so none of the three describes anything - and all three reach the database. If the register really is a measurement, the datatype is what is wrong: a bit datatype cannot carry one",
+    title:"Empties unit, scale and decimals on each single-bit row (undoable). A bit is on or off, so none of the three describes anything - and all three reach the database. An INV scale stays: it is the reversed 0..1 range that inverts the bit, not formatting. If the register really is a measurement, the datatype is what is wrong: a bit datatype cannot carry one",
     run:(ctx)=>{if(!ctx.points.length) return;
       ptPushState(null, "clear bit formatting");
-      for(const p of ctx.points){p.unit=null; p.scale=null; p.decimals=null;}
+      for(const p of ctx.points){p.unit=null; p.decimals=null;
+        // INV inverts the bit (scaling.csv: 1..0 for 0..1) - clearing it un-inverted a
+        // reversed digital input (review, 2026-10-24)
+        if(String(p.scale ?? "").trim().toUpperCase() !== "INV") p.scale=null;}
       updateStats(); applyPointView();}},
   /* A writable register is a holding register (docs/11): the block is what is wrong,
      not the write, so each row moves to the twin a write can reach. Every FC2/FC4 key
@@ -5609,7 +5827,21 @@ function showResult(res, sqlWanted, stale) {
       else downloadTextFile(res.verify_filename, res.verify_sql);
       e.target.textContent = "downloaded ✓";
       setTimeout(()=>e.target.textContent = "verification SQL", 1500);
-    }},"verification SQL") : "");
+    }},"verification SQL") : "",
+    res.preview_b64 ? el("button",{class:"ghost", id:"btnPreviewSql",
+                 title:"Download read-only SELECTs to run BEFORE the import: what the script's DELETEs and TRUNCATEs would take, per unit, and the units its rows would move here from another table. Nothing changes on the plant when you run it",
+                 onclick:e=>{
+      downloadBytes(res.preview_filename, res.preview_b64);
+      e.target.textContent = "downloaded ✓";
+      setTimeout(()=>e.target.textContent = "preview SQL", 1500);
+    }},"preview SQL") : "",
+    res.changes_b64 ? el("button",{class:"ghost", id:"btnChangesCsv",
+                 title:"Download the change report (CSV): every point of both versions with its old and new element_id and driver_id and what changed - the map for relinking panel objects (docs/16 section 16.6.5)",
+                 onclick:e=>{
+      downloadBytes(res.changes_filename, res.changes_b64, "text/csv");
+      e.target.textContent = "downloaded ✓";
+      setTimeout(()=>e.target.textContent = "change report", 1500);
+    }},"change report") : "");
   out.append(sqlBar, pre);
   if (stale) markScriptStale();            // the script is the list as it was sent
 }
@@ -5624,14 +5856,38 @@ function showError(e) {
    choice was an import that leaves rows behind, or replace_list, which deletes them all.
    Held in memory only: a one-off comparison for one generate, not part of the project. */
 // var, not let: showProject clears it, and can run before this line has
-var prevVersion = null;                  // {name, project}
+var prevVersion = null;                  // {name, project | sql, renamedFrom?}
+/* What Generate sends besides the project: the previous version - the project, or the
+   SQL script itself, which the backend reads row by row (rebuilding a project from it
+   first lost rows the import cannot resolve, 2026-10-24) - with the rename the user
+   confirmed, and the database the read-only scripts are qualified with. */
 function prevPayload(generate) {
-  return generate && prevVersion ? {previous: prevVersion.project} : {};
+  if (!generate) return {};
+  const out = {};
+  const schema = ($("pSchema") ? $("pSchema").value : "").trim();
+  if (schema) out.schema = schema;
+  if (prevVersion) {
+    const previous = prevVersion.sql != null ? {sql: prevVersion.sql}
+                                             : {project: prevVersion.project};
+    if (prevVersion.renamedFrom) previous.renamed_from = prevVersion.renamedFrom;
+    out.previous = previous;
+  }
+  return out;
 }
 function showPrevChip() {
   $("prevChip").hidden = !prevVersion;
-  $("prevName").textContent = prevVersion ? prevVersion.name : "";
+  $("prevName").textContent = !prevVersion ? ""
+    : prevVersion.name + (prevVersion.renamedFrom ? ` (renamed from ${prevVersion.renamedFrom})` : "");
 }
+/* The database for the read-only scripts is a preference of the plant's SQL tool, not of
+   the project: kept in this browser, and harmless when storage is full. */
+const SCHEMA_KEY = "modbusgen_schema";
+(() => {
+  const box = $("pSchema");
+  if (!box) return;
+  try { box.value = localStorage.getItem(SCHEMA_KEY) || ""; } catch { /* no storage */ }
+  box.onchange = () => { try { localStorage.setItem(SCHEMA_KEY, box.value.trim()); } catch {} };
+})();
 async function readPrevious(file) {
   if (/\.(sql|txt)$/i.test(file.name)) {
     // IWMAC scripts are cp1252, read the way Import SQL reads them
@@ -5639,9 +5895,13 @@ async function readPrevious(file) {
     let text;
     try { text = new TextDecoder("utf-8", {fatal: true}).decode(buf); }
     catch { text = new TextDecoder("windows-1252").decode(buf); }
-    return (await api("/api/import-sql", {text})).project;
+    // said now rather than at Generate: a script that fills no list cannot be one
+    if (!/iw_par_\w+_param/i.test(text))
+      throw new Error("this script fills no iw_par_<table>_param table - it is not the "
+                      + "script that put a list on the plant");
+    return {sql: text};
   }
-  return await api("/api/parse", {text: await file.text()});
+  return {project: await api("/api/parse", {text: await file.text()})};
 }
 $("btnPrev").onclick = () => $("prevFile").click();
 $("prevFile").onchange = async e => {
@@ -5649,7 +5909,7 @@ $("prevFile").onchange = async e => {
   e.target.value = "";
   if (!file) return;
   try {
-    prevVersion = {name: file.name, project: await readPrevious(file)};
+    prevVersion = {name: file.name, ...await readPrevious(file)};
     showPrevChip();
     markValStale();
     $("out").replaceChildren(messageBox("info", "Previous version:",
@@ -5675,9 +5935,16 @@ function updateBox(u) {
     body.append(el("div",{class:"advice"}, `Re-addressed, so unbound to bind anew - relink `
       + `their panel objects: ${u.readdressed.slice(0, 12).join(", ")}`
       + (u.readdressed.length > 12 ? " …" : "")));
+  if (u.changed && u.changed.length)
+    body.append(el("div",{class:"advice"}, `Changed in place - they stay bound and keep `
+      + `their settings: ${u.changed.slice(0, 12).join(", ")}`
+      + (u.changed.length > 12 ? " …" : "")));
   if (u.previous_table && u.previous_table !== ($("pTable").value || "").trim())
     body.append(el("div",{class:"advice"}, `The previous version wrote table `
-      + `${u.previous_table}: its own tables are left as they are.`));
+      + `${u.previous_table}` + (u.renamed_from ? ` (renamed, as you confirmed)` : "")
+      + `: its own tables are left as they are.`));
+  for (const n of (u.notes || []).slice(0, 8))
+    body.append(el("div",{class:"advice"}, n));
   return box;
 }
 
@@ -5685,12 +5952,20 @@ function updateBox(u) {
    The page keeps only what a project has a field for, so a file with "scaling" for
    scale, or "substract_one", imported as if the key were not there: no scale, the
    subtraction still on, and no word said (review, 2026-10-23). The backend names each
-   such key with the nearest real one (model.unknown_keys). */
+   such key with the nearest real one (model.unknown_keys).
+
+   The same route reports a key the file holds twice, under `errors`. JSON.parse keeps
+   the last copy of a repeated key without a word, so the raw text is what gets checked,
+   before anything is shown - and a repeat fails the import, thrown from here for the
+   caller to report (review, 2026-10-24). An unreachable route fails nothing: the import's
+   own requests say why. */
 async function leftOutMsgs(text) {
-  try {
-    const res = await api("/api/check-keys", {text});
-    return (res.notes || []).map(n => messageBox("warn", "Left out:", n));
-  } catch { return []; }
+  let res;
+  try { res = await api("/api/check-keys", {text}); }
+  catch { return []; }
+  const errors = (Array.isArray(res?.errors) ? res.errors : []).map(String).filter(Boolean);
+  if (errors.length) throw new Error(errors.join("\n"));
+  return (res?.notes || []).map(n => messageBox("warn", "Left out:", n));
 }
 
 /* ---------- wiring ---------- */
@@ -5982,6 +6257,16 @@ function ptOnFieldEdit(e) {
   if (!p) return;
   const cls = [...f.classList].find(c => c.startsWith("p-"));
   if (!cls) return;
+  /* The field's own undo, reached without the keys - the right-click menu, the browser's
+     Edit menu - which the keydown guard below never sees. The input is a pool slot, so
+     its history may hold another point's typing, and this listener would have written
+     that into this point (review, 2026-10-24). Put the point's value back in the field,
+     and take the table's own step instead, as Ctrl+Z does here. */
+  if (e.inputType === "historyUndo" || e.inputType === "historyRedo") {
+    ptSetV(f, p[cls.slice(2)]);
+    if (e.inputType === "historyUndo") ptDoUndo(); else ptDoRedo();
+    return;
+  }
   /* the datatype dropdown's last entry is not a datatype: it opens the variable
      dialog for this point. Put the select back to what the point says first - the
      dialog may be cancelled, and the sentinel must never reach the model. */
@@ -6051,6 +6336,16 @@ function ptPasteValue(col, v) {
     return hit ? {value: String(hit.name)}
                : {why: `'${v}' is not a datatype the table or this project's variables describe`};
   }
+  /* The two number columns take a whole decimal number or nothing. They took any text,
+     and the model's Number() then read 0x0010 as 16 and 1e3 as 1000, and made 4x0001,
+     "40 001" and a word NaN - shown blank, sent as null, and in no report (review,
+     2026-10-24). A leading zero is still the number: 0010 is 10. */
+  if (col === "addr" || col === "statetext") {
+    if (!v || /^-?\d+$/.test(v)) return {value: v};
+    return {why: col === "addr"
+      ? `'${v}' is not a whole decimal number - an address takes digits only, the register as the document numbers it`
+      : `'${v}' is not a state list id - the state column takes the id of a list, a whole number`};
+  }
   const choices = ptColChoices(col);
   if (!choices) return {value: v};                   // free text
   const hit = choices.find(c => c.toLowerCase() === v.toLowerCase());
@@ -6068,6 +6363,7 @@ function ptPasteValue(col, v) {
    lands with three datatypes missing looks complete. The whole paste is one undo step. */
 $("points").addEventListener("paste", e => {
   if (ptPastePoints(e)) return;                  // rows copied with Ctrl+C, below
+  if (projectPaste(e)) return;                   // a whole project, not a block of cells
   if (!e.target.matches("input, select")) return;
   const text = (e.clipboardData || window.clipboardData).getData("text");
   if (!text) return;
@@ -6145,7 +6441,7 @@ function ptCopySelection(e) {
       && !$("points").contains(text.anchorNode)) return false;
   const pts = bulkTargets();
   if (!pts.length) return false;
-  const payload = pts.map(p => { const d = ptOut(p); delete d.element_id; return d; });
+  const payload = ptClipBundle(pts);
   const cols = PT_COLS.filter(Boolean);
   const tsv = pts.map(p => cols.map(c => ptClipCell(p, c)).join("\t")).join("\n");
   e.clipboardData.setData(PT_CLIP_MIME, JSON.stringify(payload));
@@ -6157,6 +6453,31 @@ function ptCopySelection(e) {
     + (pts.length === 1 ? "it as a new row" : "them as new rows") + " after the selection";
   return true;
 }
+/* The rows, and what they need to mean the same thing in another project: the state
+   lists their state column names and the groups they sit in. The payload used to be the
+   points alone, so rows copied in one project and pasted into another read that
+   project's list 1, whatever its words (review, 2026-10-24). A paste merges the two the
+   way ⤒ points merges a file's (ptMergeStatetexts, ptMergeGroups). */
+function ptClipBundle(pts) {
+  const points = pts.map(p => { const d = ptOut(p); delete d.element_id; return d; });
+  const groups = collectGroups(), states = collectStates();
+  const g = {}, st = {};
+  for (const d of points) {
+    if (d.group && d.group in groups) g[d.group] = groups[d.group];
+    const id = d.statetext == null || d.statetext === "" ? null : String(d.statetext);
+    if (id !== null && id in states) st[id] = states[id];
+  }
+  return {points, groups: g, statetexts: st};
+}
+/* A pasted payload as {points, groups, statetexts}, or null: this page's own bundle, or
+   the bare list of points an older copy of the page put on the clipboard. */
+function ptClipPoints(payload) {
+  if (Array.isArray(payload)) return payload.length ? {points: payload, groups: {}, statetexts: {}} : null;
+  if (!payload || typeof payload !== "object" || !Array.isArray(payload.points)
+      || !payload.points.length) return null;
+  const map = v => v && typeof v === "object" && !Array.isArray(v) ? v : {};
+  return {points: payload.points, groups: map(payload.groups), statetexts: map(payload.statetexts)};
+}
 function ptPastePoints(e) {
   const cd = e.clipboardData || window.clipboardData;
   if (!cd) return false;
@@ -6164,16 +6485,24 @@ function ptPastePoints(e) {
   const own = cd.getData(PT_CLIP_MIME);
   if (own) { try { payload = JSON.parse(own); } catch { payload = null; } }
   if (!payload && ptClipPayload && cd.getData("text") === ptClipText) payload = ptClipPayload;
-  if (!Array.isArray(payload) || !payload.length) return false;
+  const bundle = ptClipPoints(payload);
+  if (!bundle) return false;
   e.preventDefault();
   ptCommitPendingEdit();
-  ptPushState(null, `paste ${payload.length} row${payload.length === 1 ? "" : "s"}`);
+  const n = bundle.points.length;
+  ptPushState(null, `paste ${n} row${n === 1 ? "" : "s"}`);
+  // the lists and groups first, so the ids the rows are given are the ones they keep
+  const used = new Set(bundle.points.map(d => d.statetext).filter(v => v != null && v !== ""));
+  const st = ptMergeStatetexts(bundle.statetexts, used);
+  const gm = ptMergeGroups(bundle.groups, new Set(bundle.points.map(d => d.group).filter(Boolean)));
   const sel = repSourceRows();                    // project order decides "after"
   let at = sel.length ? sel[sel.length - 1]._seq + 1 : ptModel.length;
   const added = [];
-  for (const d of payload) {
+  for (const d of bundle.points) {
     const src = Object.assign({}, d);
     delete src.element_id;                        // a copy must not inherit an explicit id
+    const moved = st.map.get(String(src.statetext));
+    if (moved != null) src.statetext = moved;     // its list took a free id here
     const p = ptNew(src);
     ptModel.splice(at++, 0, p);
     ptFresh.add(p);
@@ -6187,16 +6516,29 @@ function ptPastePoints(e) {
   queueAutosave();           // no input event was raised; reach the hook directly
   ptReveal(added[0]);
   ptPaintSelection();
+  if (st.added || gm.added) {
+    const made = [st.added && `${st.added} state list${st.added === 1 ? "" : "s"}`,
+                  gm.added && `${gm.added} group${gm.added === 1 ? "" : "s"}`].filter(Boolean);
+    const tip = $("ptTip");
+    if (tip) tip.textContent = `${n} row${n === 1 ? "" : "s"} pasted - ${made.join(" and ")} `
+      + `came with them; Ctrl+Z takes the rows back, not those`;
+  }
+  if (st.moved)
+    outNote(`${st.moved} pasted state list(s) collided with a different list already here and `
+          + `were given new ids; the pasted rows were repointed at them. Nothing already in this `
+          + `project changed.`, "warn");
   return true;
 }
 document.addEventListener("copy", ptCopySelection);
 document.addEventListener("paste", e => {
   // a cell's own listener ran already; a text field elsewhere on the page keeps its
-  // ordinary paste; anywhere else the rows take a points paste
+  // ordinary paste; anywhere else the rows take a points paste, and a project's text
+  // is offered as a project
   const t = e.target;
   if (t && t.closest && t.closest("#points")) return;
-  if (/^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName)) return;
-  ptPastePoints(e);
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName) || t?.isContentEditable) return;
+  if (document.querySelector("dialog[open]")) return;
+  if (!ptPastePoints(e)) projectPaste(e);
 });
 $("btnPtUndo").onclick = ptDoUndo;
 ptUpdateUndoButton();
@@ -6315,7 +6657,6 @@ document.addEventListener("keydown", e => {
   }
 });
 /* ---------- autosave: unsaved work survives closing the page ---------- */
-const AUTOSAVE_KEY = "modbusgen_autosave";
 /* 2: truncate is honoured by the modern format (2026-10-23). A record saved in this
    browser before that carries the old page's truncate: true, which the box wrote by
    default and modern then ignored - the old default, not a choice. storedProject drops
@@ -6337,10 +6678,69 @@ function storedProject(rec) {
    page went on looking safe - it now says so in the header until a save works again.
    And New, Load, the imports and a #file link put another project on the page, and the
    next autosave wrote over the one that was there - that one is now kept in a second
-   slot first (keepReplaced), and the replace asks when it had unsaved changes. */
-const AUTOSAVE_PREV_KEY = "modbusgen_autosave_prev";
+   slot first (keepReplaced), and the replace asks when it had unsaved changes.
+
+   And a fourth: every tab wrote the same slot, so a second tab opened on the first one's
+   work, the two wrote over each other, and a tab closed with unsaved work through the
+   leave prompt lost it at the other tab's next autosave (review, 2026-10-24). Now each
+   tab has an id, kept in sessionStorage - a reload, a reopened tab and a restored session
+   find their own slots again - and writes its own two slots only.
+
+   An open tab holds a Web Lock named after its id for as long as it lives; the browser
+   lets go of it when the tab goes, a crash included. A tab with no slot of its own takes
+   over the newest slot no open tab holds, as the single slot used to restore the last
+   session, and never touches an open tab's. A duplicated tab copies the id and finds its
+   lock held: it takes a new id and starts as a copy of the original. The old page's pair
+   of slots counts as one more closed tab, so what it held comes back once. Without Web
+   Locks every other tab's slot looks closed - nothing is lost even then, because an open
+   tab writes its slot again at its next autosave. */
+const AUTOSAVE_KEY = "modbusgen_autosave";              // the old page's one slot - read, never written
+const AUTOSAVE_PREV_KEY = "modbusgen_autosave_prev";    // and its second slot
+const AUTOSAVE_TAB = "modbusgen_autosave:";             // + a tab's id: that tab's slot
+const AUTOSAVE_TAB_PREV = "modbusgen_autosave_prev:";   // + a tab's id: the project its last replace kept
+const TAB_ID_KEY = "modbusgen_tab";                     // in sessionStorage: this tab's id
 const AUTOSAVE_DELAY = 1500, AUTOSAVE_MAX_WAIT = 10000;
 let autosaveTimer = null, autosaveSince = 0;
+let tabId = null;                      // nothing is written until claimTab has one
+function autosaveKey() { return AUTOSAVE_TAB + tabId; }
+function prevKey() { return AUTOSAVE_TAB_PREV + tabId; }
+function tabLockName(id) { return "modbusgen-tab:" + id; }
+function newTabId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+/* Holds the lock named after `id` for the life of the page, and says whether it got it:
+   at once, or within `wait` ms - which a reload needs, because this tab's previous page
+   may not have let go of it yet. */
+function holdTabLock(id, wait) {
+  return new Promise(resolve => {
+    const opts = {};
+    let timer = null;
+    if (wait > 0 && typeof AbortController === "function") {
+      const stop = new AbortController();
+      opts.signal = stop.signal;
+      timer = setTimeout(() => stop.abort(), wait);
+    } else opts.ifAvailable = true;
+    navigator.locks.request(tabLockName(id), opts, lock => {
+      clearTimeout(timer);
+      resolve(!!lock);
+      return lock ? new Promise(() => {}) : undefined;     // held until the page goes
+    }).catch(() => resolve(false));                          // timed out: an open tab has it
+  });
+}
+async function claimTab() {
+  let id = null, twinOf = null;
+  try { id = sessionStorage.getItem(TAB_ID_KEY); } catch { /* no session storage */ }
+  if (id && navigator.locks && !(await holdTabLock(id, 1500))) {
+    twinOf = id;                       // still held: the tab this one was duplicated from
+    id = null;
+  }
+  if (!id) {
+    id = newTabId();
+    if (navigator.locks) await holdTabLock(id, 0);
+    try { sessionStorage.setItem(TAB_ID_KEY, id); } catch { /* a reload starts afresh */ }
+  }
+  tabId = id;
+  return {twinOf};
+}
+const tabClaimed = claimTab().catch(() => { tabId = tabId || newTabId(); return {twinOf: null}; });
 function autosaveRecord() {
   return {when: Date.now(), file: $("fileName").value, dirty: projDirty, savedAs,
           project: collectProject(), v: STORE_V};
@@ -6352,15 +6752,18 @@ function queueAutosave() {
   autosaveTimer = setTimeout(autosaveNow,
     Math.max(0, Math.min(AUTOSAVE_DELAY, autosaveSince + AUTOSAVE_MAX_WAIT - now)));
 }
+/* Returns whether the page is in this tab's slot now. */
 function autosaveNow() {
   clearTimeout(autosaveTimer);
   autosaveTimer = null;
-  // before the tables arrive nothing is on the page, and saving it would erase the last session
-  if (!bootstrapReady()) return;
+  // before the tables arrive nothing is on the page, and saving it would erase the last
+  // session; before the tab has its id there is no slot of its own to write
+  if (!bootstrapReady() || !tabId) return false;
   try {
-    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(autosaveRecord()));
+    localStorage.setItem(autosaveKey(), JSON.stringify(autosaveRecord()));
     autosaveFailed(null);
-  } catch (e) { autosaveFailed(e); }
+    return true;
+  } catch (e) { autosaveFailed(e); return false; }
 }
 function autosaveFailed(e) {
   const w = $("autosaveWarn");
@@ -6376,15 +6779,24 @@ function readStored(key) {
 }
 const recordHasWork = rec => !!(rec?.project && (rec.project.table ||
   (rec.project.points || []).some(p => p.datatype || p.text)));
-/* What is on the page goes to the second slot before anything replaces it, so it can be
-   brought back. Returns whether there was work to keep and it was kept. */
+/* What is on the page goes to this tab's second slot before anything replaces it, so it
+   can be brought back. Returns whether there was work to keep and it was kept - and null
+   when the browser refused to store it on a page with unsaved changes and the person then
+   chose to keep the page as it is: confirmReplace had promised a copy, and a replace
+   without one loses the work (review, 2026-10-24). Every caller stops on null. */
 function keepReplaced(rec) {
+  let why;
   try {
     rec = rec || (bootstrapReady() ? autosaveRecord() : null);
     if (!recordHasWork(rec)) return false;
-    localStorage.setItem(AUTOSAVE_PREV_KEY, JSON.stringify(rec));
+    if (!tabId) throw new Error("this tab has no storage slot yet");
+    localStorage.setItem(prevKey(), JSON.stringify(rec));
     return true;
-  } catch { return false; }
+  } catch (e) { why = e && (e.name || e.message) || String(e); }
+  if (!projDirty) return false;          // saved, exported or loaded: kept elsewhere
+  return confirm(`This browser could not keep a copy of the project on this page (${why}), `
+    + `so replacing it loses the changes that have not been saved or exported.\n\nReplace it `
+    + `anyway? Cancel keeps the page as it is - Export or Save it first.`) ? false : null;
 }
 function confirmReplace(what) {
   if (!projDirty) return true;
@@ -6394,7 +6806,7 @@ function confirmReplace(what) {
 }
 /* The line under a replace that kept the project it replaced. */
 function offerRestore() {
-  const rec = readStored(AUTOSAVE_PREV_KEY);
+  const rec = readStored(prevKey());
   const when = fmtStamp(rec?.when, true);
   return el("div",{class:"msg fix"},
     el("b",{}, "The project this replaced "),
@@ -6404,7 +6816,7 @@ function offerRestore() {
                  onclick:restoreReplaced}, "bring it back"));
 }
 function restoreReplaced() {
-  const rec = readStored(AUTOSAVE_PREV_KEY);
+  const rec = readStored(prevKey());
   if (!recordHasWork(rec)) {
     showError(new Error("the replaced project is no longer stored in this browser"));
     return;
@@ -6412,6 +6824,7 @@ function restoreReplaced() {
   if (!confirmReplace("Bringing back the replaced project")) return;
   try {
     const swapped = keepReplaced();       // what is here now becomes the one to bring back
+    if (swapped === null) return;
     showProject(storedProject(rec));
     $("fileName").value = rec.file || "";
     savedAs = rec.savedAs ?? null;
@@ -6420,6 +6833,96 @@ function restoreReplaced() {
     $("out").replaceChildren(messageBox("success", "Brought back:",
       `the project as it was at ${fmtStamp(rec.when, true)}.`));
     if (swapped) $("out").append(offerRestore());
+  } catch (e) { showError(e); }
+}
+/* The slots no open tab holds - every closed tab's, and the old page's pair - each as
+   {key, id, prev, rec}, and how many other tabs are open. This tab's own are never among
+   them. */
+async function goneSlots() {
+  const live = new Set();
+  try {
+    for (const l of (await navigator.locks?.query?.())?.held || [])
+      if (String(l.name).startsWith(tabLockName(""))) live.add(l.name);
+  } catch { /* no lock manager: every other slot counts as closed */ }
+  const slots = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i) || "";
+    let id, prev = false;
+    if (key === AUTOSAVE_KEY) id = "";
+    else if (key === AUTOSAVE_PREV_KEY) { id = ""; prev = true; }
+    else if (key.startsWith(AUTOSAVE_TAB)) id = key.slice(AUTOSAVE_TAB.length);
+    else if (key.startsWith(AUTOSAVE_TAB_PREV)) { id = key.slice(AUTOSAVE_TAB_PREV.length); prev = true; }
+    else continue;
+    if (id && (id === tabId || live.has(tabLockName(id)))) continue;
+    slots.push({key, id, prev, rec: readStored(key)});
+  }
+  live.delete(tabLockName(tabId));
+  return {slots, open: live.size};
+}
+/* What a tab with no slot of its own does with the closed tabs' slots: takes over the
+   newest that holds a project, with that tab's second slot when its own is free; keeps
+   every other one holding unsaved work, newest first, for "bring back"; and lets go of
+   the rest - a project saved, exported or loaded and not changed since is kept somewhere
+   else, and an empty one holds nothing. Plain data in, plain data out. */
+function autosavePlan(slots, prevFree = true) {
+  const work = s => recordHasWork(s.rec);
+  const unsaved = s => work(s) && s.rec.dirty !== false;
+  const newest = (a, b) => (b.rec?.when || 0) - (a.rec?.when || 0);
+  const take = slots.filter(s => !s.prev && work(s)).sort(newest)[0] || null;
+  const takePrev = take && prevFree
+    && slots.find(s => s.prev && s.id === take.id && work(s)) || null;
+  const rest = slots.filter(s => s !== take && s !== takePrev);
+  return {take, takePrev, keep: rest.filter(unsaved).sort(newest),
+          drop: rest.filter(s => !unsaved(s))};
+}
+/* Moves each [slot, key] pair into that key of this tab's - with no key the slot is only
+   let go, its record being somewhere already - then lets go of what the plan drops. A
+   refusal stops it where it is: a slot not moved is a slot not lost. */
+function settleSlots(moves, drop = []) {
+  try {
+    for (const [slot, into] of moves) {
+      if (!slot) continue;
+      if (into) localStorage.setItem(into, JSON.stringify(slot.rec));
+      localStorage.removeItem(slot.key);
+    }
+    for (const s of drop) localStorage.removeItem(s.key);
+  } catch { /* storage refused: the slots stay where they were */ }
+}
+/* The line under a restore when more closed tabs left unsaved work in this browser. */
+function offerGone(n) {
+  return el("div",{class:"msg fix"},
+    el("b",{}, `${n} more closed tab${n === 1 ? "" : "s"} `),
+    `left unsaved work in this browser. `,
+    el("button",{class:"ghost fixbtn",
+                 title:"Put the newest of them on the page. What is on the page now is kept the way a load keeps it, and offered back afterwards",
+                 onclick:restoreGone}, "bring back the newest"));
+}
+async function restoreGone() {
+  let waiting;
+  try {
+    const {slots} = await goneSlots();
+    waiting = slots.filter(s => recordHasWork(s.rec) && s.rec.dirty !== false)
+                   .sort((a, b) => (b.rec.when || 0) - (a.rec.when || 0));
+  } catch (e) { showError(e); return; }
+  const next = waiting[0];
+  if (!next) {
+    showError(new Error("no closed tab's unsaved work is stored in this browser any more"));
+    return;
+  }
+  if (!confirmReplace("Bringing back a closed tab's work")) return;
+  try {
+    const kept = keepReplaced();
+    if (kept === null) return;
+    showProject(storedProject(next.rec));
+    $("fileName").value = next.rec.file || "";
+    savedAs = next.rec.savedAs ?? null;
+    projDirty = next.rec.dirty !== false;
+    // in this tab's slot before it leaves the closed tab's, or a refusal would lose it
+    if (autosaveNow()) settleSlots([[next, null]]);
+    $("out").replaceChildren(messageBox("success", "Brought back:",
+      `the work a closed tab left at ${fmtStamp(next.rec.when, true)}.`));
+    if (kept) $("out").append(offerRestore());
+    if (waiting.length > 1) $("out").append(offerGone(waiting.length - 1));
   } catch (e) { showError(e); }
 }
 document.addEventListener("input", queueAutosave);
@@ -6442,58 +6945,66 @@ $("btnNew").onclick = () => {
   if (!confirmReplace("New")) return;
   try {
     const dirty = projDirty, kept = keepReplaced();
-    localStorage.removeItem(AUTOSAVE_KEY);
+    if (kept === null) return;
     $("fileName").value = "new-project.json";
     // mb.exe is the house standard (docs/15 section 1), so a list starts there rather
     // than at "not stated". Only New does this: showProject leaves an imported file's
     // absent driver empty, because absence means nobody said, not mb.exe.
     showProject({points:[], driver:"mb.exe"});
+    autosaveNow();                         // this tab's slot holds the empty list at once
     $("out").replaceChildren(messageBox("info", "Note:", "New empty project."));
     if (kept && dirty) $("out").append(offerRestore());
   } catch (e) { showError(e); }
 };
-$("btnImportJson").onclick = () => $("jsonFile").click();
-$("jsonFile").onchange = async e => {
-  const file = e.target.files[0];
-  if (!file) return;
+/* Import project, and everything else that hands the page a project's text: a dropped
+   file, a pasted or dropped project. The caller has asked confirmReplace already. */
+async function openProjectText(text, label, yaml, name) {
+  let data;
+  if (yaml) {
+    data = await api("/api/parse", {text});
+  } else {
+    data = JSON.parse(text);            // syntax, in the browser's own words
+    /* The shape is the loader's call, not the page's. A .json file used to go from
+       JSON.parse straight to the screen, so a file that parsed and was not a project
+       - points nested under groups, rows keyed address and name - showed one blank
+       row under a green "Imported" and left the person to notice that 117 points
+       were nowhere. Re-serialised rather than sent raw, because the parser behind
+       /api/parse is YAML's and a tab-indented JSON file is not YAML. */
+    const chk = await api("/api/parse", {text: JSON.stringify(data)});
+    if (chk && chk.error) throw new Error(chk.error);
+  }
+  // the raw text: a key the file repeats fails the import here, before anything is shown
+  const leftOut = await leftOutMsgs(text);
+  const dirty = projDirty, kept = keepReplaced();
+  if (kept === null) return false;
+  showProject(data);
+  $("fileName").value = name;
+  // the SQL and workbook importers report their own unknown datatypes from the
+  // backend; a hand-written or hand-edited JSON has nobody to do that for it
+  $("out").replaceChildren(messageBox("info", "Imported:",
+    `${label} - review, then Validate and Save/Export.`),
+    ...dtUnknownMsgs(ptUnknownDatatypes()),
+    ...leftOut);
+  if (kept && dirty) $("out").append(offerRestore());
+  queueAutosave();
+  return true;
+}
+async function importProjectFile(file) {
   // asked here rather than on the button: a file chooser opened after a dialog can be
   // refused by the browser as no longer the user's own click
-  if (!confirmReplace(`Importing ${file.name}`)) { e.target.value = ""; return; }
+  if (!confirmReplace(`Importing ${file.name}`)) return;
   try {
-    const text = await file.text();
-    let data;
-    if (/\.ya?ml$/i.test(file.name)) {
-      data = await api("/api/parse", {text});
-    } else {
-      data = JSON.parse(text);            // syntax, in the browser's own words
-      /* The shape is the loader's call, not the page's. A .json file used to go from
-         JSON.parse straight to the screen, so a file that parsed and was not a project
-         - points nested under groups, rows keyed address and name - showed one blank
-         row under a green "Imported" and left the person to notice that 117 points
-         were nowhere. Re-serialised rather than sent raw, because the parser behind
-         /api/parse is YAML's and a tab-indented JSON file is not YAML. */
-      const chk = await api("/api/parse", {text: JSON.stringify(data)});
-      if (chk && chk.error) throw new Error(chk.error);
-    }
-    const dirty = projDirty, kept = keepReplaced();
-    showProject(data);
-    $("fileName").value = file.name;
-    // the SQL and workbook importers report their own unknown datatypes from the
-    // backend; a hand-written or hand-edited JSON has nobody to do that for it
-    $("out").replaceChildren(messageBox("info", "Imported:",
-      `${file.name} - review, then Validate and Save/Export.`),
-      ...dtUnknownMsgs(ptUnknownDatatypes()),
-      ...(await leftOutMsgs(text)));
-    if (kept && dirty) $("out").append(offerRestore());
-    queueAutosave();
+    await openProjectText(await file.text(), file.name, /\.ya?ml$/i.test(file.name), file.name);
   } catch (err) { showError(new Error(`could not import ${file.name}: ${err.message}`)); }
-  e.target.value = "";
-};
-$("btnImportSql").onclick = () => $("sqlFile").click();
-$("sqlFile").onchange = async e => {
+}
+$("btnImportJson").onclick = () => $("jsonFile").click();
+$("jsonFile").onchange = e => {
   const file = e.target.files[0];
-  if (!file) return;
-  if (!confirmReplace(`Importing ${file.name}`)) { e.target.value = ""; return; }
+  e.target.value = "";
+  if (file) importProjectFile(file);
+};
+async function importSqlFile(file) {
+  if (!confirmReplace(`Importing ${file.name}`)) return;
   try {
     /* IWMAC scripts are cp1252; fall back to it when the bytes are not valid UTF-8 */
     const buf = await file.arrayBuffer();
@@ -6502,6 +7013,7 @@ $("sqlFile").onchange = async e => {
     catch { text = new TextDecoder("windows-1252").decode(buf); }
     const res = await api("/api/import-sql", {text});
     const dirty = projDirty, kept = keepReplaced();
+    if (kept === null) return;
     showProject(res.project);
     $("fileName").value = (res.project.table || file.name.replace(/\.[^.]*$/, "")) + ".json";
     /* Ranked and coloured as Insert Excel's are (importNoteMsgs): every note used to
@@ -6514,17 +7026,19 @@ $("sqlFile").onchange = async e => {
     if (kept && dirty) $("out").append(offerRestore());
     queueAutosave();
   } catch (err) { showError(new Error(`could not convert ${file.name}: ${err.message}`)); }
+}
+$("btnImportSql").onclick = () => $("sqlFile").click();
+$("sqlFile").onchange = e => {
+  const file = e.target.files[0];
   e.target.value = "";
+  if (file) importSqlFile(file);
 };
 
 /* Insert Excel: the reverse of Export Excel. The workbook is binary, so it travels
    as base64 rather than text - the browser build additionally installs openpyxl on
    the first use, which can take a few seconds. */
-$("btnImportXlsm").onclick = () => $("xlsmFile").click();
-$("xlsmFile").onchange = async e => {
-  const file = e.target.files[0];
-  if (!file) return;
-  if (!confirmReplace(`Inserting ${file.name}`)) { e.target.value = ""; return; }
+async function importXlsmFile(file) {
+  if (!confirmReplace(`Inserting ${file.name}`)) return;
   const btn = $("btnImportXlsm");
   btnBusy(btn, "converting…");
   try {
@@ -6535,6 +7049,7 @@ $("xlsmFile").onchange = async e => {
     const res = await api("/api/import-xlsm", {b64: btoa(bin), filename: file.name});
     if (res.error) throw new Error(res.error);
     const dirty = projDirty, kept = keepReplaced();
+    if (kept === null) { btnFlash(btn, "not inserted", "bad", 2200); return; }
     showProject(res.project);
     $("fileName").value = (res.project.table || file.name.replace(/\.[^.]*$/, "")) + ".json";
     $("out").replaceChildren(
@@ -6548,8 +7063,144 @@ $("xlsmFile").onchange = async e => {
     btnFlash(btn, "convert failed", "bad", 2600);
     showError(new Error(`could not convert ${file.name}: ${err.message}`));
   }
+}
+$("btnImportXlsm").onclick = () => $("xlsmFile").click();
+$("xlsmFile").onchange = e => {
+  const file = e.target.files[0];
   e.target.value = "";
+  if (file) importXlsmFile(file);
 };
+
+/* ---------- a project pasted or dropped onto the page ----------
+   A project from a Copilot or Claude answer had to be saved to a file before Import
+   project could read it (review, 2026-10-24). Now a file dropped anywhere goes to the
+   importer for its type, and a project's text - pasted outside a field, or dropped -
+   is offered as one: open it in place of this project, or append its points. Opening
+   asks first when the page has unsaved changes, as every replace does. */
+const isMapLike = v => !!v && typeof v === "object" && !Array.isArray(v);
+/* JSON as an AI answer gives it - bare, in a ``` fence, or the whole answer around the
+   fence - or YAML with a points key at the top level. Returns {kind, text, yaml, data}
+   or null: kind "project" for a project, "points" for a bare list of points. */
+function projectTextOf(raw) {
+  let text = String(raw ?? "").replace(/^\uFEFF/, "").trim();
+  if (!text) return null;
+  const fence = text.match(/```[^\n]*\n([\s\S]*?)```/);
+  if (fence) text = fence[1].trim();
+  if (/^[\[{]/.test(text)) {
+    let data;
+    try { data = JSON.parse(text); } catch { return null; }
+    if (Array.isArray(data))
+      return data.length && data.every(isMapLike) ? {kind: "points", text, yaml: false, data} : null;
+    if (isMapLike(data) && (Array.isArray(data.points) || "table" in data || isMapLike(data.groups)))
+      return {kind: "project", text, yaml: false, data};
+    return null;
+  }
+  if (/^points\s*:/m.test(text) && /^(table|groups|statetexts|plant)\s*:/m.test(text))
+    return {kind: "project", text, yaml: true, data: null};
+  return null;
+}
+/* Asks what to do with a project from outside the page: "open", "append" or null. */
+function askProjectText(found, label) {
+  return new Promise(resolve => {
+    const d = $("pasteDialog");
+    const data = isMapLike(found.data) ? found.data : {};
+    const pts = Array.isArray(found.data) ? found.data : Array.isArray(data.points) ? data.points : null;
+    const facts = [data.table && `table ${data.table}`,
+                   data.plant != null && data.plant !== "" && `plant ${data.plant}`,
+                   pts && `${pts.length} point${pts.length === 1 ? "" : "s"}`,
+                   isMapLike(data.groups) && `${Object.keys(data.groups).length} group(s)`]
+      .filter(Boolean).join(" · ");
+    $("pasteTitle").textContent = found.kind === "points" ? "Points from outside the page"
+                                                          : "A project from outside the page";
+    $("pasteWhat").textContent = `${label[0].toUpperCase()}${label.slice(1)} holds `
+      + (found.kind === "points" ? "a list of points" : found.yaml ? "a YAML project" : "a project")
+      + (facts ? ` - ${facts}` : "") + ".";
+    $("pasteOpen").disabled = found.kind !== "project";
+    $("pasteOpen").title = found.kind === "project"
+      ? "Replace the project on this page with this one, as Import project does. Asks first when the page has unsaved changes"
+      : "A bare list of points is not a project - append it instead";
+    const done = v => { resolve(v); if (d.open) d.close(); };
+    $("pasteOpen").onclick = () => done("open");
+    $("pasteAppend").onclick = () => done("append");
+    $("pasteCancel").onclick = () => done(null);
+    d.onclose = () => resolve(null);     // Esc; a choice already made wins
+    d.showModal();
+    (found.kind === "project" ? $("pasteOpen") : $("pasteAppend")).focus();
+  });
+}
+async function takeProjectText(found, label) {
+  const choice = await askProjectText(found, label);
+  if (!choice) return;
+  try {
+    requireBoot();
+    if (choice === "open") {
+      if (!confirmReplace(`Opening ${label}`)) return;
+      const name = exportSafe(String(found.data?.table || ""), "pasted-project") + ".json";
+      await openProjectText(found.text, label, found.yaml, name);
+    } else {
+      await importPointsText(found.text, label, found.yaml);
+    }
+  } catch (err) {
+    showError(new Error(`could not ${choice === "open" ? "open" : "append"} ${label}: ${err.message}`));
+  }
+}
+/* A paste event whose text is a project: offered as one, and the paste consumed. */
+function projectPaste(e) {
+  const cd = e.clipboardData || window.clipboardData;
+  const found = cd ? projectTextOf(cd.getData("text")) : null;
+  if (!found) return false;
+  e.preventDefault();
+  takeProjectText(found, "the pasted text");
+  return true;
+}
+const DROP_IMPORTERS = [
+  [/\.(json|ya?ml)$/i, importProjectFile],
+  [/\.(sql|txt)$/i, importSqlFile],
+  [/\.xls[mx]$/i, importXlsmFile],
+];
+async function dropFile(file, count) {
+  const hit = DROP_IMPORTERS.find(([re]) => re.test(file.name || ""));
+  if (!hit) {
+    outNote(`${file.name || "That file"} is not a file this page imports - drop a project `
+          + `(.json, .yaml), a generated script (.sql, .txt) or a Modbustemplate workbook `
+          + `(.xlsm).`, "warn");
+    return;
+  }
+  if (!bootstrapReady()) { showError(new Error(BOOT_ERROR ? BOOT_FAILED_MSG : BOOT_WAIT_MSG)); return; }
+  await hit[1](file);
+  if (count > 1)
+    $("out").append(messageBox("info", "Note:", `${count - 1} more file${count === 2 ? " was" : "s were"} `
+      + `dropped with ${file.name} and left alone - drop one file at a time.`));
+}
+let dropHintTimer = null;
+function dropHint(on) {
+  clearTimeout(dropHintTimer);
+  document.body.classList.toggle("dropping", on);
+  // dragleave fires on every child crossed; the hint goes instead when dragover stops
+  if (on) dropHintTimer = setTimeout(() => document.body.classList.remove("dropping"), 250);
+}
+document.addEventListener("dragover", e => {
+  const dt = e.dataTransfer;
+  if (!dt || document.querySelector("dialog[open]")) return;
+  const files = [...(dt.types || [])].includes("Files");
+  // text dragged onto a field is the field's to take
+  if (!files && e.target.closest?.("input, textarea, select")) return;
+  e.preventDefault();                  // without it the browser opens a file in place of the page
+  dt.dropEffect = "copy";
+  dropHint(true);
+});
+document.addEventListener("drop", e => {
+  const dt = e.dataTransfer;
+  if (!dt || document.querySelector("dialog[open]")) return;
+  const file = dt.files && dt.files[0];
+  if (!file && e.target.closest?.("input, textarea, select")) return;
+  dropHint(false);
+  if (file) { e.preventDefault(); dropFile(file, dt.files.length); return; }
+  const found = projectTextOf(dt.getData("text/plain") || dt.getData("text"));
+  if (!found) return;                  // text that is not a project: nothing to do with it
+  e.preventDefault();
+  takeProjectText(found, "the dropped text");
+});
 
 /* The SQL is encoded cp1252 server-side because the IWMAC tables are latin1;
    downloading res.sql as a UTF-8 string would mangle æøå. Ship the bytes. */
@@ -6742,6 +7393,25 @@ function ptMergeStatetexts(incoming, used) {
   }
   return {map, added, moved};
 }
+/* The groups some incoming points use. A key missing here is created with the alias it
+   came with - or the key, when it came with none; a key already here keeps this plant's
+   alias, and those are counted, because the incoming wording was set aside. */
+function ptMergeGroups(incoming, names) {
+  const here = collectGroups();
+  let added = 0, kept = 0;
+  for (const name of names) {
+    const raw = (incoming || {})[name];
+    const alias = groupOf(raw).alias;
+    if (!(name in here)) {
+      addGroupRow(name, typeof raw === "string" ? raw : (alias || name));
+      here[name] = alias; added++;
+    } else if (alias && alias !== groupOf(here[name]).alias) {
+      kept++;                                   // this plant's wording wins
+    }
+  }
+  if (added) refreshGroupList();
+  return {added, kept};
+}
 function ptImportPoints(data, label) {
   const raw = Array.isArray(data) ? data : (data && data.points);
   if (!Array.isArray(raw) || !raw.length)
@@ -6751,18 +7421,8 @@ function ptImportPoints(data, label) {
   const usedStates = new Set(raw.map(p => p.statetext).filter(v => v != null && v !== ""));
   const st = ptMergeStatetexts(src.statetexts || {}, usedStates);
 
-  const here = collectGroups();
-  let groupsAdded = 0, aliasKept = 0;
-  for (const name of new Set(raw.map(p => p.group).filter(Boolean))) {
-    const alias = (src.groups || {})[name];
-    if (!(name in here)) {
-      addGroupRow(name, typeof alias === "string" ? alias : (alias?.alias || name));
-      here[name] = alias; groupsAdded++;
-    } else if (typeof alias === "string" && alias && alias !== here[name]) {
-      aliasKept++;                              // this plant's wording wins
-    }
-  }
-  if (groupsAdded) refreshGroupList();
+  const gm = ptMergeGroups(src.groups, new Set(raw.map(p => p.group).filter(Boolean)));
+  const groupsAdded = gm.added, aliasKept = gm.kept;
 
   // an identical datatype+addr+bit is the same driver_id, which validation rejects
   const key = p => `${p.datatype}|${p.addr}|${p.bit ?? ""}`;
@@ -6796,20 +7456,28 @@ function ptImportPoints(data, label) {
     "import created stays - an unused one is harmless, but delete it if you undo."));
   $("out").replaceChildren(...out);
 }
+/* The points of a project's text, appended - from ⤒ points, and from a pasted or dropped
+   project when Append points is chosen. The file is checked for keys the page leaves out
+   and keys it repeats, as Import project checks one: this route went from JSON.parse
+   straight to the rows, so a misspelt key vanished here without a word (review,
+   2026-10-24). A bare list of points is checked as the points of a project. */
+async function importPointsText(text, label, yaml) {
+  requireBoot();
+  const data = yaml ? await api("/api/parse", {text}) : JSON.parse(text);
+  const leftOut = await leftOutMsgs(Array.isArray(data) ? `{"points": ${text}}` : text);
+  ptImportPoints(data, label);
+  if (leftOut.length) $("out").append(...leftOut);
+}
 $("btnPtImport").onclick = () => $("ptImportFile").click();
 $("ptImportFile").onchange = async e => {
   const file = e.target.files[0];
+  e.target.value = "";
   if (!file) return;
   try {
-    requireBoot();
-    const text = await file.text();
-    const data = /\.ya?ml$/i.test(file.name) ? await api("/api/parse", {text})
-                                             : JSON.parse(text);
-    ptImportPoints(data, file.name);
+    await importPointsText(await file.text(), file.name, /\.ya?ml$/i.test(file.name));
   } catch (err) {
     showError(new Error(`could not import points from ${file.name}: ${err.message}`));
   }
-  e.target.value = "";
 };
 
 /* Back into the old Excel tool, in both backends. The browser build has further to
@@ -6870,6 +7538,7 @@ async function loadSelected(asked) {
     }
     try {
       const kept = keepReplaced();
+      if (kept === null) return;
       showProject(storedProject(rec));
       $("fileName").value = name;
       savedAs = name;                          // Save may write it back without asking
@@ -6881,6 +7550,7 @@ async function loadSelected(asked) {
   try {
     const data = await api("/api/project?file=" + encodeURIComponent(value));
     const kept = keepReplaced();
+    if (kept === null) return;
     showProject(data);
     $("fileName").value = value;
     outNote("Loaded " + value);
@@ -7309,6 +7979,18 @@ async function runCheck(sqlWanted, note) {
     const generate = sqlWanted && !clashes.length;
     const res = await api(generate ? "/api/generate" : "/api/validate",
                           {project: collectProject(), ...prevPayload(generate)});
+    const pm = generate && res.previous_mismatch;
+    if (pm && pm.code === "table-differs" && prevVersion && !prevVersion.renamedFrom &&
+        confirm(`The previous version (${prevVersion.name}) writes table `
+          + `'${pm.previous_table}', and this list writes '${pm.table}'.\n\nOK only if this `
+          + `list's table was renamed from '${pm.previous_table}': the script then also `
+          + `deletes, on that table's units, the rows that version had and this one has not.`
+          + `\nCancel if the file is another list's - an update from it would delete that `
+          + `list's rows.`)) {
+      prevVersion.renamedFrom = pm.previous_table;
+      showPrevChip();
+      runNext = "generate";              // runs once this answer is shown, as a rename
+    }
     if (clashes.length) {
       res.errors = [...clashes.map(f => f.message), ...(res.errors || [])];
       if (Array.isArray(res.findings)) res.findings = [...clashes, ...res.findings];
@@ -7355,7 +8037,13 @@ function foldRead() {
 }
 function foldWrite() {
   const shut = [...document.querySelectorAll(".card.collapsed")].map(c => c.id).filter(Boolean);
-  localStorage.setItem(FOLD_KEY, JSON.stringify(shut));
+  /* Remembering the folds is a convenience, and a full storage must not turn it into an
+     exception: this runs inside pinPoints, revealResult, Ctrl+F and the wizard, and a
+     throw here stopped each of them half-way (review, 2026-10-24). Not remembered, then. */
+  try { localStorage.setItem(FOLD_KEY, JSON.stringify(shut)); } catch { /* full or refused */ }
+  for (const card of document.querySelectorAll("main > .card"))
+    card.querySelector(":scope > h2 > .caret")
+        ?.setAttribute("aria-expanded", String(!card.classList.contains("collapsed")));
   const all = document.querySelectorAll("main > .card").length;
   $("btnFoldAll").textContent = shut.length >= all ? "expand all" : "collapse all";
 }
@@ -7370,13 +8058,21 @@ function initFolding() {
   for (const card of document.querySelectorAll("main > .card")) {
     const h2 = card.querySelector(":scope > h2");
     if (!h2) continue;
-    h2.prepend(el("span", {class:"caret", "aria-hidden":"true"}, "▶"));
+    /* The caret is a button: the heading folded on a click only, so a keyboard could not
+       fold a card at all (review, 2026-10-24). Tab reaches it, Enter or Space folds. */
+    const name = [...h2.childNodes].filter(n => n.nodeType === Node.TEXT_NODE)
+                   .map(n => n.textContent).join(" ").replace(/\s+/g, " ").trim();
+    h2.prepend(el("button", {type:"button", class:"caret", "aria-expanded":"true",
+                             "aria-label":`fold or unfold the ${name} card`,
+                             title:"Fold or unfold this card - Enter or Space from the keyboard",
+                             onclick:() => { card.classList.toggle("collapsed"); foldWrite(); }},
+                  "▶"));
     h2.title = "Click the heading to fold or unfold this card";
     h2.onclick = (e) => {
-      /* A control inside the heading keeps its own click. Points has a search box, five
-         tool buttons and the maximise control up here - and the stats chips, which are
-         spans rather than buttons and are filter toggles, so a selector listing only the
-         form elements folded the card instead of filtering the list. */
+      /* A control inside the heading keeps its own click - the caret included, which
+         folds through its own. Points has a search box, five tool buttons, the maximise
+         control and the counting chips up here, all filter or tool buttons, so a click
+         on any of them must not fold the card. */
       if (e.target.closest("button, input, select, textarea, summary, a, label, .chip"))
         return;
       card.classList.toggle("collapsed");
@@ -7564,6 +8260,30 @@ async function saveSqlFile(e) {
   } catch (err) { btnFlash(btn, "failed", "bad", 2600); showError(err); }
 }
 
+/* ---------- which build this is ----------
+   Nothing on the page said which version answered, so a report could not be matched to
+   the code behind it (review, 2026-10-24). tools/build_web.py writes the published
+   build's stamp over the null below - the commit it was built from and the day; the
+   local GUI's bootstrap says "local" and, from a git checkout, the commit it runs. */
+const BUILD_STAMP = {"kind": "web", "date": "2026-10-24", "commit": "8d151e6"};
+function stampText(s) {
+  if (!s) return "";
+  const bits = [s.kind === "web" ? "web build" : "local"];
+  if (s.commit) bits.push(s.commit + (s.changes ? " + uncommitted changes" : ""));
+  const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s.date || ""));
+  if (day) bits.push(`${day[3]}.${day[2]}.${day[1]}`);
+  return "modbusgen " + bits.join(" · ");
+}
+function showStamp(s) {
+  const f = $("buildStamp");
+  if (!f) return;
+  f.textContent = stampText(s);
+  f.title = s && s.kind === "web"
+    ? "The published build: the commit it was built from and the day it was built"
+    : "This copy runs on the local server - with the commit it runs and that commit's day, when it runs from a git checkout";
+}
+showStamp(BUILD_STAMP || {kind: window.PYODIDE_API ? "web" : "local"});
+
 async function init() {
   /* The one request the page cannot do without. An unhandled rejection here used to
      leave BOOT null with nothing on screen to say why, and the next import blamed
@@ -7581,11 +8301,26 @@ async function init() {
     return;
   }
   setBootGate(true);            // from here on a project may be displayed
+  if (!BUILD_STAMP && BOOT?.build) showStamp(BOOT.build);
   outNote("Validate or generate to see results.");
   $("dlUnits").replaceChildren(...BOOT.units.map(u => el("option",{value:u})));
   refreshFileSelect("");        // projects folder plus anything saved in this browser
   const hash = decodeURIComponent(location.hash.slice(1));
-  const restored = readStored(AUTOSAVE_KEY);
+  /* This tab's own slot first - a reload, a reopened tab. A duplicated tab starts as a
+     copy of its original's. A tab with no slot of its own takes over the newest one a
+     closed tab left (autosavePlan) - what the one shared slot used to restore - and
+     never an open tab's. */
+  const claim = await tabClaimed;
+  let restored = readStored(autosaveKey()), plan = null, open = 0;
+  if (!restored && claim.twinOf) restored = readStored(AUTOSAVE_TAB + claim.twinOf);
+  else if (!restored) {
+    try {
+      const gone = await goneSlots();
+      open = gone.open;
+      plan = autosavePlan(gone.slots, readStored(prevKey()) == null);
+      restored = plan.take ? plan.take.rec : null;
+    } catch { plan = null; }
+  }
   // a record from before the flag was stored says nothing either way: treat it as unsaved
   const unsaved = recordHasWork(restored) && restored.dirty !== false;
   if (hash && BOOT.projects.includes(hash)) {       // deep link: index.html#file.yaml
@@ -7596,10 +8331,14 @@ async function init() {
     $("fileSelect").value = hash;
     $("fileName").value = hash;
     showProject(await api("/api/project?file=" + encodeURIComponent(hash)));
+    // a closed tab's work kept in this tab's second slot leaves its own; one that could
+    // not be kept stays where it was, for the next tab to find
+    if (plan) settleSlots([[kept || !unsaved ? plan.take : null, null]], plan.drop);
     if (kept)
       $("out").replaceChildren(messageBox("info", "Note:",
         `opened ${hash} from the link. This browser also held unsaved work from `
         + `${fmtStamp(restored.when, true)}, which the link replaced.`), offerRestore());
+    if (plan && plan.keep.length) $("out").append(offerGone(plan.keep.length));
     return;
   }
   if (recordHasWork(restored)) {
@@ -7607,13 +8346,22 @@ async function init() {
     $("fileName").value = restored.file || "";
     savedAs = restored.savedAs ?? null;
     projDirty = unsaved;
+    // a closed tab's slots become this tab's, now that the page holds what they held
+    if (plan) settleSlots([[plan.take, autosaveKey()], [plan.takePrev, prevKey()]], plan.drop);
     const when = fmtStamp(restored.when, true);
     $("out").replaceChildren(messageBox("info", "Restored:", unsaved
       ? `unsaved work from ${when}. Save keeps it in this browser under a name, Export writes a file; New, Load and the imports ask before replacing it.`
       : `the project that was open at ${when}. It had no unsaved changes.`));
+    if (plan && plan.keep.length) $("out").append(offerGone(plan.keep.length));
   } else {
     // nothing to restore, so this is a new list too - same house standard as New
     showProject({points:[], driver:"mb.exe"});
+    if (plan) settleSlots([], plan.drop);
+    if (open)
+      $("out").replaceChildren(messageBox("info", "Note:",
+        `${open === 1 ? "another tab" : open + " other tabs"} of this page ${open === 1 ? "is" : "are"} `
+        + `open in this browser, each with its own project and its own autosave - this one `
+        + `starts empty.`));
   }
 }
 /* live stat chips while editing (debounced, delegated).
@@ -7656,6 +8404,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=3bb9018a66"></script>
+<script src="pyodide-adapter.js?v=b2f3362b29"></script>
 </body>
 </html>
