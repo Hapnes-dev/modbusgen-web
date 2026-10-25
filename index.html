@@ -98,6 +98,7 @@
   pre.sql.stale{opacity:.5}
   .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
   label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--dim)}
+  label.f[hidden]{display:none}
   input,select,textarea,button{
     background:var(--panel2);color:var(--text);border:1px solid var(--line);
     border-radius:6px;padding:5px 8px;font:inherit;transition:border-color .12s}
@@ -1457,7 +1458,7 @@
         <b>Export</b> the project itself so the next revision starts from that file
         rather than from a chat.</p>
 
-        <p><b>previous version…</b> — when this list replaces one already on the plant,
+        <p hidden><b>previous version…</b> — when this list replaces one already on the plant,
         pick that version: its project file, or the SQL script that put it there. Generate
         then also deletes the rows that version had and this one has not, in the template
         and on every unit, and shows what changed. The points both have keep their
@@ -1476,14 +1477,14 @@
               title="Check the project without producing SQL: unknown table keys, duplicate ids, undefined groups, unresolved state refs, no online point. Warnings do not block">Validate</button>
       <button id="btnRunGenerate" class="uiv"
               title="Validate, then render the SQL import script into the Result card below. Nothing is written to disk"><span>Generate SQL</span></button>
-      <button id="btnPrev" class="ghost"
+      <button id="btnPrev" class="ghost" hidden
               title="Generate against the version of this list that is on the plant now - its project file, or the SQL script that put it there. The script then also deletes the rows that version had and this one has not, and the points both have keep their settings on the plant (docs/16 section 16.6.7)">previous version…</button>
       <input type="file" id="prevFile" accept=".json,.yaml,.yml,.sql,.txt" hidden>
       <span class="chip" id="prevChip" hidden
             title="Generate SQL compares the list with this file and deletes what only the file has">previous: <b id="prevName"></b>
         <button id="btnPrevClear" class="ghost" style="padding:0 5px"
                 title="Generate without the previous version">✕</button></span>
-      <label class="f f-sm" title="Qualify the tables of the verification and preview SQL with this database, for an SQL tool that has none selected - the IWMAC plant database is iw_plant_server3. Leave it empty when the tool has one selected. The import script itself is not changed">database
+      <label class="f f-sm" hidden title="Qualify the tables of the verification and preview SQL with this database, for an SQL tool that has none selected - the IWMAC plant database is iw_plant_server3. Leave it empty when the tool has one selected. The import script itself is not changed">database
         <input id="pSchema" placeholder="iw_plant_server3" size="15" spellcheck="false"
                autocomplete="off"></label>
     </div>
@@ -8265,7 +8266,7 @@ async function saveSqlFile(e) {
    the code behind it (review, 2026-10-24). tools/build_web.py writes the published
    build's stamp over the null below - the commit it was built from and the day; the
    local GUI's bootstrap says "local" and, from a git checkout, the commit it runs. */
-const BUILD_STAMP = {"kind": "web", "date": "2026-10-24", "commit": "8d151e6"};
+const BUILD_STAMP = {"kind": "web", "date": "2026-10-25", "commit": "f542004"};
 function stampText(s) {
   if (!s) return "";
   const bits = [s.kind === "web" ? "web build" : "local"];
