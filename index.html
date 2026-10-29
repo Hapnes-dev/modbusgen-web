@@ -548,10 +548,13 @@
     display:grid;place-items:center;background:rgba(77,163,255,.18);
     color:var(--accent);font-size:11px;font-weight:700}
   .ai-actions{display:flex;flex-wrap:wrap;gap:9px;align-items:center;margin:2px 0 4px}
-  .ai-actions button.primary{font-size:13px;padding:6px 16px}
-  a.ai-open{border:1px solid var(--accent);border-radius:6px;padding:5px 13px;
-    font-size:13px;text-decoration:none}
-  a.ai-open:hover{background:rgba(77,163,255,.12)}
+  .ai-actions button{font-size:13px;padding:5px 13px}
+  /* the agent is the action now - it follows the brief without a paste (2026-10-29) -
+     so the link is drawn as the primary button, and copy brief steps back */
+  a.ai-open,a.ai-open:visited{border:1px solid var(--accent2);border-radius:6px;
+    padding:6px 16px;font-size:13px;font-weight:600;text-decoration:none;color:#081120;
+    background:linear-gradient(180deg,var(--accent),var(--accent2))}
+  a.ai-open:hover{filter:brightness(1.1)}
   /* under the clipped prompt, where the fade already says there is more */
   #btnMorePrompt{display:block;width:100%;margin:-3px 0 4px;padding:3px 8px;
     font-size:11.5px;color:var(--accent);border-style:dashed}
@@ -1573,19 +1576,19 @@
         </div>
         <ol class="ai-steps">
           <li><span>1</span><b>Attach</b>&nbsp;the maker's register document</li>
-          <li><span>2</span><b>Paste</b>&nbsp;the prompt and answer its questions</li>
+          <li><span>2</span><b>Answer</b>&nbsp;its questions - nothing to paste</li>
           <li><span>3</span><b>Import project</b>&nbsp;the JSON, then&nbsp;<b>Validate</b></li>
         </ol>
         <div class="ai-actions">
-          <button id="btnCopyPrompt" class="primary"
-            title="Copy the whole prompt to the clipboard, clipped or not">copy prompt</button>
           <a class="ai-open" target="_blank" rel="noopener noreferrer"
             href="https://m365.cloud.microsoft/chat/?titleId=T_579a0384-1b7f-c331-433d-505a5c37425a&amp;source=embedded-builder"
-            title="Opens the Modbus List Helper Copilot agent in a new tab, behind the company login. Its folder holds the reference documents the prompt tells it to read">open the Modbus List Helper ↗</a>
+            title="Opens the Modbus List Helper Copilot agent in a new tab, behind the company login. It follows the brief below by itself, and its folder holds the reference documents the brief tells it to read">open the Modbus List Helper ↗</a>
+          <button id="btnCopyPrompt" class="ghost"
+            title="Copy the whole brief to the clipboard, clipped or not - for another AI chat. The Modbus List Helper follows it without being pasted">copy brief</button>
         </div>
         <h4>In detail</h4>
         <ol style="margin:4px 0 8px;padding-left:20px">
-          <li><b>Attach the maker's register document</b> to a Copilot chat: the PDF or the
+          <li><b>Attach the maker's register document</b> to the agent's chat: the PDF or the
             spreadsheet - or, for a CAREL controller, the boss device file from KSA
             (<code>*_mb.xml</code>), which the agent converts with a script from its
             folder that you upload beside it. If this plant already has a delivery, attach that too; if one
@@ -1594,10 +1597,12 @@
             shape, never its registers, and should say so. A reference file that looks
             right is not proof it is this plant's own - the agent should say what produced
             it before reading its fields as this plant's pattern.</li>
-          <li><b>Copy the prompt below and paste it in.</b> There is nothing to fill in.
-            The reference documents are already in the agent's <b>Modbus List Helper</b>
-            folder, and the prompt says which ones to read. The agent asks for nothing
-            but the addressing base and the driver: it names the table itself and
+          <li><b>Nothing to paste.</b> The agent's <b>modbus-list</b> skill carries the brief
+            below and follows it in every list chat, as if you had pasted it. The brief is
+            shown so you can see what the agent works to; <b>copy brief</b> is for another
+            AI chat. The reference documents are already in the agent's <b>Modbus List
+            Helper</b> folder, and the brief says which ones to read. The agent asks for
+            nothing but the addressing base and the driver: it names the table itself and
             leaves the plant number empty - add that on the page after importing (it
             only reaches the name of the file you export).</li>
         </ol>
@@ -1825,7 +1830,7 @@ Valid JSON only - no comments, no trailing commas, questions to me in chat and
 never into the file. Do not tell me it validates - JSON parse is not modbusgen
 validation. I run the validator.</pre>
         <button id="btnMorePrompt" class="ghost"
-          title="Unfold the whole prompt, or fold it back to its first few lines">show the whole prompt ▾</button>
+          title="Unfold the whole brief, or fold it back to its first few lines">show the whole brief ▾</button>
         <h4>Then, in the chat</h4>
         <ol start="3" style="margin:4px 0;padding-left:20px">
           <li><b>It works from what you attach.</b> It does not ask whether an older
@@ -7235,8 +7240,10 @@ function downloadTextFile(name, text) {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
-/* The starter prompt in the help panel. textContent, so the angle-bracket blanks the
-   user still has to fill in arrive as typed rather than as HTML entities. */
+/* The brief in the help panel - the starter prompt the Modbus List Helper's skill now
+   carries itself (tools/build_copilot_skill.py ships it as references/standing-brief.md),
+   so this copy is for another AI chat. textContent, so the angle brackets in it arrive
+   as typed rather than as HTML entities. */
 $("btnCopyPrompt").onclick = async (e) => {
   const btn = e.currentTarget;
   try {
@@ -7245,11 +7252,11 @@ $("btnCopyPrompt").onclick = async (e) => {
   } catch (err) { btnFlash(btn, "copy failed", "bad", 2600); }
 };
 
-/* Clipped by default: the prompt is long and unfolded it buries the rest of the
-   card. Copy takes the whole thing either way - it reads textContent, which the clip
-   never touches, and the button says so. The wizard's first step unfolds it, because
-   there the prompt is the thing being handed over. */
-const PROMPT_FOLDED = "show the whole prompt ▾", PROMPT_OPEN = "fold the prompt ▴";
+/* Clipped by default: the brief is long and unfolded it buries the rest of the card.
+   Copy takes the whole thing either way - it reads textContent, which the clip never
+   touches, and the button says so. Nothing unfolds it for the user any more: since
+   2026-10-29 it is what the agent follows, not something handed over. */
+const PROMPT_FOLDED = "show the whole brief ▾", PROMPT_OPEN = "fold the brief ▴";
 $("btnMorePrompt").onclick = (e) => {
   const clipped = $("aiPrompt").classList.toggle("clip");
   e.currentTarget.textContent = clipped ? PROMPT_FOLDED : PROMPT_OPEN;
@@ -8096,14 +8103,15 @@ initFolding();
    step exists to be done, not read. `skip` marks the steps most lists do not need, so a
    first-timer is not left wondering what they failed to fill in. */
 const WIZARD = [
-  {title:"Start here", card:"cardTips", copy:true,
+  {title:"Start here", card:"cardTips",
    body:`<p>This page turns a device maker's <b>Modbus list</b> (the table of what each
      register holds) into a <b>script</b> you import into IWMAC.</p>
      <p><b>The easy way:</b></p>
      <ol>
        <li>Open the AI agent and attach the maker's document.</li>
-       <li>Press <b>copy prompt</b> below and paste it into the chat.</li>
-       <li>Answer the agent's questions. You get a <code>.json</code> file.</li>
+       <li>Answer the agent's questions. Nothing to paste: it follows the brief in this
+         card by itself.</li>
+       <li>You get a <code>.json</code> file.</li>
      </ol>
      <p>Already have a filled <b>Modbustemplate</b> or an old <b>SQL script</b> for this
      plant? Use <b>Insert Excel</b> or <b>Import SQL</b> instead. No chat needed.</p>`},
@@ -8212,11 +8220,6 @@ function wizShow(i) {
   $("wizBack").disabled = i === 0;
   $("wizNext").textContent = i === WIZARD.length - 1 ? "Done" : "Continue";
   wizFocus(step.card);
-  // the prompt is the one thing a step hands over rather than describes
-  if (step.copy) {
-    $("aiPrompt").classList.remove("clip");
-    $("btnMorePrompt").textContent = PROMPT_OPEN;
-  }
 }
 
 function wizStop() {
@@ -8266,7 +8269,7 @@ async function saveSqlFile(e) {
    the code behind it (review, 2026-10-24). tools/build_web.py writes the published
    build's stamp over the null below - the commit it was built from and the day; the
    local GUI's bootstrap says "local" and, from a git checkout, the commit it runs. */
-const BUILD_STAMP = {"kind": "web", "date": "2026-10-29", "commit": "afa0d9b"};
+const BUILD_STAMP = {"kind": "web", "date": "2026-10-29", "commit": "3fa7af1"};
 function stampText(s) {
   if (!s) return "";
   const bits = [s.kind === "web" ? "web build" : "local"];
