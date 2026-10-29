@@ -493,9 +493,53 @@
   /* the remedy panel keeps its own blue, and takes the border weight and radius so it
      does not read as a hairline oddity among the boxes it sits under */
   .msg.fix{border-width:2px}
-  .sqlbar{display:flex;gap:8px;align-items:center;margin-top:10px}
-  /* match the row-count chip rather than the page's full-size buttons */
-  .sqlbar button{font-size:12px;padding:3px 10px;line-height:1.5}
+  /* The result toolbars (2026-10-29): Generate's script actions and Validate's copy report.
+     One height, an icon per action, the primary action filled and the read-only checks
+     set off after a divider. Icons are CSS masks in currentColor, so a label the handlers
+     rewrite ("copied ✓") keeps its icon and its colour. Labels stay lowercase in the DOM,
+     as the docs name them, and are capitalised here only. */
+  .sqlbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px;
+    padding:6px;background:rgba(255,255,255,.025);border:1px solid var(--line);
+    border-radius:10px}
+  .sqlgrp{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .sqlgrp + .sqlgrp{padding-left:10px;border-left:1px solid var(--line2)}
+  .sqlbar button{display:inline-flex;align-items:center;gap:7px;height:30px;
+    padding:0 12px;font-size:12.5px;font-weight:500;line-height:1;letter-spacing:.1px;
+    text-transform:capitalize;color:var(--text);background:var(--panel2);
+    border:1px solid var(--line2);border-radius:7px;white-space:nowrap;
+    transition:background-color .12s,border-color .12s,color .12s,box-shadow .12s,filter .12s}
+  .sqlbar button:hover:not(:disabled){border-color:var(--accent);
+    background:rgba(77,163,255,.1)}
+  .sqlbar button:focus-visible{outline:none;box-shadow:0 0 0 2px rgba(77,163,255,.5)}
+  .sqlbar button:active:not(:disabled){transform:translateY(1px)}
+  .sqlbar button:disabled{opacity:.45;cursor:not-allowed}
+  .sqlbar .sql-copy, .sqlbar > button.primary{color:#081120;font-weight:600;
+    border-color:var(--accent2);background:linear-gradient(180deg,var(--accent),var(--accent2));
+    box-shadow:0 1px 0 rgba(255,255,255,.12) inset, 0 1px 2px rgba(0,0,0,.35)}
+  .sqlbar .sql-copy:hover:not(:disabled), .sqlbar > button.primary:hover{
+    border-color:var(--accent2);background:linear-gradient(180deg,var(--accent),var(--accent2));
+    filter:brightness(1.1)}
+  .sqlbar button.okflash{border-color:var(--green);color:var(--green)}
+  .sqlbar button.badflash{border-color:var(--red);color:var(--red)}
+  .sqlbar .chip.sqlrows{display:inline-flex;align-items:center;gap:6px;height:30px;
+    padding:0 11px;border-radius:15px;font-size:12px;font-weight:600;
+    font-variant-numeric:tabular-nums;color:var(--text);
+    background:rgba(77,163,255,.1);border-color:rgba(77,163,255,.35)}
+  .reportbar .chip{display:inline-flex;align-items:center;height:30px;padding:0 11px;
+    border-radius:15px;font-size:12px}
+  .sqlbar .chip.warnfilter{display:inline-flex;align-items:center;height:30px;
+    padding:0 11px;border-radius:15px;font-size:12px;color:var(--amber)}
+  .sqlbar .sqlrows::before, .sqlbar .sql-copy::before, .reportbar > button::before, .sqlbar .sql-export::before, #btnSaveSql::before, #btnPreviewSql::before, #btnVerifySql::before, #btnChangesCsv::before, .sqlbar > button.primary::before{content:"";width:15px;height:15px;flex:none;
+    background:currentColor;-webkit-mask:var(--ico) center/contain no-repeat;
+    mask:var(--ico) center/contain no-repeat}
+  .sqlbar .sqlrows {--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='16' rx='2'/%3E%3Cpath d='M3 10h18M3 15h18M9 10v10'/%3E%3C/svg%3E")}
+  .sqlbar .sql-copy, .reportbar > button {--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='9' y='9' width='11' height='11' rx='2'/%3E%3Cpath d='M5 15V6a2 2 0 0 1 2-2h8'/%3E%3C/svg%3E")}
+  .sqlbar .sql-export {--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4v11M7 10l5 5 5-5M5 20h14'/%3E%3C/svg%3E")}
+  #btnSaveSql {--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 4h11l3 3v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z'/%3E%3Cpath d='M8 4v5h7V4M8 20v-6h8v6'/%3E%3C/svg%3E")}
+  #btnPreviewSql {--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E")}
+  #btnVerifySql {--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M8 12.5l2.7 2.7L16 9.5'/%3E%3C/svg%3E")}
+  #btnChangesCsv {--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 8h14M15 5l3 3-3 3M20 16H6M9 13l-3 3 3 3'/%3E%3C/svg%3E")}
+  .sqlbar > button.primary {--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5'/%3E%3C/svg%3E")}
   /* the same bar, above the messages instead of under the script: it carries the one
      control that acts on the whole panel, so it goes where the panel starts */
   .reportbar{margin:0 0 10px}
@@ -641,7 +685,7 @@
           title="Select a project saved in this browser to delete it (the button, or the Delete key on the list)">Delete</button>
   <span class="sep" aria-hidden="true"></span>
   <button id="btnImportJson" class="ghost"
-          title="Load a project file from disk - Copilot-generated JSON or an exported YAML">Import project</button>
+          title="Load a project file from disk - Copilot-generated JSON or an exported YAML">Import JSON</button>
   <input id="jsonFile" type="file" accept=".json,.yaml,.yml,application/json" hidden>
   <button id="btnImportSql" class="ghost"
           title="Convert a generated SQL script back into an editable project - accepts the modern REPLACE format and the old Excel tool's INSERT format. Export afterwards for the .json file">Import SQL</button>
@@ -998,7 +1042,7 @@
       <button id="btnPtExport" class="ghost tool"
               title="Download every point as its own project .json, carrying only the groups and state texts these points use. Project order, and a search or filter does not narrow it - select rows and use the bar below for that">⤓ points</button>
       <button id="btnPtImport" class="ghost tool"
-              title="Append the points from another project file to this list, bringing the groups and state texts they need with them. The rest of that file - table, plant, options, driver - is ignored. Use Import project to replace this list instead">⤒ points</button>
+              title="Append the points from another project file to this list, bringing the groups and state texts they need with them. The rest of that file - table, plant, options, driver - is ignored. Use Import JSON to replace this list instead">⤒ points</button>
       <input id="ptImportFile" type="file" accept=".json,.yaml,.yml,application/json" hidden>
       <button id="btnPtFull" class="ghost tool" title="Maximise this card (Esc to close)">⛶</button>
     </h2>
@@ -1576,7 +1620,7 @@
         <ol class="ai-steps">
           <li><span>1</span><b>Attach</b>&nbsp;the maker's register document</li>
           <li><span>2</span><b>Answer</b>&nbsp;its questions</li>
-          <li><span>3</span><b>Import project</b>&nbsp;the JSON, then&nbsp;<b>Validate</b></li>
+          <li><span>3</span><b>Import JSON</b>&nbsp;the JSON, then&nbsp;<b>Validate</b></li>
         </ol>
         <div class="ai-actions">
           <a class="ai-open" target="_blank" rel="noopener noreferrer"
@@ -1861,7 +1905,7 @@ validation. I run the validator.</pre>
             device docs. Amber options differ from the recommended defaults.</li>
           <li><b>Groups</b> — start with the defaults, rename to the plant's zones.</li>
           <li><b>State texts</b> — one list per enumeration; paste a vendor list straight in.</li>
-          <li><b>Points</b> — type them, or <b>Import project</b> a Copilot-authored JSON.</li>
+          <li><b>Points</b> — type them, or <b>Import JSON</b> a Copilot-authored JSON.</li>
           <li><b>Units &amp; driver</b> — only for a new/complete plant; both blocks off
             when the plant already has its driver.</li>
           <li><b>Validate</b> — fix what the advice panel lists; failing rows are marked red.</li>
@@ -1897,7 +1941,7 @@ validation. I run the validator.</pre>
         <div class="subhead">tips</div>
         <ul>
           <li><b>Starting a list:</b> press <b>New</b>, or pick a saved one. To bring a
-            list in: <b>Import project</b> for a <code>.json</code> or
+            list in: <b>Import JSON</b> for a <code>.json</code> or
             <code>.yaml</code>, <b>Import SQL</b> for a generated script,
             <b>Insert Excel</b> for a filled Modbustemplate workbook - or drop the file
             anywhere on the page, and it goes to the same import.</li>
@@ -5776,8 +5820,11 @@ function showResult(res, sqlWanted, stale) {
   const tuples = srcLines.filter(l => /^\(.*\),?;?$/.test(l)).length;
   const rows = inserts || tuples;
   const sqlBar = el("div",{class:"sqlbar", id:"sqlBar"},
-    el("span",{class:"chip", title:"Rows this script writes across the group, param and set tables - the same count either SQL format"},
+    el("span",{class:"chip sqlrows", title:"Rows this script writes across the group, param and set tables - the same count either SQL format"},
        `${rows} rows`),
+    // the script itself: copy is the usual way into the plant database, so it is the
+    // filled button; the read-only downloads follow in a group of their own
+    el("div",{class:"sqlgrp", role:"group", "aria-label":"The script"},
     el("button",{class:"sql-copy",
                  title:"Copy the whole script to the clipboard, ready to paste into the plant database",
                  onclick:async e=>{
@@ -5821,7 +5868,18 @@ function showResult(res, sqlWanted, stale) {
        saving these bytes: the page may have been edited since. */
     el("button",{class:"ghost", id:"btnSaveSql",
                  title:"Regenerate and write the .sql file into the projects folder (browser build: downloads it), named by the server from the plant number and table",
-                 onclick:saveSqlFile},"save file"),
+                 onclick:saveSqlFile},"save file")),
+    // in the order they are run: preview before the import, verification after it,
+    // the change report for relinking panel objects
+    (res.preview_b64 || res.verify_sql || res.changes_b64)
+      ? el("div",{class:"sqlgrp", role:"group", "aria-label":"Read-only checks and reports"},
+    res.preview_b64 ? el("button",{class:"ghost", id:"btnPreviewSql",
+                 title:"Download read-only SELECTs to run BEFORE the import: what the script's DELETEs and TRUNCATEs would take, per unit, and the units its rows would move here from another table. Nothing changes on the plant when you run it",
+                 onclick:e=>{
+      downloadBytes(res.preview_filename, res.preview_b64);
+      e.target.textContent = "downloaded ✓";
+      setTimeout(()=>e.target.textContent = "preview SQL", 1500);
+    }},"preview SQL") : "",
     res.verify_sql ? el("button",{class:"ghost", id:"btnVerifySql",
                  title:"Download read-only checks to paste into the plant's SQL tool after the import: bound rows per unit, rows left behind, duplicates. Each query lists problems, so an empty result is a pass (docs/16 section 16.6.8)",
                  onclick:e=>{
@@ -5830,20 +5888,13 @@ function showResult(res, sqlWanted, stale) {
       e.target.textContent = "downloaded ✓";
       setTimeout(()=>e.target.textContent = "verification SQL", 1500);
     }},"verification SQL") : "",
-    res.preview_b64 ? el("button",{class:"ghost", id:"btnPreviewSql",
-                 title:"Download read-only SELECTs to run BEFORE the import: what the script's DELETEs and TRUNCATEs would take, per unit, and the units its rows would move here from another table. Nothing changes on the plant when you run it",
-                 onclick:e=>{
-      downloadBytes(res.preview_filename, res.preview_b64);
-      e.target.textContent = "downloaded ✓";
-      setTimeout(()=>e.target.textContent = "preview SQL", 1500);
-    }},"preview SQL") : "",
     res.changes_b64 ? el("button",{class:"ghost", id:"btnChangesCsv",
                  title:"Download the change report (CSV): every point of both versions with its old and new element_id and driver_id and what changed - the map for relinking panel objects (docs/16 section 16.6.5)",
                  onclick:e=>{
       downloadBytes(res.changes_filename, res.changes_b64, "text/csv");
       e.target.textContent = "downloaded ✓";
       setTimeout(()=>e.target.textContent = "change report", 1500);
-    }},"change report") : "");
+    }},"change report") : "") : "");
   out.append(sqlBar, pre);
   if (stale) markScriptStale();            // the script is the list as it was sent
 }
@@ -6958,7 +7009,7 @@ $("btnNew").onclick = () => {
     if (kept && dirty) $("out").append(offerRestore());
   } catch (e) { showError(e); }
 };
-/* Import project, and everything else that hands the page a project's text: a dropped
+/* Import JSON, and everything else that hands the page a project's text: a dropped
    file, a pasted or dropped project. The caller has asked confirmReplace already. */
 async function openProjectText(text, label, yaml, name) {
   let data;
@@ -7119,7 +7170,7 @@ function askProjectText(found, label) {
       + (facts ? ` - ${facts}` : "") + ".";
     $("pasteOpen").disabled = found.kind !== "project";
     $("pasteOpen").title = found.kind === "project"
-      ? "Replace the project on this page with this one, as Import project does. Asks first when the page has unsaved changes"
+      ? "Replace the project on this page with this one, as Import JSON does. Asks first when the page has unsaved changes"
       : "A bare list of points is not a project - append it instead";
     const done = v => { resolve(v); if (d.open) d.close(); };
     $("pasteOpen").onclick = () => done("open");
@@ -7452,7 +7503,7 @@ function ptImportPoints(data, label) {
 }
 /* The points of a project's text, appended - from ⤒ points, and from a pasted or dropped
    project when Append points is chosen. The file is checked for keys the page leaves out
-   and keys it repeats, as Import project checks one: this route went from JSON.parse
+   and keys it repeats, as Import JSON checks one: this route went from JSON.parse
    straight to the rows, so a misspelt key vanished here without a word (review,
    2026-10-24). A bare list of points is checked as the points of a project. */
 async function importPointsText(text, label, yaml) {
@@ -8102,7 +8153,7 @@ const WIZARD = [
      <p>Already have a filled <b>Modbustemplate</b> or an old <b>SQL script</b> for this
      plant? Use <b>Insert Excel</b> or <b>Import SQL</b> instead. No chat needed.</p>`},
   {title:"Open the project", card:"cardProject",
-   body:`<p>Press <b>Import project</b> and pick the agent's <code>.json</code> file. Or
+   body:`<p>Press <b>Import JSON</b> and pick the agent's <code>.json</code> file. Or
      press <b>New</b> to start empty.</p>
      <p>Then check three fields:</p>
      <ul>
@@ -8255,7 +8306,7 @@ async function saveSqlFile(e) {
    the code behind it (review, 2026-10-24). tools/build_web.py writes the published
    build's stamp over the null below - the commit it was built from and the day; the
    local GUI's bootstrap says "local" and, from a git checkout, the commit it runs. */
-const BUILD_STAMP = {"kind": "web", "date": "2026-10-29", "commit": "4437994"};
+const BUILD_STAMP = {"kind": "web", "date": "2026-10-29", "commit": "5fd1c19"};
 function stampText(s) {
   if (!s) return "";
   const bits = [s.kind === "web" ? "web build" : "local"];
@@ -8394,6 +8445,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=3f352f2bfb"></script>
+<script src="pyodide-adapter.js?v=8a60aa47ee"></script>
 </body>
 </html>
