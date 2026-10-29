@@ -8266,7 +8266,7 @@ async function saveSqlFile(e) {
    the code behind it (review, 2026-10-24). tools/build_web.py writes the published
    build's stamp over the null below - the commit it was built from and the day; the
    local GUI's bootstrap says "local" and, from a git checkout, the commit it runs. */
-const BUILD_STAMP = {"kind": "web", "date": "2026-10-25", "commit": "f542004"};
+const BUILD_STAMP = {"kind": "web", "date": "2026-10-29", "commit": "afa0d9b"};
 function stampText(s) {
   if (!s) return "";
   const bits = [s.kind === "web" ? "web build" : "local"];
@@ -8405,6 +8405,6 @@ $("points").addEventListener("input", ptQueueRefresh);
 window.addEventListener("load", () => init().catch(
   e => showError(new Error("startup failed: " + (e.message || e)))));
 </script>
-<script src="pyodide-adapter.js?v=b2f3362b29"></script>
+<script src="pyodide-adapter.js?v=3f352f2bfb"></script>
 </body>
 </html>
