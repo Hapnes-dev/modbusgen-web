@@ -555,13 +555,12 @@
     padding:6px 16px;font-size:13px;font-weight:600;text-decoration:none;color:#081120;
     background:linear-gradient(180deg,var(--accent),var(--accent2))}
   a.ai-open:hover{filter:brightness(1.1)}
-  /* under the clipped prompt, where the fade already says there is more */
-  #btnMorePrompt{display:block;width:100%;margin:-3px 0 4px;padding:3px 8px;
-    font-size:11.5px;color:var(--accent);border-style:dashed}
-  /* the starter prompt is long on purpose; it opens clipped so the card stays readable */
-  .helpbody pre.clip{max-height:132px;overflow:hidden;position:relative}
-  .helpbody pre.clip::after{content:"";position:absolute;left:0;right:0;bottom:0;
-    height:52px;background:linear-gradient(rgba(18,21,27,0), #12151b);pointer-events:none}
+  /* the agent's standing brief: folded away, since nobody pastes it (2026-10-29); open,
+     it scrolls inside the card rather than burying the rest of it */
+  details.ai-brief{margin:10px 0 2px;border-top:1px solid var(--line);padding-top:4px}
+  details.ai-brief p{margin:4px 0 6px}
+  details.ai-brief button{font-size:12px;padding:3px 11px;margin-bottom:6px}
+  details.ai-brief pre{max-height:420px;overflow:auto}
   .pill{font-size:11px;background:var(--panel2);border:1px solid var(--line);
         border-radius:10px;padding:2px 8px;color:var(--amber)}
   .grp-grid,.st-grid{display:flex;flex-direction:column;gap:6px}
@@ -1569,24 +1568,22 @@
           <span class="ai-badge" aria-hidden="true">AI</span>
           <div>
             <h3 class="ai-title">Make the list with the AI agent</h3>
-            <div class="ai-lead">You do not type the list in. The Copilot agent reads the
-              maker's register document and writes the project file; this page checks it
-              and turns it into the SQL.</div>
+            <div class="ai-lead">You do not type the list in, and there is no prompt to
+              paste. Open the Copilot agent and attach the maker's register document: it
+              writes the project file, and this page checks it and turns it into the SQL.</div>
           </div>
         </div>
         <ol class="ai-steps">
           <li><span>1</span><b>Attach</b>&nbsp;the maker's register document</li>
-          <li><span>2</span><b>Answer</b>&nbsp;its questions - nothing to paste</li>
+          <li><span>2</span><b>Answer</b>&nbsp;its questions</li>
           <li><span>3</span><b>Import project</b>&nbsp;the JSON, then&nbsp;<b>Validate</b></li>
         </ol>
         <div class="ai-actions">
           <a class="ai-open" target="_blank" rel="noopener noreferrer"
             href="https://m365.cloud.microsoft/chat/?titleId=T_579a0384-1b7f-c331-433d-505a5c37425a&amp;source=embedded-builder"
-            title="Opens the Modbus List Helper Copilot agent in a new tab, behind the company login. It follows the brief below by itself, and its folder holds the reference documents the brief tells it to read">open the Modbus List Helper ↗</a>
-          <button id="btnCopyPrompt" class="ghost"
-            title="Copy the whole brief to the clipboard, clipped or not - for another AI chat. The Modbus List Helper follows it without being pasted">copy brief</button>
+            title="Opens the Modbus List Helper Copilot agent in a new tab, behind the company login. It follows its standing brief by itself, and its folder holds the reference documents the brief tells it to read">open the Modbus List Helper ↗</a>
         </div>
-        <h4>In detail</h4>
+        <h4>Step by step</h4>
         <ol style="margin:4px 0 8px;padding-left:20px">
           <li><b>Attach the maker's register document</b> to the agent's chat: the PDF or the
             spreadsheet - or, for a CAREL controller, the boss device file from KSA
@@ -1594,19 +1591,44 @@
             folder that you upload beside it. If this plant already has a delivery, attach that too; if one
             turns up later, say so - the agent starts over from it rather than patching the
             draft. A file from another plant or device is not that: the agent may copy its
-            shape, never its registers, and should say so. A reference file that looks
-            right is not proof it is this plant's own - the agent should say what produced
-            it before reading its fields as this plant's pattern.</li>
-          <li><b>Nothing to paste.</b> The agent's <b>modbus-list</b> skill carries the brief
-            below and follows it in every list chat, as if you had pasted it. The brief is
-            shown so you can see what the agent works to; <b>copy brief</b> is for another
-            AI chat. The reference documents are already in the agent's <b>Modbus List
-            Helper</b> folder, and the brief says which ones to read. The agent asks for
-            nothing but the addressing base and the driver: it names the table itself and
-            leaves the plant number empty - add that on the page after importing (it
-            only reaches the name of the file you export).</li>
+            shape, never its registers, and should say so. It works from what you attach
+            and does not ask whether an older list exists. Already have a filled
+            Modbustemplate workbook or an SQL script for this plant? Skip the chat and
+            bring that file here with <b>Insert Excel</b> or <b>Import SQL</b>: the page
+            copies the whole list across exactly, and writing it again by hand is always
+            worse.</li>
+          <li><b>Answer its questions.</b> It is supposed to ask: only you know what the
+            document leaves out, usually the addressing base and the driver. It names the
+            table itself and leaves the plant number empty - add that on the page after
+            importing (it only reaches the name of the file you export). It should also
+            warn you about a document that numbers registers from 0 and a plant that runs
+            the <code>modbus.php</code> driver. Both change what the list can contain.</li>
+          <li><b>Check what it reports back.</b> Three things. The <b>table name</b> it
+            picked. The <b>coverage ledger</b>: every row of the maker's document is
+            either used, covered by a bit, or skipped for a stated reason - and it must
+            have asked you before leaving any readable row out. And what it
+            <b>worked out rather than read</b>, which you are free to overrule.</li>
+          <li><b>Bring the file here.</b> Save the <code>.json</code>. Press <b>Import
+            project</b>, then <b>Validate</b>. The agent saying the file is fine proves
+            nothing. This page decides. Validate cannot catch a row copied twice on its own
+            either: it reports only alias-duplicate on the pair, so check a source row
+            against its project address yourself before trusting the count.</li>
+          <li><b>If Validate fails, copy the whole error into the chat</b> — the code, the
+            advice, all of it — and let the agent fix the file. That is faster and safer
+            than editing rows yourself.</li>
         </ol>
-        <pre id="aiPrompt" class="clip">Build a modbusgen project JSON from the attached register document.
+        <!-- 2026-10-29: the agent's modbus-list skill carries this brief and follows it
+             unpasted (tools/build_copilot_skill.py ships it as references/standing-brief.md,
+             read from this <pre>), so it folds away rather than being handed over. Keep the
+             <pre> here: the page is its only source. -->
+        <details class="ai-brief">
+          <summary>What the agent follows - its standing brief</summary>
+          <p>The agent's <b>modbus-list</b> skill carries this brief and follows it in every
+            list chat, so there is nothing to paste. It is shown so you can see what the
+            agent works to; <b>copy brief</b> is for another AI chat.</p>
+          <button id="btnCopyPrompt" class="ghost"
+            title="Copy the whole brief to the clipboard - for another AI chat. The Modbus List Helper follows it without being pasted">copy brief</button>
+        <pre id="aiPrompt">Build a modbusgen project JSON from the attached register document.
 
 READ FIRST, from Modbus List Helper
   tasks/&lt;task&gt;.md                 the steps for this task in order, each linking
@@ -1829,33 +1851,7 @@ DELIVER
 Valid JSON only - no comments, no trailing commas, questions to me in chat and
 never into the file. Do not tell me it validates - JSON parse is not modbusgen
 validation. I run the validator.</pre>
-        <button id="btnMorePrompt" class="ghost"
-          title="Unfold the whole brief, or fold it back to its first few lines">show the whole brief ▾</button>
-        <h4>Then, in the chat</h4>
-        <ol start="3" style="margin:4px 0;padding-left:20px">
-          <li><b>It works from what you attach.</b> It does not ask whether an older
-            list exists. If someone has already made a Modbustemplate workbook or an
-            SQL script for this plant, skip the chat and bring that file here instead,
-            with <b>Insert Excel</b> or <b>Import SQL</b>. This page copies the whole
-            list across, exactly. Writing the list again by hand is always worse.</li>
-          <li><b>Answer its questions.</b> It is supposed to ask. Only you know what the
-            document leaves out. It should also stop and warn you about two things: a
-            document that numbers registers from 0, and a plant that runs the
-            <code>modbus.php</code> driver. Both change what the list can contain.</li>
-          <li><b>Check what it reports back.</b> Three things. The <b>table name</b> it
-            picked. The <b>coverage ledger</b>: every row of the maker's document is
-            either used, covered by a bit, or skipped for a stated reason - and it must
-            have asked you before leaving any readable row out. And what it
-            <b>worked out rather than read</b>, which you are free to overrule.</li>
-          <li><b>Bring the file here.</b> Save the <code>.json</code>. Press <b>Import
-            project</b>, then <b>Validate</b>. The agent saying the file is fine proves
-            nothing. This page decides. Validate cannot catch a row copied twice on its own
-            either: it reports only alias-duplicate on the pair, so check a source row
-            against its project address yourself before trusting the count.</li>
-          <li><b>If Validate fails, copy the whole error into the chat</b> — the code, the
-            advice, all of it — and let the agent fix the file. That is faster and safer
-            than editing rows yourself.</li>
-        </ol>
+        </details>
       </div>
 
       <div class="sub">
@@ -7240,26 +7236,16 @@ function downloadTextFile(name, text) {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
-/* The brief in the help panel - the starter prompt the Modbus List Helper's skill now
-   carries itself (tools/build_copilot_skill.py ships it as references/standing-brief.md),
-   so this copy is for another AI chat. textContent, so the angle brackets in it arrive
-   as typed rather than as HTML entities. */
+/* The brief in the help panel's "What the agent follows" fold - the starter prompt the
+   Modbus List Helper's skill now carries itself (tools/build_copilot_skill.py ships it as
+   references/standing-brief.md), so this copy is for another AI chat. textContent, so the
+   angle brackets in it arrive as typed rather than as HTML entities. */
 $("btnCopyPrompt").onclick = async (e) => {
   const btn = e.currentTarget;
   try {
     await navigator.clipboard.writeText($("aiPrompt").textContent);
     btnFlash(btn, "copied ✓", "ok");
   } catch (err) { btnFlash(btn, "copy failed", "bad", 2600); }
-};
-
-/* Clipped by default: the brief is long and unfolded it buries the rest of the card.
-   Copy takes the whole thing either way - it reads textContent, which the clip never
-   touches, and the button says so. Nothing unfolds it for the user any more: since
-   2026-10-29 it is what the agent follows, not something handed over. */
-const PROMPT_FOLDED = "show the whole brief ▾", PROMPT_OPEN = "fold the brief ▴";
-$("btnMorePrompt").onclick = (e) => {
-  const clipped = $("aiPrompt").classList.toggle("clip");
-  e.currentTarget.textContent = clipped ? PROMPT_FOLDED : PROMPT_OPEN;
 };
 
 $("btnExport").onclick = async () => {
@@ -8269,7 +8255,7 @@ async function saveSqlFile(e) {
    the code behind it (review, 2026-10-24). tools/build_web.py writes the published
    build's stamp over the null below - the commit it was built from and the day; the
    local GUI's bootstrap says "local" and, from a git checkout, the commit it runs. */
-const BUILD_STAMP = {"kind": "web", "date": "2026-10-29", "commit": "3fa7af1"};
+const BUILD_STAMP = {"kind": "web", "date": "2026-10-29", "commit": "4437994"};
 function stampText(s) {
   if (!s) return "";
   const bits = [s.kind === "web" ? "web build" : "local"];
