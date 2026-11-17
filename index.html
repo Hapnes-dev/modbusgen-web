@@ -599,8 +599,8 @@
     padding:6px 16px;font-size:13px;font-weight:600;text-decoration:none;color:#081120;
     background:linear-gradient(180deg,var(--accent),var(--accent2))}
   a.ai-open:hover{filter:brightness(1.1)}
-  /* the agent's standing brief: folded away, since nobody pastes it (2026-10-29); open,
-     it scrolls inside the card rather than burying the rest of it */
+  /* the starter prompt for another AI chat: folded away, since the Modbus List Helper
+     needs nothing pasted; open, it scrolls inside the card rather than burying the rest */
   details.ai-brief{margin:10px 0 2px;border-top:1px solid var(--line);padding-top:4px}
   details.ai-brief p{margin:4px 0 6px}
   details.ai-brief button{font-size:12px;padding:3px 11px;margin-bottom:6px}
@@ -720,7 +720,7 @@
     <div class="sub" style="margin-top:4px">
       <div class="subhead">destination</div>
       <div class="row">
-        <label class="f f-lg" title="Names the three tables the script fills: iw_par_<name>_param, iw_par_<name>_groups, iw_set_<name>. Lowercase letters, digits and underscore, up to 25 characters - a space you type becomes an underscore, because the same name is grp_name in iw_sys_plant_units and IWMAC takes neither a space nor a 26th character there">table name<input id="pTable" placeholder="kjol" maxlength="25" title="Names the three tables the script fills: iw_par_<name>_param, iw_par_<name>_groups, iw_set_<name>. Lowercase letters, digits and underscore, up to 25 characters - a space you type becomes an underscore, because the same name is grp_name in iw_sys_plant_units and IWMAC takes neither a space nor a 26th character there"></label>
+        <label class="f f-lg" title="Names the three tables the script fills: iw_par_<name>_param, iw_par_<name>_groups, iw_set_<name>. Lowercase letters, digits and underscore, up to 25 characters - a space you type becomes an underscore, because the same name is grp_name in iw_sys_plant_units and IWMAC takes neither a space nor a 26th character there. A new list is named manufacturer_product_model from what its document prints, such as carel_heos_pro or dse_8620, so it can be found again; a list already on a plant keeps its name">table name<input id="pTable" placeholder="kjol" maxlength="25" title="Names the three tables the script fills: iw_par_<name>_param, iw_par_<name>_groups, iw_set_<name>. Lowercase letters, digits and underscore, up to 25 characters - a space you type becomes an underscore, because the same name is grp_name in iw_sys_plant_units and IWMAC takes neither a space nor a 26th character there. A new list is named manufacturer_product_model from what its document prints, such as carel_heos_pro or dse_8620, so it can be found again; a list already on a plant keeps its name"></label>
         <label class="f f-sm" title="Identifies the plant. Used only in the generated file name, never in the SQL itself">plant number<input id="pPlant" placeholder="12345" title="Identifies the plant. Used only in the generated file name, never in the SQL itself"></label>
         <label class="f f-sm" title="Which IWMAC Modbus driver this plant runs. Written into no SQL column - it decides what validation can conclude about swapped word order and 32-bit writes. mb.exe carries both, modbus.php neither and silently. mb.exe is the house standard and where a new list starts; set modbus.php for a plant known to run it, and not stated only when nobody knows, which makes validation ask rather than assume">driver<select id="pDriver" title="Which IWMAC Modbus driver this plant runs. Written into no SQL column - it decides what validation can conclude about swapped word order and 32-bit writes. mb.exe carries both, modbus.php neither and silently. mb.exe is the house standard and where a new list starts; set modbus.php for a plant known to run it, and not stated only when nobody knows, which makes validation ask rather than assume"><option value="">not stated</option><option value="mb.exe">mb.exe</option><option value="modbus.php">modbus.php</option></select></label>
       </div>
@@ -1625,7 +1625,7 @@
         <div class="ai-actions">
           <a class="ai-open" target="_blank" rel="noopener noreferrer"
             href="https://m365.cloud.microsoft/chat/?titleId=T_579a0384-1b7f-c331-433d-505a5c37425a&amp;source=embedded-builder"
-            title="Opens the Modbus List Helper Copilot agent in a new tab, behind the company login. It follows its standing brief by itself, and its folder holds the reference documents the brief tells it to read">open the Modbus List Helper ↗</a>
+            title="Opens the Modbus List Helper Copilot agent in a new tab, behind the company login. Its modbus-list skill carries the procedure and the rules, so there is nothing to paste">open the Modbus List Helper ↗</a>
         </div>
         <h4>Step by step</h4>
         <ol style="margin:4px 0 8px;padding-left:20px">
@@ -1661,17 +1661,17 @@
             advice, all of it — and let the agent fix the file. That is faster and safer
             than editing rows yourself.</li>
         </ol>
-        <!-- 2026-10-29: the agent's modbus-list skill carries this brief and follows it
-             unpasted (tools/build_copilot_skill.py ships it as references/standing-brief.md,
-             read from this <pre>), so it folds away rather than being handed over. Keep the
-             <pre> here: the page is its only source. -->
+        <!-- The Modbus List Helper needs no prompt: its modbus-list skill carries the
+             procedure and the rules. From 2026-10-29 to 2026-11-17 the skill shipped this
+             <pre> as references/standing-brief.md and followed it, which put a tool-less
+             chat's instructions into a skill with tools; now it is for another AI chat. -->
         <details class="ai-brief">
-          <summary>What the agent follows - its standing brief</summary>
-          <p>The agent's <b>modbus-list</b> skill carries this brief and follows it in every
-            list chat, so there is nothing to paste. It is shown so you can see what the
-            agent works to; <b>copy brief</b> is for another AI chat.</p>
+          <summary>A brief for another AI chat</summary>
+          <p>The Modbus List Helper needs nothing pasted: its <b>modbus-list</b> skill
+            carries the procedure and the same rules. This brief is for an AI chat with no
+            tools of its own; <b>copy brief</b> puts it on the clipboard.</p>
           <button id="btnCopyPrompt" class="ghost"
-            title="Copy the whole brief to the clipboard - for another AI chat. The Modbus List Helper follows it without being pasted">copy brief</button>
+            title="Copy the whole brief to the clipboard - for another AI chat. The Modbus List Helper does not need it">copy brief</button>
         <pre id="aiPrompt">Build a modbusgen project JSON from the attached register document.
 
 READ FIRST, from Modbus List Helper
@@ -1734,8 +1734,10 @@ beside the XML, you run it and validate what it wrote (docs/13, CAREL). Never
 transcribe such a file by hand.
 
 FIXED FOR THIS JOB
-table: derive it from the attached documentation - lowercase letters, digits
-and underscore only - and tell me what you chose. Do not ask me for it.
+table: &lt;manufacturer&gt;_&lt;product&gt;[_&lt;model&gt;] as the documentation prints them -
+lowercase letters, digits and underscore, 25 characters at most, nothing
+guessed - and tell me what you chose. Do not ask me for it. Name the file
+&lt;table&gt;[_pn-&lt;product number&gt;][_sn-&lt;serial number&gt;].json, each part only if printed.
 plant: leave it "" and do not ask me for it - I add the plant number on the
 page myself; the tool flags an empty one until I do.
 Addressing: subtract_one true - the document numbers registers from 1. If the
@@ -7287,10 +7289,9 @@ function downloadTextFile(name, text) {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
-/* The brief in the help panel's "What the agent follows" fold - the starter prompt the
-   Modbus List Helper's skill now carries itself (tools/build_copilot_skill.py ships it as
-   references/standing-brief.md), so this copy is for another AI chat. textContent, so the
-   angle brackets in it arrive as typed rather than as HTML entities. */
+/* The brief in the help panel's fold, for another AI chat: the Modbus List Helper needs
+   none, its skill carries the rules. textContent, so the angle brackets in it arrive as
+   typed rather than as HTML entities. */
 $("btnCopyPrompt").onclick = async (e) => {
   const btn = e.currentTarget;
   try {
@@ -8306,7 +8307,7 @@ async function saveSqlFile(e) {
    the code behind it (review, 2026-10-24). tools/build_web.py writes the published
    build's stamp over the null below - the commit it was built from and the day; the
    local GUI's bootstrap says "local" and, from a git checkout, the commit it runs. */
-const BUILD_STAMP = {"kind": "web", "date": "2026-10-29", "commit": "5fd1c19"};
+const BUILD_STAMP = {"kind": "web", "date": "2026-11-17", "commit": "3b1bc81"};
 function stampText(s) {
   if (!s) return "";
   const bits = [s.kind === "web" ? "web build" : "local"];
